@@ -5,14 +5,17 @@
 
 ---
 
-## FAZ 0 — Kurulum
+## FAZ 0 — Kurulum ✅
 
-- [ ] GitHub repo oluştur (Java .gitignore + Maven/IDE/run eklemeleri)
-- [ ] Maven projesi kur (`pom.xml`, Paper API dependency)
-- [ ] `plugin.yml` — main class, softdepend listesi
-- [ ] Boş plugin sunucuda başarıyla enable oluyor
-- [ ] `maven-shade-plugin` yapılandır (SQLite driver shading için)
-- [ ] Test sunucusu (Paper) kurulumu + hızlı build→deploy akışı
+> Hedef sürüm: **MC 1.21.8** (`paper-api 1.21.8-R0.1-SNAPSHOT`, `api-version: '1.21'`, **Java 21**)
+> Paket: `com.takashi.dungeons` — Koordinat: `com.takashi:TakashiDungeons:0.1.0-SNAPSHOT`
+
+- [x] GitHub repo oluştur (Java .gitignore + Maven/IDE/run eklemeleri)
+- [x] Maven projesi kur (`pom.xml`, Paper API dependency)
+- [x] `plugin.yml` — main class, softdepend listesi
+- [x] Boş plugin sunucuda başarıyla enable oluyor
+- [x] `maven-shade-plugin` yapılandır (SQLite driver shading için)
+- [x] Test sunucusu (Paper) kurulumu + hızlı build→deploy akışı
 
 ## FAZ 1 — Çekirdek Generation (EN KRİTİK)
 

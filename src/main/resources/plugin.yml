@@ -1,0 +1,25 @@
+name: TakashiDungeons
+version: ${project.version}
+main: com.takashi.dungeons.TakashiDungeonsPlugin
+api-version: '1.21'
+author: Onur Sessiz
+description: Prosedürel dungeon sistemi
+
+# Hiçbiri kurulu olmasa da plugin enable olur (bkz. anahedef.md — hard depend YASAK)
+softdepend:
+  - WorldEdit
+  - FastAsyncWorldEdit
+  - MythicMobs
+  - Vault
+
+commands:
+  tdungeons:
+    description: TakashiDungeons yönetim komutu
+    usage: /tdungeons <version|status>
+    aliases: [td, takashidungeons]
+    permission: takashidungeons.admin
+
+permissions:
+  takashidungeons.admin:
+    description: TakashiDungeons yönetim komutlarına erişim
+    default: op

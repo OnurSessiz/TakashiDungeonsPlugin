@@ -118,4 +118,40 @@ Yani "köylü takas özelleştirmesi" değil, **köylü kılığında GUI shop**
 
 ## YAZILAN SİSTEMLER
 
-_(Henüz yok — Faz 0 başlamadı)_
+## Plugin Bootstrap & Entegrasyon Tespiti
+**Dosya/Paket:** `com.takashi.dungeons.TakashiDungeonsPlugin`, `com.takashi.dungeons.command.DungeonsCommand`
+**Ne işe yarar:** Plugin'in enable/disable yaşam döngüsü + opsiyonel (softdepend) plugin'lerin
+sunucuda kurulu olup olmadığının tespiti.
+**Nasıl çalışır:**
+1. `onEnable` → `SOFT_INTEGRATIONS` listesi (`WorldEdit`, `FastAsyncWorldEdit`, `MythicMobs`, `Vault`)
+   üzerinde `PluginManager.isPluginEnabled(...)` çağrılır
+2. Sonuç `LinkedHashMap<String, Boolean>` içinde saklanır (sıra korunur), konsola yazılır
+3. `/tdungeons status` bu tabloyu oyuncuya/konsola basar; `hasIntegration("MythicMobs")` ile
+   diğer sistemler sorgular
+4. `onDisable` → sadece log
+**Bağımlılıkları:** Yok. Hiçbir softdepend kurulu olmasa da enable olur (out-of-box garantisi).
+**Dikkat edilecek:**
+- Tespit **enable anında bir kez** yapılır. Bir plugin sonradan (PlugMan vb.) yüklenirse tablo
+  eskir — reload komutu geldiğinde `detectIntegrations()` yeniden çağrılmalı.
+- `getCommand("tdungeons")` null dönerse severe log basılır: plugin.yml ile kod arasındaki
+  uyumsuzluk sessizce yutulmaz.
+- FAZ 3'teki `MobProvider` seçimi bu tabloyu kullanacak — provider mantığı buraya değil,
+  kendi paketine yazılacak.
+
+## Build → Deploy Akışı
+**Dosya/Paket:** `pom.xml`, `scripts/build.ps1`, `scripts/server.ps1`, `run/`
+**Ne işe yarar:** Kaynak koddan sunucuda çalışan jar'a tek komutla gitmek.
+**Nasıl çalışır:**
+1. `scripts/build.ps1` → JAVA_HOME'u Temurin **JDK 21**'e sabitler, `mvnw.cmd clean package` çalıştırır
+2. `maven-shade-plugin` SQLite driver'ı jar'a gömer ve `org.sqlite` → `com.takashi.dungeons.libs.sqlite`
+   olarak **relocate** eder
+3. Resource filtering `plugin.yml` içindeki `${project.version}`'ı pom'daki sürümle doldurur
+4. Üretilen jar `run/plugins/` içine kopyalanır (eski jar silinir — iki sürüm birden durursa sunucu ikisini de yükler)
+5. `scripts/server.ps1` → Paper 1.21.8'i **JDK 21 java.exe'si ile açıkça** başlatır
+**Bağımlılıkları:** Maven wrapper (`mvnw`), Temurin JDK 21, `run/paper.jar`.
+**Dikkat edilecek:**
+- Sistem PATH'inde JDK 26 var; Paper 1.21.8 Java 26'yı **kabul etmez**. Bu yüzden java yolu
+  scriptlerde sabit — `mvn`/`java` PATH'ten çağrılırsa build veya sunucu kırılır.
+- `run/` .gitignore'da; paper.jar ve dünya dosyaları repoya girmez.
+- SQLite relocation yapıldığı için FAZ 7'de driver **`com.takashi.dungeons.libs.sqlite.JDBC`**
+  adıyla yüklenecek, `org.sqlite.JDBC` ile değil.
