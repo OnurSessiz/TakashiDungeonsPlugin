@@ -2,6 +2,9 @@
 
 > Bu dosya her yeni oturumun BAŞINDA okunacak. Projenin değişmeyen çerçevesi ve
 > oturumlar arası hatırlanması gereken kurallar burada.
+>
+> Okuma sırasını ve build/test akışını kökteki `CLAUDE.md` taşıyor — yeni oturum onu
+> otomatik yükler ve buraya yönlendirir.
 
 ---
 
