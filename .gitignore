@@ -66,32 +66,37 @@ server/
 test-server/
 testserver/
  
-# Sunucu dosyaları (yanlışlıkla eklenirse)
-world/
-world_nether/
-world_the_end/
-logs/
-crash-reports/
-plugins/
-cache/
-libraries/
-versions/
-banned-ips.json
-banned-players.json
-ops.json
-whitelist.json
-usercache.json
-usernamecache.json
-eula.txt
-server.properties
-bukkit.yml
-spigot.yml
-paper.yml
-paper-global.yml
-paper-world-defaults.yml
-commands.yml
-help.yml
-permissions.yml
+# Sunucu dosyaları (yanlışlıkla kök dizine eklenirse)
+#
+# DİKKAT: Bu kurallar '/' ile KÖKE SABİTLİ olmalı. Anchor'sız yazılırsa git bunları
+# her dizin seviyesinde eşleştirir ve kaynak paketlerini yutar —
+# 'world/' kuralı src/main/java/com/takashi/dungeons/world/ paketini görünmez yapmıştı.
+# Aynı tuzak plugins/ cache/ logs/ versions/ için de geçerli.
+/world/
+/world_nether/
+/world_the_end/
+/logs/
+/crash-reports/
+/plugins/
+/cache/
+/libraries/
+/versions/
+/banned-ips.json
+/banned-players.json
+/ops.json
+/whitelist.json
+/usercache.json
+/usernamecache.json
+/eula.txt
+/server.properties
+/bukkit.yml
+/spigot.yml
+/paper.yml
+/paper-global.yml
+/paper-world-defaults.yml
+/commands.yml
+/help.yml
+/permissions.yml
 *.jar.log
  
 # Derlenmiş plugin jar'ları
