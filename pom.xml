@@ -20,6 +20,10 @@
         <!-- Hedef sürüm: MC 1.21.8 / api-version 1.21 / Java 21 -->
         <paper.version>1.21.8-R0.1-SNAPSHOT</paper.version>
         <sqlite.version>3.53.2.1</sqlite.version>
+        <!-- Derleme tabani bilerek 7.3 hattinda: FAWE 2.15 (7.4 tabanli) ve duz WorldEdit 7.3
+             ikisinde de calisan API yuzeyine karsi derliyoruz. Yeniye karsi derleyip eskide
+             calistirmak NoSuchMethodError uretir, tersi guvenli. -->
+        <worldedit.version>7.3.16</worldedit.version>
     </properties>
 
     <repositories>
@@ -27,7 +31,7 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
-        <!-- FAZ 1'de WorldEdit/FAWE buradan çekilecek -->
+        <!-- WorldEdit/FAWE API -->
         <repository>
             <id>enginehub</id>
             <url>https://maven.enginehub.org/repo/</url>
@@ -40,6 +44,15 @@
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
             <version>${paper.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- WorldEdit API. FAWE de aynı paket adlarını (com.sk89q.worldedit.*) sağlar,
+             bu yüzden tek kod yolu ikisiyle de çalışır. Sunucudan gelir, jar'a girmez. -->
+        <dependency>
+            <groupId>com.sk89q.worldedit</groupId>
+            <artifactId>worldedit-bukkit</artifactId>
+            <version>${worldedit.version}</version>
             <scope>provided</scope>
         </dependency>
 

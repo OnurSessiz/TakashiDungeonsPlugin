@@ -59,19 +59,31 @@ Sonuç: legendary şansı %1 → %2.5, common %60 → %37.5.
 
 ### Dungeon Generation — Room Graph
 
+> **Tam algoritma ayrı dosyada: [`generation.md`](generation.md).**
+> Koordinat konvansiyonları, rotasyon formülleri, yerleştirme adımları, metadata şeması ve
+> açık sorular orada. Burada sadece özet duruyor.
+
 Endüstri standardı **room-based procedural generation** (Diablo, Isaac, Gungeon mantığı).
+Yerleştirme **socket/jigsaw tabanlı** — Mojang'ın köy/bastion/ancient city üretimiyle aynı yöntem.
 
 **Akış:**
 1. Boyut seçilir → hedef oda sayısı belirlenir (small 3-6 / medium 7-12 / large 13-20)
 2. **Kritik path** üretilir: giriş odasından başlayıp hedef uzunluğa kadar zincir
 3. Path'in **son node'u boss odası** olarak sabitlenir (random değil, atama)
 4. Kalan oda kotası **yan dallar** olarak random walk ile eklenir
-5. Her adımda **constraint**: sadece mevcut açık kapıyla uyumlu odalar candidate olur
-6. Çok kapılı odalar (2-3 çıkışlı) labirent hissi yaratır — dallanma noktaları
-7. Seçilen odalar void world'deki grid slot'una async paste edilir
+5. Her adımda oda, ebeveynin boş kapısına **kapı anchor'ları çakıştırılarak** takılır;
+   gereken rotasyon aranmaz, `R = (d_p + 2 - d_c) mod 4` ile hesaplanır
+6. Yerleşim serbest olduğu için her adımda **3B AABB çakışma testi** zorunlu;
+   geçen aday yoksa kapı ÖLÜ işaretlenir ve tıpayla kapatılır
+7. Çok kapılı odalar (2-3 çıkışlı) labirent hissi yaratır — dallanma noktaları
+8. Graf tamamlandıktan **sonra** odalar void world'deki instance slot'una async paste edilir
 
 **Rotation:** Aynı schematic 90/180/270 döndürülerek farklı kapı yönelimleri elde
 edilir. Bu yüzden her oda için ayrı kapı varyantı schematic'i üretilmez.
+
+**Dungeon içi hücre grid'i YOK.** Odalar sabit hücrelere oturmuyor, kapı noktalarından
+kenetleniyor — bu sayede oda boyutları serbest. 512'lik **instance slot grid'i** ayrı bir
+katman ve duruyor (bkz. "Dungeon Void World & Grid Slot").
 
 **Referans projeler:** Mythic Dungeons, DungeonsXL (aynı mimariyi kullanıyorlar).
 
@@ -117,6 +129,59 @@ Yani "köylü takas özelleştirmesi" değil, **köylü kılığında GUI shop**
 ---
 
 ## YAZILAN SİSTEMLER
+
+## Dungeon Void World & Grid Slot
+**Dosya/Paket:** `com.takashi.dungeons.world` — `VoidChunkGenerator`, `DungeonWorldManager`,
+`GridSlotManager`, `GridSlot`
+**Ne işe yarar:** Instance'ların yaşadığı boş dünyayı kurar ve her instance'a çakışmayan bir
+kare alan (slot) ayırır.
+**Nasıl çalışır:**
+1. `onEnable` → `DungeonWorldManager.load()` → dünya yoksa `VoidChunkGenerator` ile oluşturulur
+2. `VoidChunkGenerator` hiçbir aşamayı üretmez (noise/surface/cave/decoration/structure/mob = false),
+   biome `THE_VOID` — doğal mob spawn tablosu boş
+3. Dünyaya dungeon gamerule'ları uygulanır: `doMobSpawning`, `doDaylightCycle`, `doWeatherCycle`,
+   `doFireTick`, `mobGriefing`, patrol/trader spawn kapalı; `randomTickSpeed=0`, `spawnChunkRadius=0`
+4. `GridSlotManager` satır düzeninde slot verir: `x=(i%columns)*slotSize`, `z=(i/columns)*slotSize`
+5. Serbest bırakılan index'ler `TreeSet` havuzuna girer, en küçüğünden yeniden kullanılır
+**Bağımlılıkları:** Sadece Bukkit API. WorldEdit gerekmez.
+**Dikkat edilecek:**
+- `release()` blokları **temizlemez**, sadece index'i geri verir. Aynı slot'a ikinci paste
+  yapılırsa eski yapı altta kalır — blok temizliği FAZ 2'nin işi.
+- `slot-size` (default 512) üretilebilecek en büyük dungeon'dan büyük olmalı, yoksa iki
+  instance birbirine taşar.
+- Slot index'i deterministik (index → konum hesaplanabilir), bu yüzden FAZ 7'de DB'ye sadece
+  index yazmak yeterli.
+- Config değişince slot geometrisi kayar; dünyada eski yapılar varken `slot-size` değiştirilmemeli.
+
+## Schematic Servisi (async load + paste)
+**Dosya/Paket:** `com.takashi.dungeons.schematic.SchematicService`, `TestRoomFactory`
+**Ne işe yarar:** `.schem` dosyalarını okuyup dungeon dünyasına, istenen açıyla paste eder.
+**Nasıl çalışır:**
+1. Dosya `plugins/TakashiDungeons/schematics/` altından okunur — **her zaman async**
+   (disk I/O + NBT parse main thread'i bloklar)
+2. Elde edilen `Clipboard` bellekte cache'lenir; aynı oda yüzlerce kez paste edileceği için
+   dosya bir kez okunur (`invalidateCache()` reload'da çağrılır)
+3. Paste `ClipboardHolder` + `AffineTransform().rotateY(-derece)` ile yapılır
+4. Paste thread'i: **FAWE varsa async**, yoksa main thread
+5. `TestRoomFactory` FAZ 10 haritaları gelene kadar kod içinde placeholder oda üretir
+   (`/tdungeons gen` → 5 dosya)
+**Bağımlılıkları:** WorldEdit **veya** FAWE. İkisi de yoksa servis hiç kurulmaz, plugin yine
+enable olur ve `/tdungeons status` "devre dışı" der.
+**Dikkat edilecek:**
+- **Async paste sadece FAWE ile güvenli.** Düz WorldEdit'in EditSession'ı thread-safe değildir;
+  async yazmak dünya bozar. `config.yml → schematics.force-sync-paste` teşhis için var.
+- `rotateY` açısı **negatif** veriliyor — WorldEdit'in kendi `//rotate` komutuyla aynı yön çıksın diye.
+  İşaret değişirse haritacının editörde gördüğü yön ile üretilen yön ters düşer.
+- Yazma yolunda `ClipboardFormats.findByFile` **kullanılamaz**: format tespiti için dosyayı açar,
+  henüz var olmayan dosyada `NoSuchFileException` atar. Alias ile çözülüyor (`sponge.3`/`schem`/…).
+- `copyEntities(false)`: schematic'e gömülü entity'ler her paste'te çoğalır ve FAZ 3'ün stat
+  sisteminin dışında kalırdı.
+- Odalar **tek sayı kenarlı** (17, 33): çift kenarda gerçek merkez blok olmaz, 90° döndürülen oda
+  grid'de 1 blok kayar. Bu kural gerçek haritalar için de geçerli.
+- Clipboard origin'i odanın **yatay merkezi**, taban seviyesi. Paste hedefi doğrudan slot merkezi
+  olabiliyor; origin köşede olsaydı her açı için ayrı ofset hesabı gerekirdi.
+- FAWE paste'ten sonra chunk'ları yüklü bırakmaz. `execute if block` gibi kontroller için
+  önce `forceload` gerekir — test yazarken tuzak.
 
 ## Plugin Bootstrap & Entegrasyon Tespiti
 **Dosya/Paket:** `com.takashi.dungeons.TakashiDungeonsPlugin`, `com.takashi.dungeons.command.DungeonsCommand`

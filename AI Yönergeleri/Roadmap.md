@@ -19,12 +19,18 @@
 
 ## FAZ 1 — Çekirdek Generation (EN KRİTİK)
 
-- [ ] FAWE/WorldEdit API entegrasyonu, async paste çalışıyor
-- [ ] Void world oluşturma + grid slot yönetimi (instance başına konum ayırma)
+> Adım adım ilerliyor: **1A** altyapı ✅ → 1B metadata → 1C kapı eşleştirme → 1D graph üretimi
+>
+> **Algoritmanın tam spec'i: [`generation.md`](generation.md)** — 1B'ye başlamadan okunacak.
+
+- [x] FAWE/WorldEdit API entegrasyonu, async paste çalışıyor
+- [x] Void world oluşturma + grid slot yönetimi (instance başına konum ayırma)
 - [ ] Schematic metadata modeli (oda tipi, kapı yönleri, boyut)
-- [ ] Test için 5 adet basit oda schematic'i (tek biome)
+- [x] Test için 5 adet basit oda schematic'i (tek biome) — kod üretimli placeholder, `/tdungeons gen`
 - [ ] Kapı eşleştirme mantığı (constraint: sadece uyumlu oda seçilir)
 - [ ] Rotation desteği (90/180/270 ile kapı yönü çevirme)
+      → blok seviyesinde çalışıyor ve doğrulandı; kalan iş metadata'daki kapı yönlerini
+        aynı açıyla döndürmek (1C)
 - [ ] Kritik path üretimi (giriş → boss zorunlu yolu)
 - [ ] Yan dal (side room) ekleme
 - [ ] Boyut değişkeni: small (3-6) / medium (7-12) / large (13-20)

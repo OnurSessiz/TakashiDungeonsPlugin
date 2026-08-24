@@ -1,0 +1,25 @@
+# TakashiDungeons — ana konfigürasyon
+# Kural (anahedef.md): her şey önce YAML ile çalışır, GUI editör sonra gelir.
+
+dungeon-world:
+  # Instance'ların yaşadığı void dünyanın adı. Sunucudaki başka bir dünyayla
+  # çakışmasın diye benzersiz tutun.
+  name: takashi_dungeons
+
+  # Bir instance'a ayrılan karenin kenarı (blok). Üretilebilecek en büyük
+  # dungeon'ın kapladığı alandan büyük olmalı; küçük seçilirse iki instance
+  # birbirinin bloklarına taşar.
+  slot-size: 512
+
+  # Grid'in kaç slot genişliğinde olduğu. slot-size * columns = dünyanın X ekseni
+  # boyunca uzunluğu; 512 * 32 = 16.384 blok (dünya sınırının çok altında).
+  columns: 32
+
+  # Odaların oturacağı taban yüksekliği.
+  base-y: 64
+
+schematics:
+  # true: FAWE kurulu olsa bile paste main thread'de yapılır.
+  # Sadece FAWE ile ilgili bir sorun teşhis edilirken açılmalı — açıkken büyük
+  # dungeon üretimi TPS düşürür.
+  force-sync-paste: false

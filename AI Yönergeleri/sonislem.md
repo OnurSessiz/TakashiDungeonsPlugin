@@ -31,6 +31,113 @@
 
 ---
 
+## 2026-08-24 — Generation Tasarımı: Hücre Grid'i → Anchor Yerleşimi (KOD YOK)
+
+**Ne yapıldı:**
+- Üretim algoritması baştan konuşuldu, **`generation.md`** dosyası açıldı — 1B/1C/1D'nin
+  tam spec'i orada. Yeni oturum o dosyayı okuyarak devam edebilir.
+- `isleyis.md`'deki "Dungeon Generation — Room Graph" bölümü **eskimişti**, güncellendi ve
+  `generation.md`'ye yönlendirildi.
+
+**Değişen mimari karar:**
+- **Dungeon içi hücre grid'i terk edildi.** Yerine **anchor (socket/jigsaw) tabanlı serbest
+  yerleşim** geldi — Mojang'ın köy/bastion üretimiyle aynı yöntem.
+- Kazanımlar: oda boyutları serbest (9×25 koridor + 33×33 boss aynı dungeon'da), rotasyon
+  aranan değil **hesaplanan** değer (`R = (d_p + 2 - d_c) mod 4`), aday filtresi ölüyor
+  (her oda her bağlantıya aday), kapı ofsetleri düz sırayı kendiliğinden kırıyor.
+- Bedeli: **3B AABB çakışma testi zorunlu** hâle geldi (hücre grid'inde çakışma imkânsızdı).
+  20 odalık dungeon'da kaba kuvvet yeterli, endişe yok.
+- **512'lik instance slot grid'i DURUYOR** — o ayrı katman, 1A'da yazılan hiçbir şey çöp değil.
+
+**Onur'un katkıları (tasarımı bunlar şekillendirdi):**
+- Kapının hangi duvarda olduğu **"kapı konumu − oda merkezi"** ile türetilsin → metadata'da
+  yön saklanmıyor, tutarsızlık doğamıyor. Benim önerdiğim `yon: KUZEY` alanından daha iyi.
+- Y ekseninin hizalanması (çift katlı oda: alttan giriş, üstten devam) → anchor'a Y konuldu,
+  rotasyon Y'yi korduğu için bedavaya geldi.
+- `door1/door2/door3` fikri → doldurma sırası olarak değil, **adres** olarak kaldı.
+
+**Elenen fikir ve sebebi:**
+- "Her odanın 1/2/3 kapılı versiyonu olsun, boş kapı çıkınca bir eksiğini kullan" — kapı
+  **sayısı** versiyonu tanımlamıyor, kapı **kümesi** tanımlıyor ({K,G} ≠ {K,D}). 15 kombinasyon,
+  rotasyonla 5 şekle iniyor ama 40 oda × 5 = **200 schematic**. Harita ekibi kaldıramaz.
+- Yerine: **tıpa** — boş kapıyı motor kapatıyor. Prosedürel (0 dosya) ya da biome başına
+  schematic (4 dosya). Varyant desteği metadata'da opsiyonel kaçış kapısı olarak duruyor.
+
+**Kaldığımız yer / sıradaki adım:**
+→ **FAZ 1B.** `generation.md` §12'deki sırayla. İlk iş kod değil **ölçüm**: `test_corner`
+  90° döndürülüp rotasyon işaretinin saat yönü mü olduğu kanıtlanacak.
+
+**Çözülmemiş sorun / not:**
+- Rotasyon işareti (`+1` mi `-1` mi) kanıtlanmadı — 1A testindeki `test_corridor` K-G
+  simetrik olduğu için ayırt edemedi. Yanlışsa bütün kapılar tutmaz, sessiz hata.
+- "Tek sayı kenar" kuralının anchor yerleşiminde gerektiği düşünülmüyor ama bu **akıl
+  yürütme**, test değil. Doğrulanana kadar harita ekibine "serbest" denmeyecek.
+- Koridor parçası, giriş odası tekilliği, tıpa yönteminin sırası → `generation.md` §11.
+
+---
+
+## 2026-08-24 — FAZ 1A: Void World + Grid Slot + Async Paste (TAMAMLANDI)
+
+**Ne yapıldı:**
+- FAZ 1 dört adıma bölündü: **1A** altyapı (bu oturum) → 1B metadata → 1C kapı eşleştirme →
+  1D graph üretimi (gezilebilir dungeon milestone'u)
+- `worldedit-bukkit 7.3.16` pom'a **provided** olarak eklendi
+- Void dünya (`takashi_dungeons`) + grid slot yönetimi yazıldı
+- Schematic servisi yazıldı: async dosya okuma + cache + rotation'lı paste
+- `TestRoomFactory` ile kod üretimli 5 placeholder oda (`/tdungeons gen`)
+- Test sunucusuna **FAWE 2.15.4** kuruldu (Modrinth, SHA512 doğrulandı)
+- Sunucuda **doğrulandı** (13/13 kontrol, `execute if block` ile):
+  zemin / tavan ışığı / 4 kapı açıklığı / köşe duvarı / iç hacim boş;
+  rot=0 koridorda kapılar K-G, **rot=90'da D-B** ve kuzey duvarı dolu
+- Paste süreleri: 17³ oda ~250-300 ms, ilk paste 602 ms (FAWE ısınması), async thread'de
+
+**Kurulan yapı / değişen dosyalar:**
+- `pom.xml` — `worldedit.version=7.3.16`, worldedit-bukkit provided
+- `src/main/resources/config.yml` (YENİ) — dünya adı, slot-size 512, columns 32, base-y 64,
+  `schematics.force-sync-paste`
+- `com/takashi/dungeons/world/VoidChunkGenerator.java` (YENİ)
+- `com/takashi/dungeons/world/DungeonWorldManager.java` (YENİ)
+- `com/takashi/dungeons/world/GridSlot.java`, `GridSlotManager.java` (YENİ)
+- `com/takashi/dungeons/schematic/SchematicService.java` (YENİ)
+- `com/takashi/dungeons/schematic/TestRoomFactory.java` (YENİ)
+- `TakashiDungeonsPlugin.java` — config + world + schematic servisi bootstrap'i
+- `DungeonsCommand.java` — `world`, `list`, `gen`, `paste`, `slots`, `free` alt komutları
+- `plugin.yml` — usage satırı
+- `AI Yönergeleri/isleyis.md` — 2 sistem kaydı eklendi
+
+**Alınan kararlar:**
+- **Derleme tabanı WorldEdit 7.3.16, çalışma zamanı FAWE/WorldEdit fark etmez.** Eskiye karşı
+  derleyip yenide çalıştırmak güvenli; tersi `NoSuchMethodError` üretir. FAWE de aynı
+  `com.sk89q.worldedit.*` paketlerini sağladığı için **tek kod yolu** ikisiyle de çalışıyor.
+- **Async paste sadece FAWE varsa.** Düz WorldEdit'in EditSession'ı thread-safe değil.
+  Dosya okuma her iki durumda da async — asıl pahalı kısım o.
+- **Odalar tek sayı kenarlı** (17, 33). Çift kenarda gerçek merkez blok yok, 90° dönen oda
+  1 blok kayıyor. Bu kural FAZ 10'daki gerçek odalar için de geçerli — haritacı ekibine söylenecek.
+- **Clipboard origin'i odanın yatay merkezinde**, taban seviyesinde. Rotation kendi ekseninde
+  dönüyor, paste hedefi doğrudan slot merkezi olabiliyor.
+- **`rotateY(-derece)`** — WorldEdit'in `//rotate` komutuyla aynı yön çıksın diye.
+
+**Neden böyle yapıldı:**
+- Grid slot deterministik: index'ten konum hesaplanabildiği için FAZ 7'de DB'ye sadece index yazılacak
+- Void world'de tüm doğal üretim ve gamerule'lar kapatıldı: N instance açıkken boşuna TPS harcanmasın,
+  içerik kontrolü tamamen bizde kalsın
+- Test odaları kod üretimli: gerçek haritalar (FAZ 10) beklenmeden generation mantığı test edilebilsin
+
+**Kaldığımız yer / sıradaki adım:**
+→ **FAZ 1B — Schematic metadata modeli.** Her oda için: oda tipi (normal/boss/giriş), kapı yönleri
+  (K/D/G/B), boyut, ağırlık. YAML'de mi schematic'in yanında `.yml` olarak mı tutulacağına
+  karar verilecek. Sonrasında 1C'de kapı yönlerinin rotation ile birlikte döndürülmesi.
+
+**Çözülmemiş sorun / not:**
+- `release()` slot index'ini geri veriyor ama **blokları silmiyor** — temizlik FAZ 2'de.
+  Şu an aynı slot'a ikinci paste eski yapının üstüne yazar.
+- FAWE paste sonrası chunk'ları yüklü bırakmıyor; `execute if block` ile test ederken önce
+  `forceload` gerekiyor (test scriptinde bu yüzden var).
+- `run/plugins/FastAsyncWorldEdit-Paper-2.15.4.jar` eklendi ama `run/` .gitignore'da —
+  başka bir makinede test edecek kişi FAWE'yi kendi indirmeli.
+
+---
+
 ## 2026-08-23 — FAZ 0: Maven İskeleti (TAMAMLANDI)
 
 **Ne yapıldı:**
