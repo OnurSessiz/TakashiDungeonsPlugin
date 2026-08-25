@@ -31,6 +31,118 @@
 
 ---
 
+## 2026-08-25 — FAZ 1B: Oda Metadata Modeli + Yerleştirme Geometrisi (TAMAMLANDI)
+
+**Ne yapıldı:**
+- **Önce ölçüm, sonra kod** — `generation.md` §12'nin dediği sırayla gidildi.
+- İki açık soru kapandı: rotasyon işareti (§3) ve tek sayı kenar kuralı (§9).
+- `com.takashi.dungeons.generation` paketi kuruldu — oda şablonu, kapı anchor'ı,
+  rotasyon, kutu ve yerleştirme formülü.
+- `TestRoomFactory` artık `.schem` **ve** `.yml` yazıyor; oda seti 5'ten 8'e çıktı.
+- `/tdungeons rooms`, `room <ad>`, `connect <a> <b> [kapıA] [kapıB]` komutları eklendi.
+
+**AÇIK SORU #1 KAPANDI — rotasyon işareti `+1`, saat yönü:**
+`SchematicService`'in paste'te kullandığı `AffineTransform().rotateY(-derece)` doğrudan
+JVM'de çalıştırıldı — sunucu gerekmedi, transform saf matematik.
+`rotateY(-90)` → `(x,y,z) → (-z,y,x)`, yön olarak **K→D→G→B**.
+R=0/1/2/3'ün dördü de `generation.md` §3'teki nokta formülleriyle birebir eşleşti.
+`d' = (d - R) mod 4` hipotezi R=1 ve R=3'te elendi. `test_corner` (K+D) 90° → **D+G**.
+→ **§3'teki bütün formüller doğru, hiçbiri ters çevrilmedi.**
+
+**AÇIK SORU #2 KAPANDI — tek sayı kenar kuralı gerçekten kalktı:**
+`test_even` (10 geniş × 16 uzun, üç kapısı da ofsetli) bunun için üretildi.
+Origin `(5,0,8)` → kutu `-5..4` / `-8..7`, iki eksende de asimetrik.
+12 kombinasyonun (3 kapı × 4 yön) hepsinde kapı tam yerine oturdu; sunucuda 90° dönmüş
+hâlde bağlandığında geçit açık çıktı ve odanın **diğer iki kapısı da** hesaplanan yerde bulundu.
+→ **Harita ekibine "kenar uzunluğu serbest" denebilir.**
+
+**Kurulan yapı / değişen dosyalar:**
+- `generation/Vec3i.java`, `Direction.java`, `Rotation.java`, `Aabb.java` (YENİ) — saf geometri
+- `generation/DoorAnchor.java`, `RoomType.java`, `RoomTemplate.java`, `RoomMetadata.java` (YENİ)
+- `generation/RoomTemplateStore.java` (YENİ) — `.schem` + `.yml` birleştirici, async
+- `generation/PlacedRoom.java` (YENİ) — şablon + R + dünya origin'i + kutu
+- `schematic/TestRoomFactory.java` — baştan yazıldı: ayrı `sizeX`/`sizeZ`, kapı ofseti,
+  `.yml` üretimi, kapı taşma kontrolü
+- `command/DungeonsCommand.java` — `rooms`, `room`, `connect` + tab-complete
+- `TakashiDungeonsPlugin.java` — `RoomTemplateStore` bootstrap'i
+- `plugin.yml` — usage satırı
+- `AI Yönergeleri/generation.md` — §3, §4, §9, §10, §11, §12 güncellendi; §13 (1C planı) eklendi
+- `AI Yönergeleri/isleyis.md` — yeni sistem kaydı + eskiyen "tek sayı kenar" maddesi düzeltildi
+- `AI Yönergeleri/Roadmap.md` — metadata modeli ve rotation `[x]`
+- `scripts/geo-probe/` (YENİ) — sunucusuz geometri testi + WorldEdit rotasyon ölçer,
+  `run.ps1` ile koşuluyor
+
+**Alınan kararlar:**
+- **`generation` paketi saf Java** — ne Bukkit ne WorldEdit tipi (`RoomMetadata` ve
+  `RoomTemplateStore` sınırda). İki kazanç: yerleştirme matematiği sunucu açmadan test
+  edilebiliyor (53 kontrol saniyeler içinde koşuyor), ve FAZ 8'de dışarı açılacak API'ye
+  üçüncü parti tip sızmıyor.
+- **Kutu ve duvar yönü türetilen değerler.** Kutu schematic'ten, duvar anchor vektöründen.
+  Metadata'da tutulsalardı schematic değişince eskiyip *sessizce* yanlış çalışırlardı.
+  Harita ekibi 40+ oda yazacak: yazılabilen her alan yanlış yazılabilen bir alan.
+- **Duvar hesabı yön başına normalize ediliyor**, tek bir "yarı genişlik" ile değil.
+  §9 ile origin artık odanın tam ortasında olmak zorunda olmadığı için asimetrik odada
+  tek değer yanlış sonuç verirdi.
+- **`attachTo` çakışma testi yapmıyor.** "Nereye oturur" (geometri, 1B) ile "oturabilir mi"
+  (graf, 1C) ayrıldı; ayrım geometriyi dünyaya erişmeden test edilebilir tutuyor.
+- **`Direction` enum sırası rotasyon matematiğinin parçası** — K,D,G,B = 0,1,2,3.
+  Sıra değişirse `(d + R) mod 4` sessizce bozulur; sınıf yorumunda yazılı.
+
+**Doğrulama:**
+- **53/53 saf geometri kontrolü** (sunucusuz): rotasyon tur kapanışı, 16 `align`
+  kombinasyonu, kare + dikdörtgen + asimetrik odada duvar türetme, çakışma kuralları,
+  5 oda × tüm kapılar × tüm yönler = 48 yerleştirme.
+- **23/23 blok kontrolü** (sunucuda, `execute if block`): iki bağlantı senaryosunda geçidin
+  açık olduğu, duvarların sırt sırta durduğu, kapı dışının dolu kaldığı, rotasyonun odanın
+  **diğer** kapılarını da doğru yere taşıdığı.
+- Plugin'in raporladığı R / origin / kutu değerleri, spec formüllerinden **elle** hesaplanan
+  değerlerle birebir eşleşti: rot=270 origin `(273,64,256)`; rot=90 origin `(771,64,243)`,
+  kutu 10×8×16 → 16×8×10.
+
+**Yol boyunca yakalanan hatalar:**
+- `test_long`'un doğu kapısı ofset **+11** ile duvarın köşe bloğuna taşıyordu (25 uzunlukta
+  3 bloklu açıklık için son geçerli merkez 22). `carveDoor`'a konan sınır kontrolü bunu
+  `/tdungeons gen` anında patlattı; ofset +10'a çekildi. Kontrol olmasaydı anchor duvarın
+  dışına düşer, hata paste sonrası gözle aranırdı.
+- `RoomTemplateStore.load` ilk hâlinde dar bir açık vardı: `computeIfAbsent` içinde
+  zincirlenince, executor task'ı reddederse (plugin disable olurken) temizlik ekleme
+  tamamlanmadan çalışıyor ve **başarısız future cache'te kalıcı** oluyordu. Future önce
+  cache'e konup zincir sonra kurulacak şekilde düzeltildi (`SchematicService`'in kullandığı
+  iki argümanlı `remove` kalıbı).
+
+**Test harness'ında öğrenilenler (sunucuyu konsoldan sürerken):**
+- **`run/logs/latest.log` önce silinmeli.** Eski log'da "Done (" duruyor; script sunucuyu
+  hazır sanıp komutları *açılış sırasında* gönderiyor. İlk koşumda tam bu oldu.
+- **PowerShell 5.1'in stdin writer'ı ilk yazımda UTF-8 BOM basıyor** ve
+  `ProcessStartInfo.StandardInputEncoding` .NET Framework'te yok. BOM ilk komutu bozuyor
+  (`?tdungeons gen<--[HERE]`). Çözüm: bir kurban satırı gönderip yutmak.
+- **`gen` bitmeden sonraki komut gönderilmemeli** — yarım yazılmış `.schem` okununca
+  `EOFException: Unexpected end of ZLIB input stream`. Log'da tamamlanma mesajı beklenmeli.
+- **Test dünyası silinmeli.** Slot index'i her açılışta sıfırdan başlıyor, aynı slot'a
+  yeniden paste ediliyor ve eski yapı altta kalıyor (`release` blok temizlemiyor — FAZ 2).
+  Silinmezse önceki koşumdan kalan bloklar *yanlış "geçti"* üretir.
+- Dungeon dünyasının dimension key'i **`minecraft:takashi_dungeons`** —
+  `execute in minecraft:takashi_dungeons run forceload add ...` böyle çalışıyor.
+
+**Kaldığımız yer / sıradaki adım:**
+→ **FAZ 1C.** Plan `generation.md` **§13**'te maddelenmiş. Özet: 1B "bu oda buraya şu açıyla
+  oturur"u verdi; 1C'nin sorusu **"oturabilir mi, ve hangi oda seçilmeli?"**
+  Sırasıyla: aday havuzu (`şablon × kapı`) → çakışma testi + slot sınırı (`DungeonLayout`) →
+  ağırlıklı seçim → dönüş yanlılığı → ÖLÜ kapı işaretleme.
+
+**Çözülmemiş sorun / not:**
+- **Ağırlık nasıl uygulanacak, karar verilmedi** (`generation.md` §11 madde 6). `agirlik`
+  metadata'da var ve okunuyor ama kimse kullanmıyor. 4 kapılı oda 4 aday üretiyor; ağırlık
+  şablon başına verilirse çok kapılı odalar kendiliğinden 4 kat şanslı oluyor. Muhtemel
+  cevap: ağırlık şablona ait, çift seçilirken kapı eşit dağılsın — 1C'de kapanacak.
+- Tıpa yöntemi, koridor parçası ve giriş odası tekilliği hâlâ açık (§11 madde 3-5).
+- Geometri testi repoda: `scripts/geo-probe/` (`run.ps1`, README, `GeoProbe` + `RotProbe`).
+  **Derlemeye girmiyor** — `src/` altında değil, build'i bozma riski yok. 1C'de
+  `src/test/java` altına JUnit olarak taşınması değerlendirilmeli; `surefire` pom'da zaten
+  yapılandırılmış, test kaynağı olmadığı için atlıyor. Tek eksik bir dependency satırı.
+
+---
+
 ## 2026-08-24 — Generation Tasarımı: Hücre Grid'i → Anchor Yerleşimi (KOD YOK)
 
 **Ne yapıldı:**

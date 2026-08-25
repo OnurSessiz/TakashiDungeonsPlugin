@@ -1,7 +1,10 @@
 # GENERATION — Dungeon Üretim Sistemi
 
-> **Durum:** FAZ 1A yazıldı ve sunucuda doğrulandı. 1B / 1C / 1D bu dosyadaki tasarıma göre
-> yazılacak — o kısımların kodu **henüz yok**.
+> **Durum:** FAZ 1A ve **1B** yazıldı, ikisi de sunucuda doğrulandı. 1C / 1D bu dosyadaki
+> tasarıma göre yazılacak — o kısımların kodu **henüz yok**.
+>
+> 1B'de kapanan iki açık soru (§3 rotasyon işareti, §9 tek sayı kenar) artık **ölçülmüş**
+> durumda; bu dosyadaki formüller varsayım değil.
 >
 > **Bu dosya nedir:** 2026-08-24 tasarım oturumunun temize çekilmiş çıktısı. Yeni bir oturum
 > bu dosyayı okuyup `anahedef.md` + `Roadmap.md` dışında başka bir şeye ihtiyaç duymadan
@@ -107,11 +110,23 @@ Kodda `AffineTransform().rotateY(-derece)` kullanılıyor — WorldEdit'in kendi
 komutuyla aynı yönü versin diye. Haritacının editörde gördüğü yön ile motorun ürettiği yön
 birebir aynı olmalı.
 
-> ⚠️ **Açık:** İşaretin gerçekten saat yönü (`d+1`) olduğu **henüz kanıtlanmadı.** 1A testinde
-> kullanılan `test_corridor` K-G simetrik olduğu için saat yönü / ters yön ayırt edilemedi.
-> 1B'nin ilk işi: `test_corner` (K+D kapılı, asimetrik) 90° döndürülür.
-> **D+G çıkarsa `+1` doğru, B+K çıkarsa `-1`.** Yanlışsa üretilen bütün dungeon'ların kapıları
-> tutmaz — sessizce yanlış çalışan türden hata, koda geçmeden ölçülecek.
+> ✅ **ÖLÇÜLDÜ (2026-08-25) — `+1` doğru, işaret saat yönü.**
+>
+> `SchematicService`'in paste'te kullandığı `AffineTransform().rotateY(-derece)` doğrudan
+> JVM'de çalıştırıldı (sunucu gerekmedi — transform saf matematik):
+>
+> | R | nokta | yön dönüşümü |
+> |---|---|---|
+> | 0 | `( x, y,  z)` | K→K D→D G→G B→B |
+> | 1 | `(-z, y,  x)` | **K→D D→G G→B B→K** |
+> | 2 | `(-x, y, -z)` | K→G D→B G→K B→D |
+> | 3 | `( z, y, -x)` | K→B D→K G→D B→G |
+>
+> Dördü de yukarıdaki nokta formülleriyle birebir eşleşti. `d' = (d - R) mod 4` hipotezi
+> R=1 ve R=3'te elendi. `test_corner` (K+D) 90° döndürülünce **D+G** çıkıyor — beklenen sonuç.
+>
+> Ölçüm neden koddan önce yapıldı: işaret ters olsaydı üretilen bütün dungeon'ların kapıları
+> tutmazdı ve hata *sessiz* olurdu — oda pastelenir, geçit kapalı çıkardı.
 
 ---
 
@@ -140,6 +155,16 @@ else          →  dz > 0 ? GÜNEY : KUZEY
 
 Mantığı: hangi bileşen ±1'e ulaşıyorsa nokta o duvara değiyordur. Kare odada iki formül aynı
 sonucu verir — bu yüzden test odalarında fark **edilmez**, ilk dikdörtgen oda geldiğinde patlar.
+
+**Bu tuzak için kalıcı test odası var:** `test_long` (9 geniş × 25 uzun), doğu duvarında
+güney ucuna yakın kapı → `v = (+4, +10)`. Naif kural `|dz| > |dx|` olduğu için "güney" der;
+normalize edilmiş kural `nx = 4/4 = 1.00 > nz = 10/12 = 0.83` ile doğru cevabı (**doğu**)
+verir. Sunucuda doğrulandı. Formül bozulursa bu oda anında yakalar.
+
+**Normalizasyon yön başına ayrı yapılıyor** — doğu ve batı uzanımları ayrı okunuyor.
+Sebebi §9: tek sayı kenar kuralı kalktığı için origin artık odanın tam ortasında olmak
+zorunda değil, oda origin'e göre asimetrik olabiliyor. Tek bir "yarı genişlik" değeri
+asimetrik odada yanlış sonuç verirdi.
 
 ---
 
@@ -362,13 +387,21 @@ Anchor tabanlı yerleşimde **bu kısıt gerekmiyor.** Yerleştirme bounding box
 anchor'a göre yapıldığı için, odanın origin etrafında asimetrik olması kapı çakıştırmasını
 bozmuyor — asimetri AABB'ye yansıyor, o da rotasyon sonrası hesaplandığı için sorun olmuyor.
 
-> ⚠️ Bu, WorldEdit'in transform davranışı üzerine **akıl yürütmeyle** varılmış sonuç, testle
-> değil. 1B'de çift kenarlı asimetrik bir test odasıyla doğrulanacak. Doğrulanana kadar harita
-> ekibine "serbest" denmesin.
+> ✅ **DOĞRULANDI (2026-08-25).** `test_even` (10 geniş × 16 uzun, üç kapısı da ofsetli)
+> bunun için üretildi. Origin `(5,0,8)` → kutu `-5..4` (X) / `-8..7` (Z), yani **iki eksende
+> de asimetrik**. Sonuçlar:
+>
+> - Üç kapının duvarı da doğru türetildi (kuzey / güney / doğu).
+> - 3 kapı × 4 yön = 12 kombinasyonun hepsinde kapı anchor'ı tam hedefine oturdu.
+> - Sunucuda: `test_cross` kuzey kapısına 90° dönmüş hâlde bağlandı, geçit açık çıktı,
+>   kutular çakışmadı, odanın **diğer iki kapısı da** hesaplanan yerde bulundu.
+>
+> **Harita ekibine "kenar uzunluğu serbest" denebilir.** Bağlayıcı olan kural kenar değil,
+> anchor'ın doğru bloğa konması (yukarıdaki madde).
 
 ---
 
-## 10. Yazılmış olan — FAZ 1A
+## 10. Yazılmış olan — FAZ 1A + 1B
 
 Bu bölüm mevcut kodu tarif eder. Detaylı sistem kayıtları `isleyis.md`'de.
 
@@ -387,27 +420,95 @@ kuzey duvarı dolu. Paste 17³ oda için ~250-300 ms, async thread'de.
 **Test tuzağı:** FAWE paste sonrası chunk'ları yüklü bırakmıyor. `execute if block` ile
 kontrol etmeden önce `forceload add` gerekiyor.
 
+### FAZ 1B — oda modeli ve yerleştirme geometrisi
+
+| Ne | Nerede |
+|---|---|
+| Yön / rotasyon / kutu — saf geometri | `generation/Direction.java`, `Rotation.java`, `Aabb.java`, `Vec3i.java` |
+| Kapı anchor'ı, duvar türetme | `generation/DoorAnchor.java` (§4 hesabı `Direction.ofAnchor`) |
+| Şablon + metadata modeli | `generation/RoomTemplate.java`, `RoomType.java`, `RoomMetadata.java` |
+| `.schem` + `.yml` birleştiren depo | `generation/RoomTemplateStore.java` |
+| Yerleştirilmiş oda (R + origin + kutu) | `generation/PlacedRoom.java` |
+| Yerleştirme formülü (§5.2 adım 2-4) | `RoomTemplate.attachTo(...)` |
+| Test odaları + metadata üretimi | `schematic/TestRoomFactory.java` — artık `.yml` de yazıyor |
+| Doğrulama komutları | `command/DungeonsCommand.java` — `rooms`, `room`, `connect` |
+
+**`generation` paketi bilerek saf Java** — ne Bukkit ne WorldEdit tipi kullanıyor
+(`RoomMetadata` ve `RoomTemplateStore` hariç; onlar sınırda duruyor). İki sebep:
+yerleştirme matematiği sunucu açmadan test edilebiliyor, ve FAZ 8'de dışarı açılacak
+API'ye üçüncü parti tip sızmıyor (breaking change riski).
+
+**Doğrulanmış:**
+- 53 saf geometri kontrolü (sunucusuz): rotasyon tur kapanışı, 16 `align` kombinasyonu,
+  kare + dikdörtgen + asimetrik odada duvar türetme, çakışma kuralları,
+  5 oda × tüm kapılar × tüm yönler = 48 yerleştirme.
+- 23 blok kontrolü (sunucuda, `execute if block`): iki ayrı bağlantı senaryosunda
+  geçidin açık olduğu, duvarların sırt sırta durduğu, kapı dışının dolu kaldığı,
+  rotasyonun odanın **diğer** kapılarını da doğru yere taşıdığı.
+- Plugin'in raporladığı R / origin / kutu değerleri, spec formüllerinden elle
+  hesaplanan değerlerle birebir eşleşti (rot=270 origin `(273,64,256)`;
+  rot=90 origin `(771,64,243)`, kutu 10×8×16 → 16×8×10).
+
+**Yeni test odaları:** `test_giris` (tip `giris` — 1D'nin kritik path başlangıcı),
+`test_long` (§4 tuzağı), `test_even` (§9 doğrulaması). Set 5'ten 8'e çıktı.
+
+**Kenar durumu yakalandı:** `test_long`'un doğu kapısı ofset **+11** ile duvarın köşe
+bloğuna taşıyordu (25 uzunlukta 3 bloklu açıklık için son geçerli merkez 22). `carveDoor`'a
+konan sınır kontrolü bunu `/tdungeons gen` anında patlatıyor; ofset +10'a çekildi.
+
 ---
 
-## 11. Açık sorular — 1B'de kapanacak
+## 11. Açık sorular
 
-1. **Rotasyon işareti.** `test_corner` (K+D) 90° döndürülecek. D+G → `+1` doğru.
-   B+K → `-1`, bütün formüller ters çevrilecek. *(§3)*
-2. **Tek sayı kenar kuralının kalktığı** çift kenarlı asimetrik test odasıyla doğrulanacak. *(§9)*
+### Kapananlar (1B)
+
+1. ~~**Rotasyon işareti.**~~ ✅ **`+1`, saat yönü.** Ölçüldü, bkz. §3.
+2. ~~**Tek sayı kenar kuralı.**~~ ✅ **Kalktı, doğrulandı.** `test_even` ile, bkz. §9.
+
+### Duranlar (1C / 1D'de karara bağlanacak)
+
 3. **Tıpa yöntemi:** prosedürel mi, biome schematic'i mi ilk yazılacak? Prosedürel daha hızlı
    ve 1D'yi bloklamaz; biome tıpaları FAZ 10 ile birlikte gelebilir. *(§7)*
 4. **Koridor parçası olacak mı?** Odalar doğrudan sırt sırta bağlanabiliyor. Araya 2 kapılı
    ince koridor parçaları sokmak yerleşimi daha organik yapar ama oda kotasını nasıl etkileyeceği
    (koridor "oda" sayılacak mı) karara bağlanmalı. *(§6)*
 5. **Giriş odası** tekil mi, her biome'un kendi giriş odası mı?
+6. **Aday ağırlığı nasıl kullanılacak?** `agirlik` metadata'da var ve okunuyor ama henüz
+   kimse kullanmıyor — ağırlıklı seçim 1C'de yazılacak. Ağırlık *şablon* başına mı,
+   yoksa *(şablon × kapı)* çifti başına mı uygulanacak? 4 kapılı bir oda 4 aday üretiyor;
+   şablon başına ağırlık verilirse çok kapılı odalar kendiliğinden 4 kat şanslı oluyor.
+   Muhtemel cevap: ağırlık şablona ait, çift seçilirken kapı **eşit** dağılsın.
 
 ---
 
-## 12. Sıradaki adım — FAZ 1B
+## 12. FAZ 1B — bitti ✅
 
-1. `test_corner` ile rotasyon işaretini ölç *(her şeyden önce)*
-2. `RoomTemplate` + `DoorAnchor` veri modeli
-3. `.yml` okuyucu, schematic yanındaki dosyadan
-4. `TestRoomFactory` üretilen odalar için `.yml` de yazsın
-5. §4'ün duvar hesabı + §3'ün rotasyon fonksiyonları (saf fonksiyon, unit test edilebilir)
-6. **Doğrulama:** iki odayı kapılarından bağla, geçidin gerçekten açık olduğunu blok testiyle göster
+1. ✅ Rotasyon işareti ölçüldü — `+1`, saat yönü (§3)
+2. ✅ `RoomTemplate` + `DoorAnchor` veri modeli
+3. ✅ `.yml` okuyucu, schematic yanındaki dosyadan
+4. ✅ `TestRoomFactory` üretilen odalar için `.yml` de yazıyor
+5. ✅ §4'ün duvar hesabı + §3'ün rotasyon fonksiyonları — saf, sunucusuz test edilebilir
+6. ✅ **Doğrulama:** iki oda kapılarından bağlandı, geçit blok testiyle açık gösterildi
+
+---
+
+## 13. Sıradaki adım — FAZ 1C (kapı eşleştirme + çakışma)
+
+1B geometriyi verdi: "bu oda buraya şu açıyla oturur." 1C'nin sorusu farklı:
+**"oturabilir mi, ve hangi oda seçilmeli?"**
+
+1. **Aday havuzu:** `(şablon × kapı)` çiftleri — §5.2 adım 1. `RoomTemplateStore.loadAll`
+   ile bütün şablonlar yüklenip çiftler çıkarılacak.
+2. **Çakışma testi** — §5.2 adım 5. `Aabb.intersects` hazır; eksik olan:
+   - yerleştirilmiş odaların listesini tutan bir `DungeonLayout` sınıfı
+   - slot sınırı kontrolü (`GridSlot`'tan kutu üretilecek)
+3. **Ağırlıklı aday seçimi** + karıştırma — §5.3. Açık soru #6 burada kapanacak.
+4. **Dönüş yanlılığı** — §6.4'ün ikinci mekanizması: ebeveynle aynı yöne devam eden
+   adaylara ceza.
+5. **ÖLÜ kapı işaretleme** — hiçbir aday geçmezse. Tıpa 1D'de.
+6. **Doğrulama:** 5-6 odalık bir zincir üret, hiçbir kutunun kesişmediğini ve her
+   bağlantının geçidinin açık olduğunu göster.
+
+`GeoProbe`'daki `chainDrift` testi 1C için hazır bir başlangıç: ofsetli kapılarla kurulan
+6 odalık zincir kendine dolanıyor ve **çakışma tespit ediliyor** — 1C'nin reddedeceği
+adaylar tam olarak bunlar.

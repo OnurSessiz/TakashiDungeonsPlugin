@@ -163,8 +163,10 @@ kare alan (slot) ayırır.
    dosya bir kez okunur (`invalidateCache()` reload'da çağrılır)
 3. Paste `ClipboardHolder` + `AffineTransform().rotateY(-derece)` ile yapılır
 4. Paste thread'i: **FAWE varsa async**, yoksa main thread
-5. `TestRoomFactory` FAZ 10 haritaları gelene kadar kod içinde placeholder oda üretir
-   (`/tdungeons gen` → 5 dosya)
+5. `TestRoomFactory` FAZ 10 haritaları gelene kadar kod içinde placeholder oda üretir —
+   her oda için `.schem` **ve** `.yml` (`/tdungeons gen` → 8 oda). Metadata'yı da bu sınıfın
+   yazması bilinçli: kapı anchor'ını hesaplayan tek yer orası, elle yazılsa schematic
+   değişip metadata değişmediğinde kapılar tutmazdı.
 **Bağımlılıkları:** WorldEdit **veya** FAWE. İkisi de yoksa servis hiç kurulmaz, plugin yine
 enable olur ve `/tdungeons status` "devre dışı" der.
 **Dikkat edilecek:**
@@ -176,12 +178,48 @@ enable olur ve `/tdungeons status` "devre dışı" der.
   henüz var olmayan dosyada `NoSuchFileException` atar. Alias ile çözülüyor (`sponge.3`/`schem`/…).
 - `copyEntities(false)`: schematic'e gömülü entity'ler her paste'te çoğalır ve FAZ 3'ün stat
   sisteminin dışında kalırdı.
-- Odalar **tek sayı kenarlı** (17, 33): çift kenarda gerçek merkez blok olmaz, 90° döndürülen oda
-  grid'de 1 blok kayar. Bu kural gerçek haritalar için de geçerli.
+- ~~Odalar tek sayı kenarlı olmalı~~ — **bu kural kalktı** (2026-08-25). Hücre grid'i terk
+  edilip anchor tabanlı yerleşime geçilince gerekmez oldu; `test_even` (10×16) ile doğrulandı.
+  Bkz. `generation.md` §9. `TestRoomFactory` artık ayrı `sizeX`/`sizeZ` alıyor.
 - Clipboard origin'i odanın **yatay merkezi**, taban seviyesi. Paste hedefi doğrudan slot merkezi
   olabiliyor; origin köşede olsaydı her açı için ayrı ofset hesabı gerekirdi.
 - FAWE paste'ten sonra chunk'ları yüklü bırakmaz. `execute if block` gibi kontroller için
   önce `forceload` gerekir — test yazarken tuzak.
+
+## Oda Şablonu & Yerleştirme Geometrisi (FAZ 1B)
+**Dosya/Paket:** `com.takashi.dungeons.generation` — `Vec3i`, `Direction`, `Rotation`, `Aabb`,
+`DoorAnchor`, `RoomType`, `RoomTemplate`, `RoomMetadata`, `RoomTemplateStore`, `PlacedRoom`
+**Ne işe yarar:** Bir odanın kapılarını tanır ve "bu oda, şu kapıya, hangi açıyla, nereye
+oturur" sorusunu cevaplar. Algoritmanın tamamı `generation.md`'de; burada kodun şekli var.
+**Nasıl çalışır:**
+1. `RoomTemplateStore.load(ad)` → `SchematicService`'ten clipboard (async), yanındaki
+   `ad.yml`'den metadata (async) — ikisi birleşip `RoomTemplate` oluyor
+2. Odanın **kutusu schematic'ten** okunuyor (`localBox`, origin'e göre), metadata'da yazmıyor
+3. Kapı anchor'ı `.yml`'de `[x, y, z]` olarak; **duvar yönü yazmıyor**, `Direction.ofAnchor`
+   ile anchor vektöründen türetiliyor
+4. `RoomTemplate.attachTo(kapıIndex, ebeveynAnchor, ebeveynDışYön)`:
+   - `R = Rotation.align(...)` → `(d_p + 2 - d_c) mod 4`, **aranmıyor, hesaplanıyor**
+   - `origin = ebeveynAnchor + adım(d_p) - R.apply(kapıYerel)` → sırt sırta
+   - sonuç `PlacedRoom`: şablon + R + dünya origin'i + döndürülmüş dünya kutusu
+5. `/tdungeons rooms | room <ad> | connect <a> <b> [kapıA] [kapıB]` ile elle sınanıyor
+**Bağımlılıkları:** `SchematicService` (dolayısıyla WorldEdit/FAWE). Geometri sınıflarının
+kendisi hiçbir şeye bağlı değil.
+**Dikkat edilecek:**
+- **`Direction` enum sırası rotasyon matematiğinin parçası.** K,D,G,B = 0,1,2,3 saat yönü;
+  sıra değişirse `(d + R) mod 4` sessizce bozulur.
+- **Rotasyon işareti ölçüldü, varsayım değil** (2026-08-25): `rotateY(-90)` → `(-z,y,x)`,
+  K→D. `generation.md` §3'te tablo var. Değiştirilecekse yeniden ölçülmeli.
+- **Duvar hesabı yarı boyutlara normalize ediliyor**, ham `|dx| > |dz|` değil. Kare odada
+  ikisi aynı sonucu verir; dikdörtgen odada naif kural yanlış duvarı seçer. `test_long`
+  kalıcı regresyon testi olarak duruyor.
+- Kutu ve duvar **türetilen** değerler — metadata'da tutulsalardı schematic değişince
+  eskiyip sessizce yanlış çalışırlardı. Yazılabilen her alan yanlış yazılabilen bir alandır.
+- `RoomTemplateStore` cache'i `SchematicService` cache'inin **üstünde**. Reload'da ikisi
+  de temizlenmeli; sadece alttakini temizlemek eski kapı metadata'sını bellekte bırakır.
+- `PlacedRoom` sadece geometri; kapıların BAĞLI/BOŞ/ÖLÜ durumu graf katmanının (1C) işi.
+- **Çakışma testi burada yok.** `Aabb.intersects` hazır ama "oturabilir mi" kararı 1C'ye ait;
+  `attachTo` sadece "nereye oturur"u cevaplıyor. Ayrım, geometriyi dünyaya erişmeden
+  test edilebilir tutuyor.
 
 ## Plugin Bootstrap & Entegrasyon Tespiti
 **Dosya/Paket:** `com.takashi.dungeons.TakashiDungeonsPlugin`, `com.takashi.dungeons.command.DungeonsCommand`

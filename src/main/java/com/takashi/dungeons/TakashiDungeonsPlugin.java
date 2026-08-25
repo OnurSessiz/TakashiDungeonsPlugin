@@ -1,6 +1,7 @@
 package com.takashi.dungeons;
 
 import com.takashi.dungeons.command.DungeonsCommand;
+import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.world.DungeonWorldManager;
 import com.takashi.dungeons.world.GridSlotManager;
@@ -37,6 +38,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private DungeonWorldManager worldManager;
     private GridSlotManager slotManager;
     private SchematicService schematicService;
+    private RoomTemplateStore templateStore;
 
     @Override
     public void onEnable() {
@@ -94,6 +96,9 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         boolean async = hasIntegration("FastAsyncWorldEdit") && !forceSync;
 
         schematicService = new SchematicService(this, new File(getDataFolder(), "schematics"), async);
+        // Şablon deposu schematic servisinin üstünde duruyor: geometri ondan, metadata
+        // yanındaki .yml'den geliyor. Servis kurulmadıysa depo da kurulmaz.
+        templateStore = new RoomTemplateStore(this, schematicService);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
     }
@@ -138,5 +143,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** WorldEdit/FAWE yoksa {@code null} — çağıran kontrol etmek zorunda. */
     public @Nullable SchematicService getSchematicService() {
         return schematicService;
+    }
+
+    /** Oda şablonu deposu. Schematic servisi kurulmadıysa {@code null}. */
+    public @Nullable RoomTemplateStore getTemplateStore() {
+        return templateStore;
     }
 }

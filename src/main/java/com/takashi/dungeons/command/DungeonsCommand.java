@@ -2,6 +2,12 @@ package com.takashi.dungeons.command;
 
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
+import com.takashi.dungeons.generation.DoorAnchor;
+import com.takashi.dungeons.generation.PlacedRoom;
+import com.takashi.dungeons.generation.RoomTemplate;
+import com.takashi.dungeons.generation.RoomTemplateStore;
+import com.takashi.dungeons.generation.Rotation;
+import com.takashi.dungeons.generation.Vec3i;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.schematic.TestRoomFactory;
 import com.takashi.dungeons.world.GridSlot;
@@ -21,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * {@code /tdungeons} — yönetim ve FAZ 1 doğrulama komutu.
@@ -32,9 +39,13 @@ import java.util.Locale;
 public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
-            List.of("version", "status", "world", "list", "gen", "paste", "slots", "free");
+            List.of("version", "status", "world", "list", "rooms", "room", "gen", "paste",
+                    "connect", "slots", "free");
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
+
+    /** Tab-complete icin kapi indeksi onerileri; en cok kapili test odasi 4 kapili. */
+    private static final List<String> DOOR_INDICES = List.of("0", "1", "2", "3");
 
     private final TakashiDungeonsPlugin plugin;
 
@@ -53,8 +64,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "status" -> status(sender);
             case "world" -> world(sender);
             case "list" -> list(sender);
+            case "rooms" -> rooms(sender);
+            case "room" -> room(sender, label, args);
             case "gen" -> generate(sender);
             case "paste" -> paste(sender, label, args);
+            case "connect" -> connect(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             default -> sender.sendMessage(Component
@@ -135,7 +149,13 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             try {
                 int count = TestRoomFactory.writeStandardSet(service.getDirectory());
                 service.invalidateCache();
-                sender.sendMessage(Component.text(count + " test odası üretildi → "
+                // Şablon cache'i clipboard cache'inin ÜSTÜNDE duruyor; sadece alttakini
+                // temizlemek eski kapı metadata'sını bellekte bırakırdı.
+                RoomTemplateStore store = plugin.getTemplateStore();
+                if (store != null) {
+                    store.invalidateCache();
+                }
+                sender.sendMessage(Component.text(count + " test odası (.schem + .yml) üretildi → "
                         + service.getDirectory().getPath(), NamedTextColor.GREEN));
             } catch (Exception e) {
                 sender.sendMessage(Component.text("Üretim başarısız: " + e.getMessage(), NamedTextColor.RED));
@@ -211,6 +231,199 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         });
     }
 
+    // ---------------------------------------------------------------- FAZ 1B: oda modeli
+
+    /** Klasordeki sablonlari metadata ile birlikte listeler. */
+    private void rooms(CommandSender sender) {
+        RoomTemplateStore store = requireTemplates(sender);
+        if (store == null) {
+            return;
+        }
+        List<String> names = store.list();
+        if (names.isEmpty()) {
+            sender.sendMessage(Component.text("Oda yok \u2014 /tdungeons gen ile test odasi uret.",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Oda sablonlari (" + names.size() + "):", NamedTextColor.GRAY));
+        store.loadAll(names).whenComplete((templates, error) -> {
+            if (error != null) {
+                sendFailure(sender, "Sablon yuklenemedi", error);
+                return;
+            }
+            for (RoomTemplate t : templates) {
+                String walls = t.doors().isEmpty()
+                        ? "kapisiz"
+                        : t.doors().stream().map(d -> d.wall().turkish())
+                                .reduce((a, b) -> a + "+" + b).orElse("");
+                sender.sendMessage(Component.text("  " + t.name(), NamedTextColor.WHITE)
+                        .append(Component.text("  " + t.type().yamlValue()
+                                + "  agirlik=" + t.weight()
+                                + "  " + t.describeSize()
+                                + "  kapi=" + t.doorCount() + " (" + walls + ")", NamedTextColor.GRAY)));
+            }
+        });
+    }
+
+    /** Tek bir sablonun cozumlenmis halini doker \u2014 metadata dogrulamak icin. */
+    private void room(CommandSender sender, String label, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Kullanim: /" + label + " room <oda>", NamedTextColor.RED));
+            return;
+        }
+        RoomTemplateStore store = requireTemplates(sender);
+        if (store == null) {
+            return;
+        }
+        store.load(args[1]).whenComplete((t, error) -> {
+            if (error != null) {
+                sendFailure(sender, "Sablon yuklenemedi", error);
+                return;
+            }
+            sender.sendMessage(Component.text("Oda: " + t.name(), NamedTextColor.GOLD));
+            sender.sendMessage(Component.text("  tip: " + t.type().yamlValue()
+                    + "   agirlik: " + t.weight(), NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  boyut: " + t.describeSize()
+                    + "   kutu (origin'e gore): " + t.localBox(), NamedTextColor.GRAY));
+            if (t.doors().isEmpty()) {
+                sender.sendMessage(Component.text("  kapi yok \u2014 bu oda grafa baglanamaz.",
+                        NamedTextColor.YELLOW));
+                return;
+            }
+            sender.sendMessage(Component.text("  kapilar:", NamedTextColor.GRAY));
+            for (DoorAnchor d : t.doors()) {
+                sender.sendMessage(Component.text("    #" + d.index() + " " + d.local()
+                        + " -> " + d.wall().turkish() + " duvari", NamedTextColor.WHITE));
+            }
+        });
+    }
+
+    /**
+     * Iki odayi kapilarindan birbirine takar \u2014 {@code generation.md} 12. bolum, adim 6.
+     *
+     * <p>Ebeveyn slot merkezine rot=0 ile konuyor; cocugun rotasyonu ve konumu
+     * {@link RoomTemplate#attachTo} ile <b>hesaplaniyor</b> (aranmiyor). Ciktida kutularin
+     * kesismedigi de raporlaniyor: sirt sirta konvansiyonu geregi iki oda hicbir blogu
+     * paylasmamali ({@code generation.md} 5.2).
+     */
+    private void connect(CommandSender sender, String label, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text(
+                    "Kullanim: /" + label + " connect <ebeveyn> <cocuk> [ebeveynKapi] [cocukKapi]",
+                    NamedTextColor.RED));
+            return;
+        }
+        RoomTemplateStore store = requireTemplates(sender);
+        SchematicService service = requireSchematics(sender);
+        World world = requireWorld(sender);
+        if (store == null || service == null || world == null) {
+            return;
+        }
+
+        int parentDoor;
+        int childDoor;
+        try {
+            parentDoor = args.length >= 4 ? Integer.parseInt(args[3]) : 0;
+            childDoor = args.length >= 5 ? Integer.parseInt(args[4]) : 0;
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Kapi indeksi sayi olmali.", NamedTextColor.RED));
+            return;
+        }
+
+        GridSlot slot = plugin.getSlotManager().allocate();
+        Vec3i slotCenter = new Vec3i(
+                slot.originX() + slot.size() / 2, slot.originY(), slot.originZ() + slot.size() / 2);
+
+        store.load(args[1])
+                .thenCombine(store.load(args[2]), (parentTemplate, childTemplate) -> {
+                    PlacedRoom parent = PlacedRoom.of(parentTemplate, Rotation.NONE, slotCenter);
+                    PlacedRoom child = childTemplate.attachTo(
+                            childDoor, parent.doorAnchor(parentDoor), parent.doorOutward(parentDoor));
+                    return new PlacedRoom[]{parent, child};
+                })
+                .thenCompose(pair -> pasteBoth(service, world, pair).thenApply(ignored -> pair))
+                .whenComplete((pair, error) -> {
+                    if (error != null) {
+                        plugin.getSlotManager().release(slot.index());
+                        sendFailure(sender, "Baglanti basarisiz", error);
+                        return;
+                    }
+                    reportConnection(sender, world, slot, pair[0], pair[1], parentDoor, childDoor);
+                });
+    }
+
+    /** Once ebeveyn, sonra cocuk \u2014 sira deterministik olsun diye zincirleniyor. */
+    private CompletableFuture<Long> pasteBoth(SchematicService service, World world, PlacedRoom[] pair) {
+        return service.load(pair[0].template().name())
+                .thenCompose(clip -> pasteAt(service, world, clip, pair[0]))
+                .thenCompose(ignored -> service.load(pair[1].template().name()))
+                .thenCompose(clip -> pasteAt(service, world, clip, pair[1]));
+    }
+
+    private CompletableFuture<Long> pasteAt(SchematicService service, World world,
+                                            Clipboard clipboard, PlacedRoom room) {
+        Vec3i o = room.origin();
+        return service.paste(clipboard, world, o.x(), o.y(), o.z(), room.rotation().degrees(), false);
+    }
+
+    private void reportConnection(CommandSender sender, World world, GridSlot slot,
+                                  PlacedRoom parent, PlacedRoom child, int parentDoor, int childDoor) {
+        Vec3i parentAnchor = parent.doorAnchor(parentDoor);
+        Vec3i childAnchor = child.doorAnchor(childDoor);
+        boolean mated = childAnchor.equals(parent.doorMate(parentDoor));
+        boolean overlap = parent.bounds().intersects(child.bounds());
+
+        sender.sendMessage(Component.text("Baglandi \u2014 " + slot, NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  ebeveyn: " + parent
+                + "  kapi#" + parentDoor + " " + parentAnchor
+                + " " + parent.doorOutward(parentDoor).turkish(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  cocuk:   " + child
+                + "  kapi#" + childDoor + " " + childAnchor
+                + " " + child.doorOutward(childDoor).turkish(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  rotasyon hesaplandi: R=" + child.rotation().steps()
+                + " (" + child.rotation().degrees() + " derece)", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  kutular: " + parent.bounds()
+                + "  |  " + child.bounds(), NamedTextColor.DARK_GRAY));
+
+        sender.sendMessage(mated
+                ? Component.text("  [OK] kapilar sirt sirta", NamedTextColor.GREEN)
+                : Component.text("  [HATA] kapilar hizasiz \u2014 beklenen "
+                        + parent.doorMate(parentDoor), NamedTextColor.RED));
+        sender.sendMessage(overlap
+                ? Component.text("  [HATA] kutular CAKISIYOR", NamedTextColor.RED)
+                : Component.text("  [OK] kutular cakismiyor", NamedTextColor.GREEN));
+
+        // Gecidin blok testiyle dogrulanacagi iki nokta \u2014 konsoldan forceload + execute if block.
+        sender.sendMessage(Component.text("  gecit bloklari: " + parentAnchor + " ve " + childAnchor,
+                NamedTextColor.DARK_GRAY));
+
+        teleportTo(sender, world, parentAnchor);
+    }
+
+    private void teleportTo(CommandSender sender, World world, Vec3i target) {
+        if (!(sender instanceof Player player)) {
+            return;
+        }
+        plugin.getServer().getScheduler().runTask(plugin, () ->
+                player.teleport(new Location(world, target.x() + 0.5, target.y(), target.z() + 0.5)));
+    }
+
+    private @Nullable RoomTemplateStore requireTemplates(CommandSender sender) {
+        RoomTemplateStore store = plugin.getTemplateStore();
+        if (store == null) {
+            sender.sendMessage(Component.text("Oda deposu kapali \u2014 WorldEdit ya da FAWE kurulu degil.",
+                    NamedTextColor.RED));
+        }
+        return store;
+    }
+
+    /** Future zinciri {@code CompletionException} ile sariyor; kullaniciya asil sebep gosterilir. */
+    private void sendFailure(CommandSender sender, String prefix, Throwable error) {
+        Throwable cause = error.getCause() == null ? error : error.getCause();
+        sender.sendMessage(Component.text(prefix + ": " + cause.getMessage(), NamedTextColor.RED));
+        plugin.getLogger().warning(prefix + ": " + cause);
+    }
+
     private void slots(CommandSender sender) {
         GridSlotManager manager = plugin.getSlotManager();
         if (manager.allocatedCount() == 0) {
@@ -283,17 +496,24 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
-        if (args.length == 2 && sub.equals("paste")) {
+        // schematic adi bekleyen konumlar: paste/room 2. argumanda, connect 2. ve 3.
+        boolean wantsRoomName = (args.length == 2 && (sub.equals("paste") || sub.equals("room")
+                || sub.equals("connect")))
+                || (args.length == 3 && sub.equals("connect"));
+        if (wantsRoomName) {
             SchematicService service = plugin.getSchematicService();
             if (service == null) {
                 return List.of();
             }
-            String prefix = args[1].toLowerCase(Locale.ROOT);
+            String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
             return service.list().stream()
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
         }
         if (args.length == 3 && sub.equals("paste")) {
             return ROTATIONS.stream().filter(r -> r.startsWith(args[2])).toList();
+        }
+        if (sub.equals("connect") && (args.length == 4 || args.length == 5)) {
+            return DOOR_INDICES.stream().filter(d -> d.startsWith(args[args.length - 1])).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();

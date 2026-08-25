@@ -58,9 +58,14 @@ Tam liste `anahedef.md`'de. Sessizce ihlal edilmesi en kolay olanlar:
 ## Build ve test
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build.ps1    # derle -> run\plugins\
-powershell -ExecutionPolicy Bypass -File scripts\server.ps1   # Paper 1.21.8 baslat
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1          # derle -> run\plugins\
+powershell -ExecutionPolicy Bypass -File scripts\server.ps1         # Paper 1.21.8 baslat
+powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1  # generation geometrisi (sunucusuz)
 ```
+
+`generation` paketi saf Java — yerleştirme matematiği sunucu açmadan test edilebiliyor.
+Geometriye dokunduysan `geo-probe` koş, sunucu açmadan önce. Detay:
+`scripts/geo-probe/README.md`.
 
 **JDK 21 zorunlu.** Sistem PATH'inde JDK 26 var ve Paper 1.21.8 onu kabul etmiyor; bu yüzden
 her iki script de Temurin JDK 21 yolunu **sabit** tutuyor. `mvn` / `java` PATH'ten çağrılırsa
@@ -73,6 +78,15 @@ build ya da sunucu kırılır.
   olur ama generation devre dışı kalır)
 
 ### Sunucuyu konsoldan sürmek
-Komutlar stdin'den beslenebiliyor. Blok doğrulaması yaparken **önce `forceload`** gerekiyor:
-FAWE paste'ten sonra chunk'ları yüklü bırakmıyor, `execute if block` yüklenmemiş chunk'ta
-sessizce sonuç vermiyor.
+Komutlar stdin'den beslenebiliyor ama dört tuzağı var — dördü de FAZ 1B'de yaşandı:
+
+- **Blok doğrulamasından önce `forceload`.** FAWE paste'ten sonra chunk'ları yüklü
+  bırakmıyor; `execute if block` yüklenmemiş chunk'ta sessizce sonuç vermiyor.
+  Dünyanın dimension key'i: `minecraft:takashi_dungeons`.
+- **`run/logs/latest.log` önce silinmeli.** Eski log'da "Done (" duruyor; script sunucuyu
+  hazır sanıp komutları açılış sırasında gönderiyor.
+- **PowerShell 5.1 stdin'e ilk yazımda UTF-8 BOM basıyor** (`StandardInputEncoding`
+  .NET Framework'te yok) ve ilk komutu bozuyor. Bir kurban satırı gönderip yut.
+- **Test dünyası silinmeli** (`run/takashi_dungeons`). Slot index'i her açılışta sıfırdan
+  başlıyor, eski bloklar altta kalıyor (`release` temizlemiyor — FAZ 2) ve yanlış
+  "geçti" üretiyor.
