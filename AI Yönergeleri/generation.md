@@ -339,6 +339,26 @@ biter, bazıları 15. Path'i önce kurmak **oynanış süresini garanti altına 
 > çıkarılmalı** (boss son düğüm olarak atanana kadar). Aynı 2000 seed, tek kapılı odalar
 > elenince: **%97.1**. Yan dallarda çıkmaz odalar serbest — orada zaten sona ermeleri
 > isteniyor.
+>
+> **Çözüm kod tarafında, harita tarafında değil.** "Giriş odası en az 2 kapılı olsun" da
+> akla geliyor ama ölçüm bunun yanlış teşhis olduğunu gösteriyor (3000 seed):
+>
+> | Giriş kapısı | Normal havuz | Hedefe ulaşan |
+> |---|---|---|
+> | 1 | tam | %70.0 |
+> | 1 | **tek kapılılar elenmiş** | **%97.3** |
+> | 2 | tam | %92.1 |
+> | 2 | tek kapılılar elenmiş | %99.8 |
+> | 4 | tam | %99.2 |
+>
+> Giriş tek kapılı kalırken bile havuz filtresi tek başına yetiyor. 2 kapılı giriş de
+> yardım ediyor ama daha zayıf ve 4 biome'un giriş tasarımını kısıtlıyor. **Giriş odasının
+> kapı sayısı harita ekibine kural olarak geçilmiyor** — oynanış kararı olarak serbest
+> (§9'daki kurallar listesine girmez).
+>
+> Not: bu sayılar `ChainGenerator`'ın "her boş kapıyı doldur" stratejisiyle ölçüldü.
+> 1D'nin path-önce yaklaşımı hedef uzunluğu açıkça kovaladığı ve yeniden deneyebileceği
+> için **en az bu kadar** iyi olacak — yani tablo alt sınır.
 
 ### 6.3 Yan dallar
 Kritik path bir odaya girdiğinde odanın diğer kapıları **kullanılmamış** kalıyor. Yan dal

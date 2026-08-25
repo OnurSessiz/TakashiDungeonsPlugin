@@ -130,8 +130,26 @@ kararının teorik değil **ölçülmüş** gerekçesi hâline geldi.
 - Tıpa yöntemi (prosedürel mi biome schematic'i mi) hâlâ açık (§11 madde 4) — 1D'de ilk
   prosedürel yazılacak, 1D'yi bloklamasın diye.
 - Koridor parçası ve giriş odası tekilliği açık (§11 madde 5-6).
-- `test_giris`'in tek kapılı olması sönümlenmeyi tetikleyen etken. FAZ 10'da gerçek giriş
-  odaları çizilirken **en az 2 kapılı** olmaları düşünülmeli — harita ekibine söylenecek.
+- **Giriş odasının kapı sayısı harita ekibine kural olarak GEÇİLMEYECEK.** İlk bakışta
+  "tek kapılı giriş sönümlenmeyi tetikliyor, 2 kapılı olsun" diye düşünülmüştü; ölçüm bunun
+  yanlış teşhis olduğunu gösterdi (3000 seed):
+
+  | Giriş kapısı | Normal havuz | Hedefe ulaşan |
+  |---|---|---|
+  | 1 | tam | %70.0 |
+  | 1 | **tek kapılılar elenmiş** | **%97.3** |
+  | 2 | tam | %92.1 |
+  | 2 | tek kapılılar elenmiş | %99.8 |
+
+  Giriş tek kapılı kalırken bile havuz filtresi tek başına %97.3 veriyor. Yani çözüm
+  **kod tarafında** (1D'nin path havuzu filtresi), harita tarafında değil. 2 kapılı giriş
+  de yardım ediyor ama daha zayıf ve 4 biome'un giriş tasarımını kısıtlıyor — ucuz ve güçlü
+  çözüm dururken pahalı ve zayıf olanı kural yapmak yanlış olurdu.
+
+  Giriş odasının kapı sayısı **oynanış kararı olarak serbest**: oyuncu dungeon'a ışınlanıp
+  odanın içinde belirdiği için (FAZ 2) o odanın kapılarının hepsi içeri açılıyor. Tek kapı
+  = odaklı başlangıç; iki kapı = ilk anda çatal, ama oyuncunun henüz bilgisi yokken yapılan
+  seçim keyfi hissettirebilir (§6.3'ün labirent hissi birkaç oda sonra anlam kazanıyor).
 
 ---
 
