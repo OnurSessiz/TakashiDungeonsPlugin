@@ -31,6 +31,120 @@
 
 ---
 
+## 2026-08-25 — FAZ 1D: Graf Üretimi — **FAZ 1 MILESTONE'U TAMAMLANDI**
+
+**Ne yapıldı:**
+- Kritik path, boss ataması, yan dallar, tıpa, boyut seçimi ve yeniden deneme yazıldı.
+- `/tdungeons dungeon <small|medium|large> [seed]` ile **gezilebilir dungeon üretiliyor.**
+- 1D testleri (`DungeonProbe`) yazıldı — 31 kontrol; toplam sunucusuz kontrol **112**.
+- İki açık soru kapandı: tıpa yöntemi (#4) ve tıkanma politikası (#8).
+
+**Kritik path garantisi — 1C'nin %70'i nereye çıktı (3×1000 üretim):**
+
+| Boyut | path tam | oda tam | uyarılı | ort. deneme |
+|---|---|---|---|---|
+| small | %100 | %100 | %0 | 1.17 |
+| medium | %100 | %100 | %0 | 1.30 |
+| large | %99.9 | %100 | %0.1 | 1.64 |
+
+**ÖLÇÜMLE DÜZELTİLEN İKİ HATA — boss'un bağlanma sırası**
+
+İlk uygulamada boss path'in ucuna, yan dallardan **önce** bağlanıyordu. Testler iki ayrı
+hata yakaladı ve sırayı değiştirmek ikisini birden çözdü:
+
+1. **`small` dungeon 3 oda üretemiyordu.** `round(3 × 0.65) = 2`, yani path = giriş + boss.
+   Girişin (tek kapılı) tek kapısı boss'a gidiyor, boss terminal — yan dala BOŞ kapı
+   kalmıyor. Ölçüm: 800 tohumda `small` hedefi **hiç 3 çıkmadı**, hep 4-6.
+2. **Boss'suz dungeon üretilebiliyordu.** Boss tek kapı deniyordu; 33×33'lük oda çakışırsa
+   dungeon boss'suz kalıyordu — 2000 medium'da 4 kez, 2000 large'da 7.
+
+Yeni sıra: **path → yan dallar → boss (derinliğe göre azalan sırayla tüm boş kapılar)**.
+`small` ortalama deneme 3.16 → **1.17**, uyarılı üretim %13.4 → **%0**, boss'suz 4 → **0**.
+
+**ÖLÇÜMLE YAKALANAN BİR TUZAK — `new Random(seed)` ardışık tohumlarda kullanılamaz**
+
+```
+new Random(seed).nextInt(4), seed = 1..40:
+  2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+4000 ardışık tohumda dağılım: [0, 0, 1857, 2143]   ← 0 ve 1 HİÇ çıkmıyor
+```
+
+Java'nın `Random`'ı LCG; ilk çıktısı tohumun üst bitlerinin doğrudan fonksiyonu.
+**Bedeli somut:** düzeltilmeseydi bütün `small` dungeon'lar aynı boyda çıkardı. Ve gerçekten
+olurdu — FAZ 7'de tohum olarak artan instance id'si ya da `currentTimeMillis()` kullanmak en
+doğal seçim, ikisi de ardışık. Hata da sessiz olurdu: dungeon üretilir, sadece çeşitlilik
+kaybolurdu.
+
+Çözüm `generation/Seeds.java`: splitmix64 + `SplittableRandom`. Tekrarlanabilirlik korunuyor.
+
+**ÜÇÜNCÜ BULGU — şablon SIRASI üretimi etkiliyor**
+
+`drawWeighted` kümülatif ağırlık taraması yapıyor; aynı tohum + farklı şablon sırası =
+farklı dungeon. Sunucuda sıra `SchematicService.list()`'ten geliyor ve **alfabetik**.
+Sunucu testi ilk koşumda bu yüzden tutmadı: `Rooms.java` keyfi sıradaydı. Alfabetiğe
+çekilince offline hesap sunucuyla **birebir** eşleşti — bu da tekrarlanabilirliğin uçtan
+uca kanıtı oldu.
+
+Pratik sonucu: harita ekibi yeni oda eklediğinde bütün tohumların çıktısı değişir.
+
+**Kurulan yapı / değişen dosyalar:**
+- `generation/DungeonSize.java` (YENİ) — boyut aralıkları + path uzunluğu formülü
+- `generation/DungeonGenerator.java` (YENİ) — path + boss + yan dal + yeniden deneme
+- `generation/Seeds.java` (YENİ) — splitmix64 tohum karıştırma
+- `generation/PlugTarget.java` (YENİ)
+- `schematic/DoorPlugger.java` (YENİ) — açıklığı ve malzemeyi ÖLÇEN tıpa
+- `RoomLibrary.branchingPool()` — tek kapılılar hariç path havuzu
+- `generation/ChainGenerator.java` **SİLİNDİ** — 1C'nin demo üreticisiydi, yerini
+  `DungeonGenerator` aldı. Naif strateji ölçümü `GenProbe.naiveFill`'e taşındı (test kodu),
+  böylece üretim jar'ında demo kodu kalmadı.
+- `command/DungeonsCommand.java` — `build` → `dungeon`
+- `config.yml` — `generation.max-attempts`, `generation.plug-open-doors`
+- `scripts/geo-probe/` — `DungeonProbe.java`, `Rooms.java` (YENİ), `run.ps1` üçünü koşuyor
+- `AI Yönergeleri/` — generation.md (§6.2 kutu, §7 tıpa, §10 1D, §11, §14, §15),
+  isleyis.md (yeni sistem kaydı), Roadmap.md (FAZ 1 ✅, FAZ 2 sıradaki)
+
+**Alınan kararlar:**
+- **Tıkanma politikası: yeniden deneme.** `max-attempts` (varsayılan 8) kez türev tohumla
+  baştan denenir; hepsi tıkanırsa **en iyi** deneme kullanılır (önce daha uzun path, eşitse
+  daha çok oda) ve **uyarıyla** raporlanır. Kısa dungeon sessizce kabul edilmiyor —
+  kullanıcı "medium" seçtiyse medium almalı.
+- **Tıpa prosedürel ve beklenenden iyi çıktı.** Açıklığın hem **boyutu** hem **malzemesi**
+  ölçülüyor: boyut duvar düzleminde hava taranarak, malzeme açıklığın kenarındaki bloktan
+  örneklenerek. Sonuç: biome başına dosyaya gerek yok, Nether odasında nether brick
+  kendiliğinden çıkıyor. `generation.md` §7'deki 4 dosyalık yol artık sadece özel bir
+  görünüm isteniyorsa gerekli.
+- **Tıpa paste'ten SONRA basılıyor** — önce basılsaydı sonraki odanın paste'i ezerdi.
+- **`DungeonGenerator` Bukkit/WorldEdit kullanmıyor.** 3×1000'lik ölçümler saniyeler içinde
+  koşuyor; sadece `DoorPlugger` WorldEdit'e bağlı.
+
+**Doğrulama:**
+- **31/31 sunucusuz** (`DungeonProbe`) + 53/53 (1B) + 28/28 (1C) = **112 kontrol**
+- **15/15 blok kontrolü** (sunucuda): BOŞ ve ÖLÜ kapıların kapandığı, **bağlı geçitlerin
+  açık kaldığı**, tıpanın duvar dokusunu kullandığı, boss ve giriş odalarının yerinde olduğu
+- Sunucuda üç boyut da **tek denemede**: medium 10/10 (path 8/7), large 17/17 (path 12/11),
+  small 3/3 (path 3/2) — üçü de `validate()` temiz
+- Offline hesaplanan koordinatlar sunucununkiyle birebir eşleşti
+
+**Kaldığımız yer / sıradaki adım:**
+→ **FAZ 2 — Instance yaşam döngüsü.** Plan `generation.md` §15 ve `Roadmap.md` FAZ 2.
+  İlk iş: **slot serbest bırakılırken blokların da silinmesi** — `GridSlotManager.release()`
+  şu an sadece index'i geri veriyor, eski yapı altta kalıyor.
+
+**Çözülmemiş sorun / not:**
+- Koridor parçası (§11 madde 5) ve giriş odası tekilliği (§11 madde 6) hâlâ açık.
+  İkisi de FAZ 10'daki gerçek haritalarla birlikte netleşecek.
+- **FAZ 7 için not:** `DungeonGenerator.Result` bir instance'ı tarif etmeye yetiyor.
+  DB'ye **slot index + seed + boyut** yazmak dungeon'ı yeniden üretmeye yeter; bütün
+  yerleşimi saklamaya gerek yok. Ama bu, şablon setinin değişmemesine bağlı — set
+  değişirse eski seed'ler farklı dungeon üretir. Sürümleme düşünülmeli.
+- **FAZ 3 için not:** `bossNodeId` boss spawn'ı için hazır; `LayoutNode.depth()` zorluk
+  ölçeklemesinde kullanılabilir (girişten uzaklaştıkça daha güçlü mob).
+- Testler hâlâ `scripts/geo-probe/` altında, JUnit değil. FAZ 1 bitti ve şablon seti
+  oturdu — artık `src/test/java`'ya taşınabilir, tek eksik pom'a bir dependency satırı.
+
+---
+
 ## 2026-08-25 — FAZ 1C: Aday Seçimi, Çakışma ve Geri Çekilme (TAMAMLANDI)
 
 **Ne yapıldı:**

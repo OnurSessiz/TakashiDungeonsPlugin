@@ -254,6 +254,46 @@ slot sınırı `Aabb` olarak dışarıdan veriliyor, bütün katman sunucusuz te
   dallanma sürecinin sönmesi; ölçüm ve 1D'nin çözümü `generation.md` §6.2'de.
 - Üretim **seed'le tekrarlanabilir**. Hata ayıklanamayan prosedürel üretim hata ayıklanmaz.
 
+## Dungeon Graf Üretimi & Tıpa (FAZ 1D)
+**Dosya/Paket:** `com.takashi.dungeons.generation` — `DungeonSize`, `DungeonGenerator`,
+`Seeds`, `PlugTarget`; `com.takashi.dungeons.schematic.DoorPlugger`
+**Ne işe yarar:** Grafın **şeklini garanti altına alır** ve boşluğa açılan kapıları kapatır.
+1C "bir kapıya oda takabiliyorum"u veriyordu; burası "istenen boyutta, boss'u sonda,
+gezilebilir bir dungeon" üretiyor.
+**Nasıl çalışır:**
+1. Boyut → hedef oda sayısı (`DungeonSize.pickRoomCount`), path uzunluğu
+   `round(hedef × 0.65)`, min 2
+2. Giriş odası slot merkezine, rot=0 ile konur
+3. **Kritik path** kurulur — havuzda **tek kapılı oda yok** (`branchingPool`); çekilirse
+   dal anında ölürdü
+4. **Yan dallar** büyür, kota `hedef − 1`'e kadar (boss'a bir oda ayrılıyor)
+5. **Boss** girişten *en uzak* boş kapıya bağlanır — kapılar derinliğe göre azalan sırayla
+   denenir, ilk oturan kazanır
+6. Path hedefe ulaşamazsa **bütün deneme çöpe atılır**, türev tohumla baştan denenir
+   (`generation.max-attempts`); hepsi tıkanırsa en iyisi kullanılır ve uyarı raporlanır
+7. Paste bittikten **sonra** `DoorPlugger` BOŞ ve ÖLÜ kapıları kapatır
+**Bağımlılıkları:** 1B geometri + 1C yerleşim katmanı. `DungeonGenerator` Bukkit/WorldEdit
+kullanmıyor; sadece `DoorPlugger` WorldEdit'e bağlı.
+**Dikkat edilecek:**
+- **Boss yan dallardan SONRA bağlanıyor** ve bu sıra ölçümle seçildi. Önce bağlandığında
+  (a) `small` 3 oda üretemiyordu — path=2 olunca girişin tek kapısı boss'a gidip yan dala
+  yer kalmıyordu, (b) 2000 medium üretimde 4 kez **boss'suz** dungeon çıkıyordu.
+  Sayılar `generation.md` §6.2'deki kutuda.
+- **`new Random(seed)` ardışık tohumlarda KULLANILAMAZ** — ilk `nextInt(küçük)` çağrısı
+  ardışık tohumlarda hep aynı değeri veriyor (4000 tohumda 4 değerden 2'si hiç çıkmıyor).
+  `Seeds.derive/from` splitmix64 ile karıştırıyor. FAZ 7'de instance id'sini tohum olarak
+  kullanmak en doğal seçim olacak — bu düzeltme olmadan bütün dungeon'lar aynı boyda çıkardı.
+- **Şablon SIRASI üretimi etkiliyor.** `drawWeighted` kümülatif tarama yapıyor; sıra
+  `SchematicService.list()`'ten geliyor ve alfabetik. Yeni oda eklenince bütün tohumların
+  çıktısı değişir — beklenen ama şaşırtıcı davranış.
+- **Tıpa paste'ten SONRA basılıyor.** Önce basılsaydı sonraki odanın paste'i tıpayı ezerdi;
+  ayrıca bir kapının boş kalıp kalmadığı ancak graf tamamlanınca belli oluyor.
+- **Tıpa açıklığı ve malzemeyi ÖLÇÜYOR**, metadata'dan okumuyor. Kapı boyutu şemada yazmaz;
+  duvar dokusu da açıklığın kenarından örneklenir — biome başına dosya gerekmiyor.
+- **`DungeonGenerator.Result` bir instance'ı tarif etmeye yetiyor.** FAZ 7'de DB'ye
+  slot index + seed + boyut yazmak dungeon'ı yeniden üretmeye yeter; yerleşimi saklamaya
+  gerek yok.
+
 ## Plugin Bootstrap & Entegrasyon Tespiti
 **Dosya/Paket:** `com.takashi.dungeons.TakashiDungeonsPlugin`, `com.takashi.dungeons.command.DungeonsCommand`
 **Ne işe yarar:** Plugin'in enable/disable yaşam döngüsü + opsiyonel (softdepend) plugin'lerin

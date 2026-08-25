@@ -17,10 +17,10 @@
 - [x] `maven-shade-plugin` yapılandır (SQLite driver shading için)
 - [x] Test sunucusu (Paper) kurulumu + hızlı build→deploy akışı
 
-## FAZ 1 — Çekirdek Generation (EN KRİTİK)
+## FAZ 1 — Çekirdek Generation (EN KRİTİK) ✅
 
-> Adım adım ilerliyor: **1A** altyapı ✅ → **1B** metadata + yerleştirme geometrisi ✅ →
-> **1C** kapı eşleştirme + çakışma ✅ → 1D graph üretimi
+> **1A** altyapı ✅ → **1B** metadata + yerleştirme geometrisi ✅ →
+> **1C** kapı eşleştirme + çakışma ✅ → **1D** graph üretimi ✅
 >
 > **Algoritmanın tam spec'i: [`generation.md`](generation.md)** — 1B'ye başlamadan okunacak.
 
@@ -37,16 +37,23 @@
 - [x] Rotation desteği (90/180/270 ile kapı yönü çevirme)
       → blok **ve** metadata seviyesinde çalışıyor. Rotasyon işareti ölçüldü: `+1` saat yönü.
         Gereken açı aranmıyor, `R = (d_p + 2 - d_c) mod 4` ile hesaplanıyor.
-- [ ] Kritik path üretimi (giriş → boss zorunlu yolu) ← **1D, sıradaki**
-      → tek kapılı şablonlar path havuzundan çıkarılacak (ölçüm: generation.md §6.2)
-- [ ] Yan dal (side room) ekleme
-- [ ] Boyut değişkeni: small (3-6) / medium (7-12) / large (13-20)
-- [ ] Çok kapılı odalar → labirent hissi (bir oda 2-3 odaya açılabilsin)
-- [ ] **Milestone: Komutla boş ama gezilebilir bir dungeon üretiliyor**
+- [x] Kritik path üretimi (giriş → boss zorunlu yolu)
+      → tek kapılı şablonlar path havuzundan çıkarıldı; 3×1000 üretimde %99.9+ hedefe ulaşıyor
+- [x] Yan dal (side room) ekleme
+      → boss'tan ÖNCE büyüyor; sıra ölçümle seçildi (generation.md §6.2)
+- [x] Boş kapıları tıpayla kapatma — açıklık ve duvar dokusu ölçülerek (generation.md §7)
+- [x] Boyut değişkeni: small (3-6) / medium (7-12) / large (13-20)
+- [x] Çok kapılı odalar → labirent hissi (bir oda 2-3 odaya açılabilsin)
+- [x] **Milestone: Komutla boş ama gezilebilir bir dungeon üretiliyor**
+      → `/tdungeons dungeon <small|medium|large> [seed]`; üretim seed'le tekrarlanabilir
 
-## FAZ 2 — Instance Yaşam Döngüsü
+## FAZ 2 — Instance Yaşam Döngüsü ← **SIRADAKİ**
 
-- [ ] Instance oluşturma / kayıt / temizleme (chunk unload)
+> Generation bitti; artık üretilen dungeon'ın yaşaması gerekiyor.
+> Not: `GridSlotManager.release()` şu an sadece index'i geri veriyor, **blokları silmiyor** —
+> temizlik bu fazın ilk işi.
+
+- [ ] Instance oluşturma / kayıt / temizleme (chunk unload + blok temizliği)
 - [ ] Dungeon süre sistemi (doğada: silinme / lobby'de: sıfırlanma)
 - [ ] Süre bitince içerideki oyuncuyu obje konumuna ışınlama
 - [ ] Giriş objesi (sağ tık ile giriş) + obje spawn mantığı

@@ -35,3 +35,14 @@ generation:
   # Ceza KAPI seçimi aşamasında uygulanır, şablon seçimi aşamasında değil — yoksa
   # 'agirlik' değerinin anlamı bozulurdu (bkz. generation.md 5.4).
   turn-bias: 2.0
+
+  # Kritik path hedef uzunluga ulasamazsa uretim bastan denenir (farkli tohumla).
+  # Kisa dungeon'i sessizce kabul etmek yerine yeniden denemek marketplace tarafinin
+  # geregi: kullanici "medium" sectiyse medium almali. Denemeler tukenirse EN IYI
+  # deneme kullanilir ve sonuc uyariyla raporlanir -- sessizce kucuk dungeon verilmez.
+  max-attempts: 8
+
+  # Bosluga acilan kapilar kapatilsin mi (generation.md 7 -- tipa).
+  # Kapatilmazsa oyuncu odadan void'e duser. Sadece hata ayiklarken kapatin:
+  # kapali oldugunda grafin nerede tikandigi gozle gorulur.
+  plug-open-doors: true

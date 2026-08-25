@@ -3,11 +3,13 @@ package com.takashi.dungeons.command;
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
 import com.takashi.dungeons.generation.Aabb;
-import com.takashi.dungeons.generation.ChainGenerator;
 import com.takashi.dungeons.generation.DoorAnchor;
+import com.takashi.dungeons.generation.DungeonGenerator;
+import com.takashi.dungeons.generation.DungeonSize;
 import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
+import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.generation.Rotation;
@@ -31,6 +33,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
@@ -45,7 +48,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "rooms", "room", "weights", "gen",
-                    "paste", "connect", "build", "slots", "free");
+                    "paste", "connect", "dungeon", "slots", "free");
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
 
@@ -75,7 +78,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "paste" -> paste(sender, label, args);
             case "connect" -> connect(sender, label, args);
             case "weights" -> weights(sender);
-            case "build" -> build(sender, label, args);
+            case "dungeon" -> dungeon(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             default -> sender.sendMessage(Component
@@ -477,13 +480,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Zincir üretir ve slot'a paste eder — FAZ 1C doğrulaması.
+     * Tam dungeon üretir: kritik path → boss → yan dallar → paste → tıpa.
      *
-     * <p>Kritik path / boss ataması / tıpa burada YOK, onlar 1D. Buradaki iş: ağırlıklı
-     * seçim + çakışma testi + geri çekilme + ÖLÜ işaretlemenin birlikte çalıştığını
-     * göstermek.
+     * <p>FAZ 1D milestone'u — {@code generation.md} §6 ve §7.
      */
-    private void build(CommandSender sender, String label, String[] args) {
+    private void dungeon(CommandSender sender, String label, String[] args) {
         RoomTemplateStore store = requireTemplates(sender);
         SchematicService service = requireSchematics(sender);
         World world = requireWorld(sender);
@@ -491,30 +492,31 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        int target;
-        long seed;
-        try {
-            target = args.length >= 2 ? Integer.parseInt(args[1]) : 8;
-            seed = args.length >= 3 ? Long.parseLong(args[2]) : new Random().nextLong();
-        } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " build [odaSayısı] [seed]",
-                    NamedTextColor.RED));
+        DungeonSize size = args.length >= 2 ? DungeonSize.parse(args[1]) : DungeonSize.MEDIUM;
+        if (size == null) {
+            sender.sendMessage(Component.text("Kullanım: /" + label
+                    + " dungeon [small|medium|large] [seed]", NamedTextColor.RED));
             return;
         }
-        if (target < 1 || target > 64) {
-            sender.sendMessage(Component.text("Oda sayısı 1-64 arasında olmalı: " + target,
-                    NamedTextColor.RED));
+        long seed;
+        try {
+            seed = args.length >= 3 ? Long.parseLong(args[2]) : new Random().nextLong();
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Seed sayı olmalı: " + args[2], NamedTextColor.RED));
             return;
         }
 
         double turnBias = plugin.getConfig().getDouble("generation.turn-bias", 2.0);
+        int maxAttempts = plugin.getConfig().getInt("generation.max-attempts", 8);
+        boolean doPlug = plugin.getConfig().getBoolean("generation.plug-open-doors", true);
+
         GridSlot slot = plugin.getSlotManager().allocate();
         Aabb slotBounds = slotBounds(slot, world);
         Vec3i center = new Vec3i(slot.originX() + slot.size() / 2, slot.originY(),
                 slot.originZ() + slot.size() / 2);
 
-        sender.sendMessage(Component.text("Üretiliyor: " + target + " oda, seed=" + seed
-                + ", dönüş yanlılığı=" + turnBias, NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Üretiliyor: " + size.key() + ", seed=" + seed,
+                NamedTextColor.GRAY));
 
         store.loadAll(store.list())
                 .thenApply(templates -> {
@@ -522,37 +524,26 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     if (!library.isUsable()) {
                         throw new IllegalStateException(library.describeProblem());
                     }
-                    return new ChainGenerator(library, new Random(seed), turnBias)
-                            .generate(slotBounds, center, target);
+                    return new DungeonGenerator(library, turnBias, maxAttempts)
+                            .generate(slotBounds, center, size, seed);
                 })
-                .thenCompose(result -> pasteLayout(service, world, result)
-                        .thenApply(millis -> result))
-                .whenComplete((result, error) -> {
+                .thenCompose(result -> pasteDungeon(service, world, result)
+                        .thenApply(ignored -> result))
+                .thenCompose(result -> plugDoors(world, result, doPlug)
+                        .thenApply(report -> Map.entry(result, report)))
+                .whenComplete((pair, error) -> {
                     if (error != null) {
                         plugin.getSlotManager().release(slot.index());
                         sendFailure(sender, "Üretim başarısız", error);
                         return;
                     }
-                    reportBuild(sender, world, slot, result, seed);
+                    reportDungeon(sender, world, slot, pair.getKey(), pair.getValue());
                 });
     }
 
-    /**
-     * Slot'un 3B sınırı. X/Z slot'tan, Y dünyanın yükseklik sınırlarından geliyor.
-     *
-     * <p>X/Z sınırı sert bir gereklilik: taşan bir oda komşu instance'ın bloklarına girer.
-     * Y'de slot kavramı yok, dünya sınırı yeterli.
-     */
-    private static Aabb slotBounds(GridSlot slot, World world) {
-        return new Aabb(
-                slot.originX(), world.getMinHeight(), slot.originZ(),
-                slot.originX() + slot.size() - 1, world.getMaxHeight() - 1,
-                slot.originZ() + slot.size() - 1);
-    }
-
     /** Odaları sırayla paste eder — sıra deterministik olsun diye zincirleniyor. */
-    private CompletableFuture<Long> pasteLayout(SchematicService service, World world,
-                                                ChainGenerator.Result result) {
+    private CompletableFuture<Long> pasteDungeon(SchematicService service, World world,
+                                                 DungeonGenerator.Result result) {
         CompletableFuture<Long> chain = CompletableFuture.completedFuture(0L);
         for (LayoutNode node : result.layout().nodes()) {
             PlacedRoom room = node.room();
@@ -562,25 +553,44 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         return chain;
     }
 
-    private void reportBuild(CommandSender sender, World world, GridSlot slot,
-                             ChainGenerator.Result result, long seed) {
-        sender.sendMessage(Component.text("Üretildi — " + slot, NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("  oda: " + result.placed() + "/" + result.requested()
-                + "   ölü kapı: " + result.deadEnds()
-                + "   boş kapı: " + result.layout().openDoorCount()
-                + "   denenen aday: " + result.attempts(), NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  seed: " + seed
+    /**
+     * Tıpa — paste BİTTİKTEN sonra. Önce basılsaydı sonraki odanın paste'i tıpayı ezerdi;
+     * ayrıca bir kapının boş kalıp kalmadığı ancak graf tamamlanınca belli oluyor.
+     */
+    private CompletableFuture<DoorPlugger.Report> plugDoors(World world,
+                                                            DungeonGenerator.Result result,
+                                                            boolean enabled) {
+        DoorPlugger plugger = plugin.getDoorPlugger();
+        if (!enabled || plugger == null || result.layout().isEmpty()) {
+            return CompletableFuture.completedFuture(new DoorPlugger.Report(0, 0, 0, List.of()));
+        }
+        return plugger.plugAll(world, result.plugTargets());
+    }
+
+    private void reportDungeon(CommandSender sender, World world, GridSlot slot,
+                               DungeonGenerator.Result result, DoorPlugger.Report plug) {
+        sender.sendMessage(Component.text("Dungeon üretildi — " + slot, NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  boyut: " + result.size().key()
+                + "   oda: " + result.rooms() + "/" + result.targetRooms()
+                + "   kritik path: " + result.pathLength() + "/" + result.targetPathLength(),
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  deneme: " + result.attemptsUsed()
+                + "   tıpa: " + plug.plugged() + " kapı / " + plug.blocks() + " blok"
+                + (plug.skipped() > 0 ? "   atlanan: " + plug.skipped() : ""),
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  seed: " + result.seed()
                 + "  (aynı seed aynı dungeon'ı üretir)", NamedTextColor.DARK_GRAY));
 
-        if (result.stoppedReason() != null) {
-            sender.sendMessage(Component.text("  erken durdu: " + result.stoppedReason(),
+        if (result.warning() != null) {
+            sender.sendMessage(Component.text("  uyarı: " + result.warning(),
                     NamedTextColor.YELLOW));
         }
+        plug.warnings().forEach(w -> sender.sendMessage(
+                Component.text("  tıpa uyarısı: " + w, NamedTextColor.YELLOW)));
 
-        ChainGenerator.describe(result.layout()).forEach(line ->
+        DungeonGenerator.describe(result.layout(), result.bossNodeId()).forEach(line ->
                 sender.sendMessage(Component.text("  " + line, NamedTextColor.WHITE)));
 
-        // Kendi kendini denetleme: çakışma, slot taşması, hizasız geçit, kopuk graf.
         List<String> problems = result.layout().validate();
         if (problems.isEmpty()) {
             sender.sendMessage(Component.text(
@@ -595,6 +605,19 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (root != null) {
             teleportTo(sender, world, root.room().origin().plus(new Vec3i(0, 1, 0)));
         }
+    }
+
+    /**
+     * Slot'un 3B sınırı. X/Z slot'tan, Y dünyanın yükseklik sınırlarından geliyor.
+     *
+     * <p>X/Z sınırı sert bir gereklilik: taşan bir oda komşu instance'ın bloklarına girer.
+     * Y'de slot kavramı yok, dünya sınırı yeterli.
+     */
+    private static Aabb slotBounds(GridSlot slot, World world) {
+        return new Aabb(
+                slot.originX(), world.getMinHeight(), slot.originZ(),
+                slot.originX() + slot.size() - 1, world.getMaxHeight() - 1,
+                slot.originZ() + slot.size() - 1);
     }
 
     private void slots(CommandSender sender) {
@@ -688,9 +711,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (sub.equals("connect") && (args.length == 4 || args.length == 5)) {
             return DOOR_INDICES.stream().filter(d -> d.startsWith(args[args.length - 1])).toList();
         }
-        if (args.length == 2 && sub.equals("build")) {
-            return List.of("4", "8", "12", "20").stream()
-                    .filter(n -> n.startsWith(args[1])).toList();
+        if (args.length == 2 && sub.equals("dungeon")) {
+            return List.of("small", "medium", "large").stream()
+                    .filter(n -> n.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();

@@ -2,6 +2,7 @@ package com.takashi.dungeons;
 
 import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.generation.RoomTemplateStore;
+import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.world.DungeonWorldManager;
 import com.takashi.dungeons.world.GridSlotManager;
@@ -39,6 +40,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private GridSlotManager slotManager;
     private SchematicService schematicService;
     private RoomTemplateStore templateStore;
+    private DoorPlugger doorPlugger;
 
     @Override
     public void onEnable() {
@@ -99,6 +101,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // Şablon deposu schematic servisinin üstünde duruyor: geometri ondan, metadata
         // yanındaki .yml'den geliyor. Servis kurulmadıysa depo da kurulmaz.
         templateStore = new RoomTemplateStore(this, schematicService);
+        // Tıpa da blok yazıyor; paste ile aynı thread kuralına tabi (async sadece FAWE ile).
+        doorPlugger = new DoorPlugger(this, async);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
     }
@@ -148,5 +152,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Oda şablonu deposu. Schematic servisi kurulmadıysa {@code null}. */
     public @Nullable RoomTemplateStore getTemplateStore() {
         return templateStore;
+    }
+
+    /** Boş kapıları kapatan tıpa servisi. Schematic servisi kurulmadıysa {@code null}. */
+    public @Nullable DoorPlugger getDoorPlugger() {
+        return doorPlugger;
     }
 }

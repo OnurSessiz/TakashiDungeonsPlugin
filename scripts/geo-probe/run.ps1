@@ -1,7 +1,7 @@
 # generation paketinin sunucusuz testleri — bkz. scripts\geo-probe\README.md
 #
 # Kullanim:
-#   ... -File scripts\geo-probe\run.ps1          # GeoProbe + GenProbe (varsayilan)
+#   ... -File scripts\geo-probe\run.ps1          # GeoProbe + GenProbe + DungeonProbe
 #   ... -File scripts\geo-probe\run.ps1 -Rot     # WorldEdit rotasyon isaretini olcer
 
 param([switch]$Rot)
@@ -10,8 +10,9 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $probeDir = "$PSScriptRoot"
 $outDir = "$root\target\geo-probe"
+$classes = "$root\target\classes"
 
-if (-not (Test-Path "$root\target\classes")) {
+if (-not (Test-Path $classes)) {
     throw "target\classes yok. Once: powershell -ExecutionPolicy Bypass -File scripts\build.ps1"
 }
 
@@ -40,21 +41,30 @@ if ($Rot) {
     exit $LASTEXITCODE
 }
 
-# Probe'lar sadece generation paketine bagli -- hicbir ucuncu parti jar gerekmiyor.
-& $javac -cp "$root\target\classes" -d $outDir "$probeDir\GeoProbe.java" "$probeDir\GenProbe.java"
+# RotProbe bilerek DISARIDA: WorldEdit gerektiren tek probe o, -Rot ile ayri kosuluyor.
+# Digerleri sadece generation paketine bagli -- hicbir ucuncu parti jar gerekmiyor.
+$sources = @(
+    "$probeDir\Rooms.java",
+    "$probeDir\GeoProbe.java",
+    "$probeDir\GenProbe.java",
+    "$probeDir\DungeonProbe.java"
+)
+& $javac -cp $classes -d $outDir $sources
 if ($LASTEXITCODE -ne 0) { throw "Probe'lar derlenemedi" }
 
 $failed = 0
+$probes = @(
+    @("FAZ 1B - geometri",            "GeoProbe"),
+    @("FAZ 1C - secim + cakisma",     "GenProbe"),
+    @("FAZ 1D - graf uretimi",        "DungeonProbe")
+)
 
-Write-Host ""
-Write-Host "################ FAZ 1B — geometri ################" -ForegroundColor Cyan
-& $java -cp "$outDir;$root\target\classes" GeoProbe
-if ($LASTEXITCODE -ne 0) { $failed = 1 }
-
-Write-Host ""
-Write-Host "################ FAZ 1C — secim + cakisma ################" -ForegroundColor Cyan
-& $java -cp "$outDir;$root\target\classes" GenProbe
-if ($LASTEXITCODE -ne 0) { $failed = 1 }
+foreach ($p in $probes) {
+    Write-Host ""
+    Write-Host "################ $($p[0]) ################" -ForegroundColor Cyan
+    & $java -cp "$outDir;$classes" $p[1]
+    if ($LASTEXITCODE -ne 0) { $failed = 1 }
+}
 
 Write-Host ""
 if ($failed -ne 0) {

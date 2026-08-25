@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.Random;
 
 /**
@@ -152,28 +154,60 @@ public class GenProbe {
     }
 
     static void chainGeneration() {
-        section("Zincir uretimi: 500 seed, hicbirinde tutarsizlik olmamali");
+        section("Naif doldurma: 500 seed, hicbirinde tutarsizlik olmamali");
         RoomLibrary lib = new RoomLibrary(allTemplates());
         Aabb slot = slotBox(512);
         Vec3i center = new Vec3i(256, 64, 256);
 
         int totalRooms = 0, badSeeds = 0;
         for (long seed = 1; seed <= 500; seed++) {
-            ChainGenerator.Result r = new ChainGenerator(lib, new Random(seed), 2.0)
-                    .generate(slot, center, 12);
-            List<String> problems = r.layout().validate();
+            DungeonLayout layout = naiveFill(lib, Seeds.from(seed), slot, center, 12);
+            List<String> problems = layout.validate();
             if (!problems.isEmpty()) {
                 badSeeds++;
                 if (badSeeds == 1) {
                     System.out.println("   seed " + seed + " sorunlari: " + problems);
                 }
             }
-            totalRooms += r.placed();
+            totalRooms += layout.size();
         }
         check("500 seed'in hicbirinde tutarsizlik yok (cakisma/hizasizlik/kopuk graf)",
                 badSeeds == 0, badSeeds + " seed sorunlu");
         check("odalar gercekten yerlestiriliyor", totalRooms >= 500 * 5,
                 "toplam " + totalRooms + " oda");
+    }
+
+    /**
+     * "Her bos kapiyi doldur" -- 1C'nin naif stratejisi.
+     *
+     * Uretim kodunda ARTIK YOK (1D'nin DungeonGenerator'i onun yerini aldi), ama
+     * olcum icin burada duruyor: 1D'nin kritik path tasariminin NEDEN gerekli
+     * oldugunu gosteren karsilastirma tabani bu.
+     */
+    static DungeonLayout naiveFill(RoomLibrary lib, java.util.random.RandomGenerator rnd, Aabb slot, Vec3i origin,
+                                   int target) {
+        DungeonLayout layout = new DungeonLayout(slot);
+        List<RoomTemplate> entrancePool = lib.entrances().isEmpty()
+                ? lib.normalPool() : lib.entrances();
+        RoomTemplate entrance = RoomLibrary.pickWeighted(entrancePool, rnd);
+        if (entrance == null) {
+            return layout;
+        }
+        LayoutNode root = layout.addRoot(entrance, origin, Rotation.NONE);
+
+        RoomPlacer placer = new RoomPlacer(rnd, 2.0);
+        Deque<OpenDoor> queue = new ArrayDeque<>(root.openDoors());
+        while (layout.size() < target && !queue.isEmpty()) {
+            OpenDoor door = queue.poll();
+            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.BOS) {
+                continue;
+            }
+            RoomPlacer.Attempt a = placer.fill(layout, door, lib.normalPool());
+            if (a.success()) {
+                queue.addAll(a.placed().openDoors());
+            }
+        }
+        return layout;
     }
 
     /**
@@ -203,14 +237,13 @@ public class GenProbe {
 
         int runs = 2000, reached = 0, jammed = 0, jammedWithDead = 0, stoppedAtTwo = 0;
         for (long seed = 1; seed <= runs; seed++) {
-            ChainGenerator.Result r = new ChainGenerator(lib, new Random(seed), 2.0)
-                    .generate(slot, center, 12);
-            if (r.reachedTarget()) {
+            DungeonLayout l = naiveFill(lib, Seeds.from(seed), slot, center, 12);
+            if (l.size() >= 12) {
                 reached++;
             } else {
                 jammed++;
-                if (r.deadEnds() > 0) jammedWithDead++;
-                if (r.placed() <= 2) stoppedAtTwo++;
+                if (l.deadDoorCount() > 0) jammedWithDead++;
+                if (l.size() <= 2) stoppedAtTwo++;
             }
         }
         System.out.printf("   hedefe ulasan: %d/%d (%%%.1f)%n", reached, runs, 100.0 * reached / runs);
@@ -237,8 +270,7 @@ public class GenProbe {
         RoomLibrary lib2 = new RoomLibrary(noTerminal);
         int reached2 = 0;
         for (long seed = 1; seed <= runs; seed++) {
-            if (new ChainGenerator(lib2, new Random(seed), 2.0)
-                    .generate(slot, center, 12).reachedTarget()) {
+            if (naiveFill(lib2, Seeds.from(seed), slot, center, 12).size() >= 12) {
                 reached2++;
             }
         }
@@ -258,16 +290,15 @@ public class GenProbe {
 
         int escapes = 0, runs = 20;
         for (long seed = 1; seed <= runs; seed++) {
-            ChainGenerator.Result r = new ChainGenerator(lib, new Random(seed), 2.0)
-                    .generate(slot, center, 20);
-            for (LayoutNode n : r.layout().nodes()) {
+            DungeonLayout l = naiveFill(lib, Seeds.from(seed), slot, center, 20);
+            for (LayoutNode n : l.nodes()) {
                 Aabb b = n.bounds();
                 if (b.minX() < slot.minX() || b.maxX() > slot.maxX()
                         || b.minZ() < slot.minZ() || b.maxZ() > slot.maxZ()) {
                     escapes++;
                 }
             }
-            if (!r.layout().validate().isEmpty()) escapes++;
+            if (!l.validate().isEmpty()) escapes++;
         }
         check("dar slot'ta 20 kosumda hicbir oda sinirdan tasmadi", escapes == 0,
                 escapes + " tasma");
@@ -278,18 +309,14 @@ public class GenProbe {
         RoomLibrary lib = new RoomLibrary(allTemplates());
         // Cok dar slot -> giris odasindan sonra neredeyse hicbir sey sigmaz.
         Aabb slot = slotBox(40);
-        ChainGenerator.Result r = new ChainGenerator(lib, new Random(3L), 2.0)
-                .generate(slot, new Vec3i(20, 64, 20), 10);
+        DungeonLayout l = naiveFill(lib, Seeds.from(3L), slot, new Vec3i(20, 64, 20), 10);
 
-        int open = r.layout().openDoorCount();
-        int dead = r.layout().deadDoorCount();
-        System.out.println("   oda=" + r.placed() + " olu=" + dead + " bos=" + open
-                + " durma sebebi: " + r.stoppedReason());
-        check("hedefe ulasilamadi (dar slot bekleniyor)", !r.reachedTarget(), "");
+        int open = l.openDoorCount();
+        int dead = l.deadDoorCount();
+        System.out.println("   oda=" + l.size() + " olu=" + dead + " bos=" + open);
+        check("hedefe ulasilamadi (dar slot bekleniyor)", l.size() < 10, "" + l.size());
         check("olu kapi isaretlendi", dead > 0, "olu=" + dead);
-        check("erken durma sebebi raporlandi", r.stoppedReason() != null, "");
-        check("yerlesim yine de tutarli", r.layout().validate().isEmpty(),
-                "" + r.layout().validate());
+        check("yerlesim yine de tutarli", l.validate().isEmpty(), "" + l.validate());
     }
 
     static void determinism() {
@@ -298,20 +325,17 @@ public class GenProbe {
         Aabb slot = slotBox(512);
         Vec3i center = new Vec3i(256, 64, 256);
 
-        String a = signature(new ChainGenerator(lib, new Random(42L), 2.0)
-                .generate(slot, center, 10));
-        String b = signature(new ChainGenerator(lib, new Random(42L), 2.0)
-                .generate(slot, center, 10));
-        String c = signature(new ChainGenerator(lib, new Random(43L), 2.0)
-                .generate(slot, center, 10));
+        String a = signature(naiveFill(lib, Seeds.from(42L), slot, center, 10));
+        String b = signature(naiveFill(lib, Seeds.from(42L), slot, center, 10));
+        String c = signature(naiveFill(lib, Seeds.from(43L), slot, center, 10));
 
         check("seed 42 iki kez ayni sonucu verdi", a.equals(b), "");
         check("seed 43 farkli sonuc verdi", !a.equals(c), "");
     }
 
-    static String signature(ChainGenerator.Result r) {
+    static String signature(DungeonLayout layout) {
         StringBuilder sb = new StringBuilder();
-        for (LayoutNode n : r.layout().nodes()) {
+        for (LayoutNode n : layout.nodes()) {
             sb.append(n.template().name()).append('@')
               .append(n.room().origin()).append('/')
               .append(n.room().rotation().steps()).append(';');
@@ -320,48 +344,22 @@ public class GenProbe {
     }
 
     // ---------------------------------------------------------------- test odalari
-    // TestRoomFactory + uretilen .yml dosyalariyla ayni degerler
+    // Tek kaynak: Rooms.java. Set degisince tek yerden guncelleniyor.
 
     static List<RoomTemplate> allTemplates() {
-        List<RoomTemplate> all = new ArrayList<>(normalPool());
-        all.add(t("test_giris", RoomType.GIRIS, 100, box(17, 9, 17), new Vec3i(0, 1, -8)));
-        all.add(t("test_boss", RoomType.BOSS, 100, box(33, 15, 33), new Vec3i(0, 1, -16)));
-        return all;
+        return Rooms.all();
     }
 
     static List<RoomTemplate> normalPool() {
-        return List.of(
-                t("test_cross", RoomType.NORMAL, 100, box(17, 9, 17),
-                        new Vec3i(0, 1, -8), new Vec3i(8, 1, 0),
-                        new Vec3i(0, 1, 8), new Vec3i(-8, 1, 0)),
-                t("test_corridor", RoomType.NORMAL, 150, box(17, 9, 17),
-                        new Vec3i(0, 1, -8), new Vec3i(0, 1, 8)),
-                t("test_corner", RoomType.NORMAL, 120, box(17, 9, 17),
-                        new Vec3i(0, 1, -8), new Vec3i(8, 1, 0)),
-                t("test_deadend", RoomType.NORMAL, 60, box(17, 9, 17),
-                        new Vec3i(0, 1, -8)),
-                t("test_long", RoomType.NORMAL, 80, box(9, 7, 25),
-                        new Vec3i(0, 1, -12), new Vec3i(4, 1, 10)),
-                t("test_even", RoomType.NORMAL, 80, new Aabb(-5, 0, -8, 4, 7, 7),
-                        new Vec3i(1, 1, -8), new Vec3i(-2, 1, 7), new Vec3i(4, 1, 3)));
-    }
-
-    static RoomTemplate t(String name, RoomType type, int weight, Aabb box, Vec3i... anchors) {
-        List<DoorAnchor> doors = new ArrayList<>();
-        for (int i = 0; i < anchors.length; i++) {
-            doors.add(DoorAnchor.of(i, anchors[i], box));
-        }
-        return new RoomTemplate(name, type, weight, doors, box);
+        return Rooms.normalPool();
     }
 
     static Aabb box(int sizeX, int height, int sizeZ) {
-        return new Aabb(-(sizeX / 2), 0, -(sizeZ / 2),
-                sizeX - 1 - sizeX / 2, height - 1, sizeZ - 1 - sizeZ / 2);
+        return Rooms.box(sizeX, height, sizeZ);
     }
 
-    /** Slot kutusu: X/Z slot'tan, Y dunya yuksekligi gibi genis. */
     static Aabb slotBox(int size) {
-        return new Aabb(0, -64, 0, size - 1, 319, size - 1);
+        return Rooms.slotBox(size);
     }
 
     static RoomTemplate byName(List<RoomTemplate> pool, String name) {

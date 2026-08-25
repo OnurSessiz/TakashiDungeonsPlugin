@@ -41,6 +41,7 @@ public final class RoomLibrary {
 
     private final List<RoomTemplate> all;
     private final List<RoomTemplate> normal;
+    private final List<RoomTemplate> branching;
     private final List<RoomTemplate> entrances;
     private final List<RoomTemplate> bosses;
 
@@ -65,6 +66,7 @@ public final class RoomLibrary {
         this.normal = List.copyOf(normalPool);
         this.entrances = List.copyOf(entrancePool);
         this.bosses = List.copyOf(bossPool);
+        this.branching = normalPool.stream().filter(t -> t.doorCount() > 1).toList();
     }
 
     public List<RoomTemplate> all() {
@@ -74,6 +76,22 @@ public final class RoomLibrary {
     /** Yan dal ve ara odaların çekildiği havuz — giriş ve boss burada YOK. */
     public List<RoomTemplate> normalPool() {
         return normal;
+    }
+
+    /**
+     * <b>Kritik path</b> havuzu: {@link #normalPool()}'un tek kapılı odalar çıkarılmış hâli.
+     *
+     * <p>Tek kapılı bir oda path'e girdiğinde o dal anında ölüyor — bağlandığı kapı dışında
+     * devam edecek kapısı yok. 1C'de ölçüldü ({@code generation.md} §6.2): "her boş kapıyı
+     * doldur" stratejisi 12 oda hedefinin sadece <b>%70'ini</b> tutturuyor, ve tıkanmaların
+     * %86'sı çakışma değil <b>kapı frontier'ının tükenmesi</b>. Tek kapılılar path havuzundan
+     * elenince aynı ölçüm <b>%97</b>'ye çıkıyor.
+     *
+     * <p>Yan dallarda ({@link #normalPool()}) serbestler: orada sona ermeleri zaten istenen
+     * şey. Aynı oda bir havuzda sorun, diğerinde özellik.
+     */
+    public List<RoomTemplate> branchingPool() {
+        return branching;
     }
 
     public List<RoomTemplate> entrances() {

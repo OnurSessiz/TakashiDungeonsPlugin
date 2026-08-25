@@ -1,7 +1,10 @@
 # GENERATION — Dungeon Üretim Sistemi
 
-> **Durum:** FAZ 1A, **1B** ve **1C** yazıldı, üçü de sunucuda doğrulandı. 1D bu dosyadaki
-> tasarıma göre yazılacak — o kısmın kodu **henüz yok**.
+> **Durum:** FAZ 1 **bitti** — 1A / 1B / 1C / 1D yazıldı ve dördü de sunucuda doğrulandı.
+> Komutla boş ama gezilebilir bir dungeon üretiliyor (`/tdungeons dungeon <boyut> [seed]`).
+>
+> Bu dosya artık *tasarım* değil, **yazılmış sistemin spec'i**. Değişiklik yapılırsa burası
+> da güncellenir.
 >
 > 1B'de kapanan iki açık soru (§3 rotasyon işareti, §9 tek sayı kenar) artık **ölçülmüş**
 > durumda; bu dosyadaki formüller varsayım değil.
@@ -303,10 +306,35 @@ atanıyor; havuzda kalsalardı boss odası dungeon'ın ortasında belirebilirdi.
 ```
 1. hedef oda sayısı seçilir                       (medium → örn. 10)
 2. path uzunluğu = round(hedef × 0.65), min 2     (→ 7)
-3. giriş odasından (tip: giris) zincir kurulur
-4. path'in SON düğümü boss odası — random değil, ATAMA
-5. kalan kota (10-7 = 3) yan dallara gider
+3. giriş odasından (tip: giris) zincir kurulur    (path uzunluğu-1 oda)
+4. YAN DALLAR büyür — kota hedef-1'e kadar         (boss için bir oda ayrılıyor)
+5. boss, girişten EN UZAK boş kapıya bağlanır     (random değil, ATAMA)
 ```
+
+> ### Boss neden yan dallardan SONRA bağlanıyor
+>
+> İlk uygulamada boss path'in ucuna, yan dallardan **önce** bağlanıyordu. İki hata
+> ölçüldü ve sıra değiştirilince ikisi de kayboldu:
+>
+> **1) `small` dungeon 3 oda üretemiyordu.** `round(3 × 0.65) = 2`, yani path = giriş + boss.
+> Girişin (tek kapılı `test_giris`) tek kapısı boss'a gidiyor, boss da terminal — yan dala
+> **BOŞ kapı kalmıyor**. 3. oda konulamıyor, üretim baştan deneniyor ve farklı bir hedefe
+> düşüyordu. Ölçüm: `small` hedefi 800 tohumda **hiç 3 çıkmadı**, hep 4-6.
+>
+> **2) Boss'suz dungeon üretilebiliyordu.** Boss tek bir kapı deniyordu; 33×33'lük oda
+> çakışırsa dungeon boss'suz kalıyordu — 2000 medium üretimde **4 kez**, 2000 large'da 7.
+> Boss'suz dungeon oyuncuya hedef vermiyor.
+>
+> Yeni sırada boss **derinliğe göre azalan** sırayla bütün boş kapıları deniyor. Bu, hem
+> "girişten en uzak" kuralını koruyor hem de tek bir çakışmanın boss'u düşürmesini bitiriyor.
+>
+> | | eski sıra | **yeni sıra** |
+> |---|---|---|
+> | small: path tam | %99.0 | **%100** |
+> | small: oda tam | %87.5 | **%100** |
+> | small: ortalama deneme | 3.16 | **1.17** |
+> | medium: uyarılı üretim | %0.1 | **%0** |
+> | boss'suz (2000 medium) | 4 | **0** |
 
 **Neden path önce, boss sona atanıyor:** Odaları rastgele serpip "en uzaktakine boss koyalım"
 denirse boss'un giriş'ten kaç oda uzakta olduğu kontrol edilemez — bazı dungeon'lar 2 odada
@@ -402,8 +430,28 @@ Kapı açıklığının yeri spesifikasyonla sabit olduğu için motor oraya duv
 
 | Yöntem | Harita işi | Görünüm |
 |---|---|---|
-| **Prosedürel** — motor açıklığı tek blok tipiyle doldurur | 0 dosya | Düz duvarlı odada ayırt edilemez |
-| **Tıpa schematic'i** — biome'un duvar dokusuna uygun küçük parça | **4 dosya** (biome başına 1) | Neredeyse görünmez |
+| **Prosedürel** — motor açıklığı ölçüp duvar dokusuyla doldurur | 0 dosya | Düz duvarlı odada ayırt edilemez |
+| **Tıpa schematic'i** — elle çizilmiş özel parça | 4 dosya (biome başına 1) | Süslü çerçeve isteniyorsa |
+
+### Yazılmış olan: prosedürel tıpa (`schematic/DoorPlugger`)
+
+**Açıklığın boyutu metadata'da YAZMIYOR, ölçülüyor.** Motor anchor'dan başlayıp odanın
+duvar düzleminde hava bloklarını tarayarak açıklığı kendisi buluyor. §9'un ruhu: yazılabilen
+her alan yanlış yazılabilen bir alandır. Haritacı 3×4 bir kapı çizerse tıpa yine tutar;
+kemerli, basamaklı, asimetrik açıklıklar da çalışır.
+
+**Malzeme de ölçülüyor.** Tıpa bloğu config'den gelmiyor — açıklığın *kenarındaki* duvar
+bloğu örnekleniyor (en sık görülen). Nether odasında nether brick, End odasında end stone
+kendiliğinden çıkıyor. Bu, "biome tıpası" seçeneğinin faydasını **0 dosyayla** veriyor;
+4 dosyalık yol artık sadece özel bir görünüm isteniyorsa gerekiyor.
+
+**Tarama odanın kutusuyla sınırlı.** Duvar düzlemi (örn. `z = Z0`) matematiksel olarak
+sonsuz ve odanın dışında o düzlem void — yani hava. Sınır olmasaydı tarama açıklıktan
+çıkıp boşluğa sızar ve dungeon'ın yarısını duvarla doldururdu.
+
+**64 blokluk üst sınır** bozuk metadata'ya karşı: anchor duvarın üstünde değil de odanın
+içindeyse tarama boş bir iç düzlemde başlar. Sınır aşılırsa o kapı atlanıyor ve uyarı
+yazılıyor — sessizce oda doldurulmuyor.
 
 ### Neden kapı-sayısı varyantı yapılmıyor
 "Her odanın 1/2/3 kapılı versiyonu olsun, boş kapı çıkınca bir eksiğini kullan" fikri
@@ -508,7 +556,7 @@ bozmuyor — asimetri AABB'ye yansıyor, o da rotasyon sonrası hesaplandığı 
 
 ---
 
-## 10. Yazılmış olan — FAZ 1A + 1B + 1C
+## 10. Yazılmış olan — FAZ 1A + 1B + 1C + 1D
 
 Bu bölüm mevcut kodu tarif eder. Detaylı sistem kayıtları `isleyis.md`'de.
 
@@ -597,6 +645,71 @@ dungeon"u geri getirmek imkânsız olurdu.
 
 ---
 
+### FAZ 1D — graf üretimi (MILESTONE)
+
+| Ne | Nerede |
+|---|---|
+| Boyut → oda sayısı, path uzunluğu formülü | `generation/DungeonSize.java` |
+| Kritik path + boss ataması + yan dallar + yeniden deneme | `generation/DungeonGenerator.java` |
+| Path havuzu (tek kapılılar hariç) | `RoomLibrary.branchingPool()` |
+| Tıpa hedefi | `generation/PlugTarget.java` |
+| Tıpa uygulaması (açıklık + malzeme ölçümü) | `schematic/DoorPlugger.java` |
+| Tohum karıştırma | `generation/Seeds.java` |
+| Komut | `/tdungeons dungeon <small\|medium\|large> [seed]` |
+
+**Doğrulanmış:**
+- 31 kontrol (sunucusuz, `DungeonProbe`): path formülü, 3×1000 üretimde kritik path
+  garantisi, boss'un tipi/derinliği, boss ve girişin normal havuzda belirmemesi, boyut
+  aralıkları, tıpa hedefi kapsamı, tekrarlanabilirlik, ardışık tohum bağımsızlığı,
+  out-of-box fallback'ler.
+- 15 blok kontrolü (sunucuda): BOŞ ve ÖLÜ kapıların kapandığı, **bağlı geçitlerin
+  açık kaldığı**, tıpanın duvar dokusunu kullandığı, boss ve giriş odalarının yerinde olduğu.
+- Sunucuda üç boyut da tek denemede: medium 10/10 (path 8/7), large 17/17 (path 12/11),
+  small 3/3 (path 3/2) — üçü de `validate()` temiz.
+
+**Kritik path garantisi (3×1000 üretim):**
+
+| Boyut | path tam | oda tam | uyarılı | ort. deneme |
+|---|---|---|---|---|
+| small | %100 | %100 | %0 | 1.17 |
+| medium | %100 | %100 | %0 | 1.30 |
+| large | %99.9 | %100 | %0.1 | 1.64 |
+
+1C'nin naif stratejisi aynı koşulda %70'teydi.
+
+> ### ⚠️ `new Random(seed)` ardışık tohumlarda KULLANILAMAZ
+>
+> Java'nın `Random`'ı bir LCG ve ilk çıktısı tohumun üst bitlerinin doğrudan fonksiyonu.
+> Ölçüldü:
+>
+> ```
+> new Random(seed).nextInt(4), seed = 1..40:
+>   2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+>
+> 4000 ardışık tohumda dağılım: [0, 0, 1857, 2143]   ← 0 ve 1 HİÇ çıkmıyor
+> ```
+>
+> **Bedeli somut:** `small` dungeon'ın oda sayısı 3-6'dan çekiliyor. Düzeltilmeseydi bütün
+> small dungeon'lar aynı boyda çıkardı. Ve gerçekten olurdu: FAZ 7'de tohum olarak artan
+> instance id'si ya da `currentTimeMillis()` kullanmak en doğal seçim — ikisi de ardışık.
+> Hata da sessiz olurdu.
+>
+> Çözüm `generation/Seeds.java`: tohum **splitmix64** ile karıştırılıp `SplittableRandom`'a
+> veriliyor. Tekrarlanabilirlik korunuyor (karıştırma deterministik).
+
+> ### Şablon SIRASI üretimi etkiliyor
+>
+> `RoomLibrary.drawWeighted` kümülatif ağırlık taraması yapıyor; aynı tohum + farklı şablon
+> sırası = farklı dungeon. Sunucuda sıra `SchematicService.list()`'ten geliyor ve o metot
+> dosya adlarını **sıralıyor**, yani alfabetik ve kararlı.
+>
+> Pratik sonucu: harita ekibi yeni bir oda eklediğinde bütün tohumların çıktısı değişir.
+> Beklenen davranış — ama "aynı seed neden farklı dungeon verdi" sorusunun cevabı bu.
+> `scripts/geo-probe/Rooms.java` bu yüzden alfabetik sırada tutuluyor: probe'lar sunucunun
+> ne üreteceğini önceden hesaplayabilsin diye.
+
+---
+
 ## 11. Açık sorular
 
 ### Kapananlar (1B)
@@ -605,19 +718,19 @@ dungeon"u geri getirmek imkânsız olurdu.
 2. ~~**Tek sayı kenar kuralı.**~~ ✅ **Kalktı, doğrulandı.** `test_even` ile, bkz. §9.
 3. ~~**Ağırlık şablona mı, çifte mi ait?**~~ ✅ **Şablona.** İki aşamalı seçim, bkz. §5.4.
 
-### 1C'de ortaya çıkan, 1D'de kapanacak
+### 1D'de kapananlar
 
-7. **Kritik path havuzu.** Tek kapılı şablonlar path kurulurken elenmeli — ölçüm ve
-   gerekçe §6.2'deki uyarı kutusunda. Yan dallarda serbest kalacaklar.
-8. **Tıkanma durumunda ne yapılacak?** Path hedefe ulaşamazsa: yeniden mi denenecek
-   (farklı seed), yoksa kısa dungeon kabul mü edilecek? Marketplace tarafı "kullanıcının
-   istediği boyut" sözünü tutmayı gerektiriyor — muhtemel cevap: N kez yeniden dene,
-   olmazsa en iyisini kullan ve logla.
+7. ~~**Kritik path havuzu.**~~ ✅ **Tek kapılılar elendi** — `RoomLibrary.branchingPool()`.
+8. ~~**Tıkanma politikası.**~~ ✅ **Yeniden deneme.** `generation.max-attempts` (varsayılan 8)
+   kez farklı türev tohumla baştan denenir; hepsi tıkanırsa **en iyi** deneme kullanılır
+   (önce daha uzun path, eşitse daha çok oda) ve sonuç **uyarıyla** raporlanır. Kısa
+   dungeon sessizce kabul edilmiyor. Ölçümde ortalama deneme 1.2-1.6 arasında.
 
-### Duranlar (1C / 1D'de karara bağlanacak)
+### Duranlar
 
-4. **Tıpa yöntemi:** prosedürel mi, biome schematic'i mi ilk yazılacak? Prosedürel daha hızlı
-   ve 1D'yi bloklamaz; biome tıpaları FAZ 10 ile birlikte gelebilir. *(§7)*
+4. ~~**Tıpa yöntemi.**~~ ✅ **Prosedürel yazıldı** ve beklenenden iyi çıktı: açıklığın
+   boyutu da malzemesi de *ölçülüyor*, dolayısıyla biome başına dosyaya gerek kalmadı.
+   4 dosyalık schematic yolu artık sadece özel bir görünüm isteniyorsa gerekli. *(§7)*
 5. **Koridor parçası olacak mı?** Odalar doğrudan sırt sırta bağlanabiliyor. Araya 2 kapılı
    ince koridor parçaları sokmak yerleşimi daha organik yapar ama oda kotasını nasıl etkileyeceği
    (koridor "oda" sayılacak mı) karara bağlanmalı. *(§6)*
@@ -647,19 +760,32 @@ dungeon"u geri getirmek imkânsız olurdu.
 
 ---
 
-## 14. Sıradaki adım — FAZ 1D (graf üretimi, gezilebilir dungeon milestone'u)
+## 14. FAZ 1D — bitti ✅  (FAZ 1 MILESTONE'U TAMAMLANDI)
 
-1C "bir kapıya oda takabiliyorum"u verdi. 1D'nin işi **grafın şeklini garanti altına almak**.
+1. ✅ Kritik path — hedef uzunluk garanti altında, tek kapılılar havuzdan elenmiş
+2. ✅ Boss ataması — girişten en uzak boş kapıya, random değil
+3. ✅ Yan dallar — kalan kota, boss'tan önce (§6.3)
+4. ✅ Tıpa — açıklık ve malzeme ölçülerek, prosedürel (§7)
+5. ✅ Boyut seçimi — small / medium / large (§6.1)
+6. ✅ Tıkanma politikası — yeniden deneme + en iyisi + uyarı
+7. ✅ **Milestone: `/tdungeons dungeon <boyut> [seed]` ile gezilebilir dungeon üretiliyor**
 
-1. **Kritik path** — §6.2. Hedef oda sayısı → path uzunluğu `round(hedef × 0.65)`, min 2.
-   Giriş odasından zincir. **Tek kapılı şablonlar bu aşamada havuzdan çıkarılacak**
-   (açık soru #7; gerekçe ve ölçüm §6.2'deki uyarı kutusunda).
-2. **Boss ataması** — path'in son düğümü, random değil.
-3. **Yan dallar** — kalan kota, path odalarının boş kapılarından (§6.3).
-4. **Tıpa** — kalan BOŞ ve ÖLÜ kapılar kapatılacak (§7). Prosedürel yöntem önce
-   (0 dosya, 1D'yi bloklamaz); biome tıpaları FAZ 10 ile gelebilir — açık soru #4.
-5. **Boyut seçimi** — small 3-6 / medium 7-12 / large 13-20 (§6.1).
-6. **Tıkanma politikası** — açık soru #8.
-7. **Milestone:** komutla boş ama **gezilebilir** bir dungeon üretiliyor.
+---
 
-`LayoutNode.depth` ve `deadDoors()` 1D için şimdiden hazır duruyor.
+## 15. Sıradaki — FAZ 2 (instance yaşam döngüsü)
+
+Generation bitti; artık üretilen dungeon'ın **yaşaması** gerekiyor. `Roadmap.md` FAZ 2:
+
+1. Instance kaydı ve temizleme (slot serbest bırakılırken **blokların da silinmesi** —
+   `GridSlotManager.release()` şu an sadece index'i geri veriyor)
+2. Dungeon süresi ve süre bitince oyuncunun ışınlanması
+3. Giriş objesi (sağ tık ile giriş)
+4. `/tp` ve `/tpa` engelleme (admin dahil — `anahedef.md`)
+
+**Generation tarafında 1D sonrası bilinmesi gerekenler:**
+- `DungeonGenerator.Result` bir instance'ı tarif eden her şeyi taşıyor: `seed`, `size`,
+  `bossNodeId`, `layout`. FAZ 7'de DB'ye **slot index + seed + boyut** yazmak dungeon'ı
+  yeniden üretmeye yeter — bütün yerleşimi saklamaya gerek yok.
+- Boss odasının node id'si FAZ 3'ün boss spawn'ı için hazır.
+- `LayoutNode.depth()` zorluk ölçeklemesi için kullanılabilir (girişten uzaklaştıkça
+  daha güçlü mob) — FAZ 3'te değerlendirilecek.
