@@ -1,6 +1,8 @@
-# generation geometrisinin sunucusuz testi — bkz. scripts\geo-probe\README.md
-# Kullanim: powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
-#           ... -File scripts\geo-probe\run.ps1 -Rot     (WorldEdit rotasyon isaretini olcer)
+# generation paketinin sunucusuz testleri — bkz. scripts\geo-probe\README.md
+#
+# Kullanim:
+#   ... -File scripts\geo-probe\run.ps1          # GeoProbe + GenProbe (varsayilan)
+#   ... -File scripts\geo-probe\run.ps1 -Rot     # WorldEdit rotasyon isaretini olcer
 
 param([switch]$Rot)
 
@@ -38,11 +40,26 @@ if ($Rot) {
     exit $LASTEXITCODE
 }
 
-# GeoProbe sadece generation paketine bagli -- hicbir ucuncu parti jar gerekmiyor.
-& $javac -cp "$root\target\classes" -d $outDir "$probeDir\GeoProbe.java"
-if ($LASTEXITCODE -ne 0) { throw "GeoProbe derlenemedi" }
+# Probe'lar sadece generation paketine bagli -- hicbir ucuncu parti jar gerekmiyor.
+& $javac -cp "$root\target\classes" -d $outDir "$probeDir\GeoProbe.java" "$probeDir\GenProbe.java"
+if ($LASTEXITCODE -ne 0) { throw "Probe'lar derlenemedi" }
 
+$failed = 0
+
+Write-Host ""
+Write-Host "################ FAZ 1B — geometri ################" -ForegroundColor Cyan
 & $java -cp "$outDir;$root\target\classes" GeoProbe
-$code = $LASTEXITCODE
-if ($code -ne 0) { Write-Host "GEOMETRI TESTI BASARISIZ" -ForegroundColor Red }
-exit $code
+if ($LASTEXITCODE -ne 0) { $failed = 1 }
+
+Write-Host ""
+Write-Host "################ FAZ 1C — secim + cakisma ################" -ForegroundColor Cyan
+& $java -cp "$outDir;$root\target\classes" GenProbe
+if ($LASTEXITCODE -ne 0) { $failed = 1 }
+
+Write-Host ""
+if ($failed -ne 0) {
+    Write-Host "TESTLER BASARISIZ" -ForegroundColor Red
+} else {
+    Write-Host "TUM TESTLER GECTI" -ForegroundColor Green
+}
+exit $failed

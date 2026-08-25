@@ -23,3 +23,15 @@ schematics:
   # Sadece FAWE ile ilgili bir sorun teşhis edilirken açılmalı — açıkken büyük
   # dungeon üretimi TPS düşürür.
   force-sync-paste: false
+
+generation:
+  # Dönüş yanlılığı — generation.md 6.4. Zincirin cetvelle çizilmiş gibi düz gitmesini
+  # engeller: "ebeveynle aynı yöne devam eden" kapı seçenekleri geriye itilir.
+  #
+  # 1.0 = ceza yok (odalar düz dizilebilir)
+  # 2.0 = düz devam eden seçenek %50 ihtimalle yine de öne geçer (varsayılan)
+  # yüksek = dönüşler daha baskın
+  #
+  # Ceza KAPI seçimi aşamasında uygulanır, şablon seçimi aşamasında değil — yoksa
+  # 'agirlik' değerinin anlamı bozulurdu (bkz. generation.md 5.4).
+  turn-bias: 2.0

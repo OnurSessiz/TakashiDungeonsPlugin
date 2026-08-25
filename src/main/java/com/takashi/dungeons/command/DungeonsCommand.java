@@ -2,8 +2,12 @@ package com.takashi.dungeons.command;
 
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
+import com.takashi.dungeons.generation.Aabb;
+import com.takashi.dungeons.generation.ChainGenerator;
 import com.takashi.dungeons.generation.DoorAnchor;
+import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
+import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.generation.RoomTemplate;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.generation.Rotation;
@@ -27,6 +31,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -39,8 +44,8 @@ import java.util.concurrent.CompletableFuture;
 public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
-            List.of("version", "status", "world", "list", "rooms", "room", "gen", "paste",
-                    "connect", "slots", "free");
+            List.of("version", "status", "world", "list", "rooms", "room", "weights", "gen",
+                    "paste", "connect", "build", "slots", "free");
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
 
@@ -69,6 +74,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "gen" -> generate(sender);
             case "paste" -> paste(sender, label, args);
             case "connect" -> connect(sender, label, args);
+            case "weights" -> weights(sender);
+            case "build" -> build(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             default -> sender.sendMessage(Component
@@ -424,6 +431,172 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         plugin.getLogger().warning(prefix + ": " + cause);
     }
 
+    // ------------------------------------------------------- FAZ 1C: seçim + çakışma
+
+    /**
+     * Aday havuzunun ağırlık dağılımını gösterir — {@code generation.md} §5.4 kararının
+     * gözle doğrulanması.
+     *
+     * <p>Yüzdeler kapı sayısından bağımsız olmalı: 4 kapılı bir oda ağırlığını bir kez
+     * sayar. Bu komut, config'in söylediğiyle motorun yaptığının aynı olduğunu gösteriyor.
+     */
+    private void weights(CommandSender sender) {
+        RoomTemplateStore store = requireTemplates(sender);
+        if (store == null) {
+            return;
+        }
+        store.loadAll(store.list()).whenComplete((templates, error) -> {
+            if (error != null) {
+                sendFailure(sender, "Şablonlar yüklenemedi", error);
+                return;
+            }
+            RoomLibrary library = new RoomLibrary(templates);
+            sender.sendMessage(Component.text(
+                    "Aday havuzu (giris/boss hariç — onlar atanıyor, seçilmiyor):",
+                    NamedTextColor.GOLD));
+            if (!library.isUsable()) {
+                sender.sendMessage(Component.text("  " + library.describeProblem(),
+                        NamedTextColor.RED));
+                return;
+            }
+            RoomLibrary.describeDistribution(library.normalPool()).forEach(line ->
+                    sender.sendMessage(Component.text("  " + line, NamedTextColor.WHITE)));
+            sender.sendMessage(Component.text(
+                    "  ağırlık ŞABLONA ait, (şablon x kapı) çiftine değil — generation.md 5.4",
+                    NamedTextColor.DARK_GRAY));
+
+            if (!library.entrances().isEmpty()) {
+                sender.sendMessage(Component.text("  giriş odaları: " + library.entrances().size()
+                        + "   boss odaları: " + library.bosses().size(), NamedTextColor.GRAY));
+            } else {
+                sender.sendMessage(Component.text(
+                        "  giriş odası yok — normal havuzdan seçilecek (fallback)",
+                        NamedTextColor.YELLOW));
+            }
+        });
+    }
+
+    /**
+     * Zincir üretir ve slot'a paste eder — FAZ 1C doğrulaması.
+     *
+     * <p>Kritik path / boss ataması / tıpa burada YOK, onlar 1D. Buradaki iş: ağırlıklı
+     * seçim + çakışma testi + geri çekilme + ÖLÜ işaretlemenin birlikte çalıştığını
+     * göstermek.
+     */
+    private void build(CommandSender sender, String label, String[] args) {
+        RoomTemplateStore store = requireTemplates(sender);
+        SchematicService service = requireSchematics(sender);
+        World world = requireWorld(sender);
+        if (store == null || service == null || world == null) {
+            return;
+        }
+
+        int target;
+        long seed;
+        try {
+            target = args.length >= 2 ? Integer.parseInt(args[1]) : 8;
+            seed = args.length >= 3 ? Long.parseLong(args[2]) : new Random().nextLong();
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " build [odaSayısı] [seed]",
+                    NamedTextColor.RED));
+            return;
+        }
+        if (target < 1 || target > 64) {
+            sender.sendMessage(Component.text("Oda sayısı 1-64 arasında olmalı: " + target,
+                    NamedTextColor.RED));
+            return;
+        }
+
+        double turnBias = plugin.getConfig().getDouble("generation.turn-bias", 2.0);
+        GridSlot slot = plugin.getSlotManager().allocate();
+        Aabb slotBounds = slotBounds(slot, world);
+        Vec3i center = new Vec3i(slot.originX() + slot.size() / 2, slot.originY(),
+                slot.originZ() + slot.size() / 2);
+
+        sender.sendMessage(Component.text("Üretiliyor: " + target + " oda, seed=" + seed
+                + ", dönüş yanlılığı=" + turnBias, NamedTextColor.GRAY));
+
+        store.loadAll(store.list())
+                .thenApply(templates -> {
+                    RoomLibrary library = new RoomLibrary(templates);
+                    if (!library.isUsable()) {
+                        throw new IllegalStateException(library.describeProblem());
+                    }
+                    return new ChainGenerator(library, new Random(seed), turnBias)
+                            .generate(slotBounds, center, target);
+                })
+                .thenCompose(result -> pasteLayout(service, world, result)
+                        .thenApply(millis -> result))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        plugin.getSlotManager().release(slot.index());
+                        sendFailure(sender, "Üretim başarısız", error);
+                        return;
+                    }
+                    reportBuild(sender, world, slot, result, seed);
+                });
+    }
+
+    /**
+     * Slot'un 3B sınırı. X/Z slot'tan, Y dünyanın yükseklik sınırlarından geliyor.
+     *
+     * <p>X/Z sınırı sert bir gereklilik: taşan bir oda komşu instance'ın bloklarına girer.
+     * Y'de slot kavramı yok, dünya sınırı yeterli.
+     */
+    private static Aabb slotBounds(GridSlot slot, World world) {
+        return new Aabb(
+                slot.originX(), world.getMinHeight(), slot.originZ(),
+                slot.originX() + slot.size() - 1, world.getMaxHeight() - 1,
+                slot.originZ() + slot.size() - 1);
+    }
+
+    /** Odaları sırayla paste eder — sıra deterministik olsun diye zincirleniyor. */
+    private CompletableFuture<Long> pasteLayout(SchematicService service, World world,
+                                                ChainGenerator.Result result) {
+        CompletableFuture<Long> chain = CompletableFuture.completedFuture(0L);
+        for (LayoutNode node : result.layout().nodes()) {
+            PlacedRoom room = node.room();
+            chain = chain.thenCompose(ignored -> service.load(room.template().name())
+                    .thenCompose(clip -> pasteAt(service, world, clip, room)));
+        }
+        return chain;
+    }
+
+    private void reportBuild(CommandSender sender, World world, GridSlot slot,
+                             ChainGenerator.Result result, long seed) {
+        sender.sendMessage(Component.text("Üretildi — " + slot, NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  oda: " + result.placed() + "/" + result.requested()
+                + "   ölü kapı: " + result.deadEnds()
+                + "   boş kapı: " + result.layout().openDoorCount()
+                + "   denenen aday: " + result.attempts(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  seed: " + seed
+                + "  (aynı seed aynı dungeon'ı üretir)", NamedTextColor.DARK_GRAY));
+
+        if (result.stoppedReason() != null) {
+            sender.sendMessage(Component.text("  erken durdu: " + result.stoppedReason(),
+                    NamedTextColor.YELLOW));
+        }
+
+        ChainGenerator.describe(result.layout()).forEach(line ->
+                sender.sendMessage(Component.text("  " + line, NamedTextColor.WHITE)));
+
+        // Kendi kendini denetleme: çakışma, slot taşması, hizasız geçit, kopuk graf.
+        List<String> problems = result.layout().validate();
+        if (problems.isEmpty()) {
+            sender.sendMessage(Component.text(
+                    "  [OK] yerleşim tutarlı: çakışma yok, geçitler hizalı, graf bağlı",
+                    NamedTextColor.GREEN));
+        } else {
+            problems.forEach(pr -> sender.sendMessage(
+                    Component.text("  [HATA] " + pr, NamedTextColor.RED)));
+        }
+
+        LayoutNode root = result.layout().root();
+        if (root != null) {
+            teleportTo(sender, world, root.room().origin().plus(new Vec3i(0, 1, 0)));
+        }
+    }
+
     private void slots(CommandSender sender) {
         GridSlotManager manager = plugin.getSlotManager();
         if (manager.allocatedCount() == 0) {
@@ -514,6 +687,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         if (sub.equals("connect") && (args.length == 4 || args.length == 5)) {
             return DOOR_INDICES.stream().filter(d -> d.startsWith(args[args.length - 1])).toList();
+        }
+        if (args.length == 2 && sub.equals("build")) {
+            return List.of("4", "8", "12", "20").stream()
+                    .filter(n -> n.startsWith(args[1])).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();

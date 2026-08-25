@@ -221,6 +221,39 @@ kendisi hiçbir şeye bağlı değil.
   `attachTo` sadece "nereye oturur"u cevaplıyor. Ayrım, geometriyi dünyaya erişmeden
   test edilebilir tutuyor.
 
+## Graf Yerleşimi & Aday Seçimi (FAZ 1C)
+**Dosya/Paket:** `com.takashi.dungeons.generation` — `DoorState`, `OpenDoor`, `LayoutNode`,
+`DungeonLayout`, `RoomLibrary`, `RoomPlacer`, `ChainGenerator`
+**Ne işe yarar:** 1B "bu oda buraya şu açıyla oturur"u veriyordu; bu katman
+**"oturabilir mi, ve hangi oda seçilmeli?"** sorusunu cevaplıyor.
+**Nasıl çalışır:**
+1. `RoomLibrary` şablonları tipe göre ayırır — `giris` ve `boss` **normal havuzda yok**
+   (ikisi de atanıyor, seçilmiyor); kapısız odalar da elenir
+2. `RoomPlacer.fill(layout, kapı, havuz)`:
+   - şablon **ağırlıkla** çekilir ve havuzdan **düşer** (yerine konmaz)
+   - o şablonun kapıları karıştırılır, dönüş yanlılığı düz devam edenleri geriye iter
+   - her kapı için `attachTo` ile aday kutu hesaplanır, `DungeonLayout.rejectReason` sorulur
+   - geçen ilki yerleşir ve iki kapı karşılıklı bağlanır
+   - havuz tükenirse kapı **ÖLÜ** işaretlenir
+3. `DungeonLayout` çakışmayı kaba kuvvetle test eder (en fazla 20 oda — spatial hash gereksiz)
+4. `ChainGenerator` boş kapıları **genişlik öncelikli** tüketerek hedefe kadar büyütür
+**Bağımlılıkları:** `RoomTemplate` / `PlacedRoom` (1B). Bukkit ya da WorldEdit **yok** —
+slot sınırı `Aabb` olarak dışarıdan veriliyor, bütün katman sunucusuz test edilebiliyor.
+**Dikkat edilecek:**
+- **Ağırlık ŞABLONA ait, `(şablon × kapı)` çiftine değil** — `generation.md` §5.4, karar
+  2026-08-25. Çifte ait olsaydı 4 kapılı oda ağırlığını 4 kez sayar ve haritacının yazdığı
+  **sıralama tersine dönerdi**. `RoomLibrary` sınıf yorumunda sayılarla anlatılıyor.
+- **Dönüş yanlılığı kapı seçimi aşamasında**, şablon seçimi aşamasında değil. Şablon
+  aşamasına dokunmak yukarıdaki kararın altını oyardı.
+- **Çekilen şablon havuza geri konmaz.** Konsaydı aynı adayı sonsuza kadar deneyebilirdik.
+- `LayoutNode` durum geçişleri tek yönlü (BOŞ → BAĞLI / ÖLÜ) ve ihlali **patlatıyor**.
+  Aynı kapıya iki oda bağlamak sessizce ikincisini kaybettirirdi.
+- **`ChainGenerator` graf üretimi DEĞİL.** Kritik path, boss ataması, yan dal kotası ve
+  tıpa 1D'nin işi. Bu sınıf sadece 1C'nin parçalarının birlikte çalıştığını gösteriyor.
+- **Hedef oda sayısı garanti edilmiyor** — 12 oda hedefinde %70.8. Sebep çakışma değil,
+  dallanma sürecinin sönmesi; ölçüm ve 1D'nin çözümü `generation.md` §6.2'de.
+- Üretim **seed'le tekrarlanabilir**. Hata ayıklanamayan prosedürel üretim hata ayıklanmaz.
+
 ## Plugin Bootstrap & Entegrasyon Tespiti
 **Dosya/Paket:** `com.takashi.dungeons.TakashiDungeonsPlugin`, `com.takashi.dungeons.command.DungeonsCommand`
 **Ne işe yarar:** Plugin'in enable/disable yaşam döngüsü + opsiyonel (softdepend) plugin'lerin

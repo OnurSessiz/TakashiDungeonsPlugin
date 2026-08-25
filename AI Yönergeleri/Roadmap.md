@@ -20,7 +20,7 @@
 ## FAZ 1 — Çekirdek Generation (EN KRİTİK)
 
 > Adım adım ilerliyor: **1A** altyapı ✅ → **1B** metadata + yerleştirme geometrisi ✅ →
-> 1C kapı eşleştirme + çakışma → 1D graph üretimi
+> **1C** kapı eşleştirme + çakışma ✅ → 1D graph üretimi
 >
 > **Algoritmanın tam spec'i: [`generation.md`](generation.md)** — 1B'ye başlamadan okunacak.
 
@@ -30,13 +30,15 @@
       → oda başına `.yml`; kapı **anchor'ı** yazılıyor, yön ve boyut **türetiliyor**
 - [x] Test için basit oda schematic'i (tek biome) — kod üretimli placeholder, `/tdungeons gen`
       → 8 oda: 5 temel + `test_giris` (1D için) + `test_long` (§4 tuzağı) + `test_even` (§9)
-- [ ] Kapı eşleştirme mantığı (aday havuzu + ağırlıklı seçim + dönüş yanlılığı) ← **1C, sıradaki**
-- [ ] 3B AABB çakışma testi + slot sınırı + ÖLÜ kapı işaretleme ← **1C**
-      → `Aabb.intersects` yazıldı; eksik olan yerleşmiş odaları tutan katman
+- [x] Kapı eşleştirme mantığı (aday havuzu + ağırlıklı seçim + dönüş yanlılığı)
+      → ağırlık ŞABLONA ait, iki aşamalı seçim (generation.md §5.4)
+- [x] 3B AABB çakışma testi + slot sınırı + ÖLÜ kapı işaretleme
+      → `DungeonLayout` + `RoomPlacer`; `validate()` ile kendi kendini denetliyor
 - [x] Rotation desteği (90/180/270 ile kapı yönü çevirme)
       → blok **ve** metadata seviyesinde çalışıyor. Rotasyon işareti ölçüldü: `+1` saat yönü.
         Gereken açı aranmıyor, `R = (d_p + 2 - d_c) mod 4` ile hesaplanıyor.
-- [ ] Kritik path üretimi (giriş → boss zorunlu yolu)
+- [ ] Kritik path üretimi (giriş → boss zorunlu yolu) ← **1D, sıradaki**
+      → tek kapılı şablonlar path havuzundan çıkarılacak (ölçüm: generation.md §6.2)
 - [ ] Yan dal (side room) ekleme
 - [ ] Boyut değişkeni: small (3-6) / medium (7-12) / large (13-20)
 - [ ] Çok kapılı odalar → labirent hissi (bir oda 2-3 odaya açılabilsin)

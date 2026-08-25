@@ -31,6 +31,110 @@
 
 ---
 
+## 2026-08-25 — FAZ 1C: Aday Seçimi, Çakışma ve Geri Çekilme (TAMAMLANDI)
+
+**Ne yapıldı:**
+- Ağırlık sorusu **Onur tarafından karara bağlandı: B — ağırlık ŞABLONA ait.**
+- Graf katmanı yazıldı: havuz, iki aşamalı seçim, çakışma testi, geri çekilme, ÖLÜ kapı.
+- `/tdungeons weights` ve `/tdungeons build <oda> [seed]` komutları eklendi.
+- 1C testleri (`GenProbe`) yazıldı — 29 kontrol, sunucusuz.
+
+**KARAR: `agirlik` şablona ait, `(şablon × kapı)` çiftine değil**
+
+Aday bir çift olduğu için 4 kapılı oda 4 aday üretiyor. Ağırlık çifte ait olsaydı o oda
+ağırlığını 4 kez sayardı. Sonuç sadece dağılımın kayması değil — haritacının yazdığı
+**sıralamanın tersine dönmesi**:
+
+| Oda | Kapı | Ağırlık | Çifte ait olsa | **Şablona ait (seçilen)** |
+|---|---|---|---|---|
+| test_corridor | 2 | **150** | %21.4 | **%25.4** |
+| test_cross | 4 | 100 | **%28.6** | %16.9 |
+| test_deadend | 1 | 60 | **%4.3** | %10.2 |
+
+Haritacı koridora daha yüksek ağırlık yazmış; çifte ait olsaydı cross onu geçerdi.
+Marketplace tarafı da bunu gerektiriyor: `agirlik`'i sunucu sahibi düzenleyecek ve
+"200 yazarsam iki katı" beklentisi tutulmak zorunda. Ayrıntı `generation.md` §5.4.
+
+Uygulama **iki aşamalı**: şablon ağırlıkla çekilir (havuzdan düşer, yerine konmaz),
+sonra kapıları karıştırılıp sırayla denenir. Geri çekilme (§5.3) bu sayede temiz çalışıyor.
+
+**Dönüş yanlılığı da bu kararın gereği:** ceza **kapı seçimi** aşamasında uygulanıyor,
+şablon seçimi aşamasında değil — şablon aşamasına dokunmak `agirlik`'in anlamını bozardı.
+
+**ÖNEMLİ ÖLÇÜM — 1C hedef oda sayısını GARANTİ ETMİYOR (ve bu 1D'nin işi)**
+
+2000 seed, 12 oda hedefi, 512'lik slot:
+- hedefe ulaşan: **%70.8**
+- tıkanan 584 koşumun sadece **81'inde** ölü kapı var → tıkanmaların **%86'sı çakışma değil**
+- **204 koşum tam 2 odada** duruyor (%10.2)
+
+Bu bir **dallanma süreci (Galton-Watson) sönümlenmesi**. Her yerleştirme 1 kapı tüketip
+`(kapı − 1)` kapı ekliyor → net `(kapı − 2)`. Mevcut sette beklenen net **+0.373 / oda**:
+pozitif ama tek kapılı kökten başlarken erken sönme olasılığı yüksek.
+
+**%10.2 tesadüf değil** — `test_deadend`'in çekiliş oranı %10.17. Kök (`test_giris`) tek
+kapılı; ilk çekilen oda çıkmazsa frontier sıfırlanıyor.
+
+**1D'nin somut gereksinimi:** kritik path kurulurken tek kapılı şablonlar havuzdan
+çıkarılmalı. Aynı 2000 seed'de: **%97.1**. Bu, `generation.md` §6.2'nin "path'i önce kur"
+kararının teorik değil **ölçülmüş** gerekçesi hâline geldi.
+
+**Kurulan yapı / değişen dosyalar:**
+- `generation/DoorState.java`, `OpenDoor.java`, `LayoutNode.java` (YENİ)
+- `generation/DungeonLayout.java` (YENİ) — çakışma, slot sınırı, `validate()`
+- `generation/RoomLibrary.java` (YENİ) — havuz + ağırlıklı seçim (kararın kalbi)
+- `generation/RoomPlacer.java` (YENİ) — aday deneme, geri çekilme, dönüş yanlılığı
+- `generation/ChainGenerator.java` (YENİ) — 1C doğrulaması için basit zincir
+- `command/DungeonsCommand.java` — `weights`, `build` + tab-complete
+- `config.yml` — `generation.turn-bias` (varsayılan 2.0)
+- `plugin.yml` — usage satırı
+- `scripts/geo-probe/GenProbe.java` (YENİ) + `run.ps1` ikisini birden koşuyor
+- `AI Yönergeleri/` — generation.md (§5.4 yeni, §6.2'ye ölçüm kutusu, §10/§11/§13/§14),
+  isleyis.md (yeni sistem kaydı), Roadmap.md (1C `[x]`)
+
+**Alınan kararlar:**
+- **`DungeonLayout.validate()` üretim yolunda çağrılmıyor.** Bir hata varsa *hangi*
+  değişmezin bozulduğunu söylemesi için var: çakışma, slot taşması, hizasız geçit, kopuk
+  graf. Prosedürel üretimde en pahalı hata bozuk çıktının sessizce kabul edilmesi.
+- **Üretim seed'le tekrarlanabilir.** `/tdungeons build 12 42` her zaman aynı dungeon'ı
+  veriyor. Seed olmadan "şu bozuk dungeon"u geri getirmek imkânsız olurdu.
+- **`LayoutNode` durum geçişleri tek yönlü ve ihlali patlatıyor** (BOŞ → BAĞLI / ÖLÜ).
+  Aynı kapıya iki oda bağlamak sessizce ikincisini kaybettirirdi.
+- **Çekilen şablon havuza geri konmuyor** — konsaydı aynı adayı sonsuza kadar deneyebilirdik.
+- **Kaba kuvvet çakışma testi** yeterli: en fazla 20 oda, aday başına 20 kutu. Spatial hash
+  kendi maliyetinden pahalı olurdu.
+- **Genişlik öncelikli kapı tüketimi.** Derinlik öncelikli olsaydı tek uzun kuyruk çıkar,
+  yerleşim çabuk kendine dolanırdı.
+- Graf katmanı da **Bukkit/WorldEdit'ten bağımsız** — slot sınırı `Aabb` olarak dışarıdan
+  veriliyor. Bu sayede 2000 seed'lik ölçüm saniyeler içinde koşuyor.
+
+**Doğrulama:**
+- **29/29 sunucusuz** (`GenProbe`): 200.000 çekilişte ağırlık dağılımı (sapma < %0.3),
+  sıralama karşılaştırması, havuz filtresi, yerine koymadan çekme, 500 seed'de sıfır
+  tutarsızlık, dar slot'ta sıfır taşma, ÖLÜ işaretleme, tekrarlanabilirlik.
+- **13/13 blok kontrolü** (sunucuda): üretilmiş dungeon'da geçitler açık, duvarlar sırt
+  sırta, döndürülmüş odanın tavan ışığı yerinde, ÖLÜ kapının açıklığı duruyor.
+- 3 seed × 12 oda sunucuda üretildi, üçü de 12/12 ve `validate()` temiz.
+- Sunucudaki `weights` çıktısı `GenProbe`'un ölçtüğü dağılımla birebir aynı.
+- **53/53** 1B geometri testi (`GeoProbe`) hâlâ geçiyor — regresyon yok.
+
+**Kaldığımız yer / sıradaki adım:**
+→ **FAZ 1D.** Plan `generation.md` **§14**'te. Kritik path (tek kapılı şablonlar hariç) →
+  boss ataması → yan dallar → tıpa → boyut seçimi → tıkanma politikası.
+  **Milestone: komutla boş ama gezilebilir bir dungeon.**
+
+**Çözülmemiş sorun / not:**
+- **Tıkanma politikası karara bağlanmadı** (§11 madde 8). Path hedefe ulaşamazsa yeniden mi
+  denenecek (farklı seed), yoksa kısa dungeon kabul mü edilecek? Marketplace tarafı
+  "kullanıcının istediği boyut" sözünü tutmayı gerektiriyor.
+- Tıpa yöntemi (prosedürel mi biome schematic'i mi) hâlâ açık (§11 madde 4) — 1D'de ilk
+  prosedürel yazılacak, 1D'yi bloklamasın diye.
+- Koridor parçası ve giriş odası tekilliği açık (§11 madde 5-6).
+- `test_giris`'in tek kapılı olması sönümlenmeyi tetikleyen etken. FAZ 10'da gerçek giriş
+  odaları çizilirken **en az 2 kapılı** olmaları düşünülmeli — harita ekibine söylenecek.
+
+---
+
 ## 2026-08-25 — FAZ 1B: Oda Metadata Modeli + Yerleştirme Geometrisi (TAMAMLANDI)
 
 **Ne yapıldı:**

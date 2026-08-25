@@ -1,7 +1,7 @@
 # GENERATION — Dungeon Üretim Sistemi
 
-> **Durum:** FAZ 1A ve **1B** yazıldı, ikisi de sunucuda doğrulandı. 1C / 1D bu dosyadaki
-> tasarıma göre yazılacak — o kısımların kodu **henüz yok**.
+> **Durum:** FAZ 1A, **1B** ve **1C** yazıldı, üçü de sunucuda doğrulandı. 1D bu dosyadaki
+> tasarıma göre yazılacak — o kısmın kodu **henüz yok**.
 >
 > 1B'de kapanan iki açık soru (§3 rotasyon işareti, §9 tek sayı kenar) artık **ölçülmüş**
 > durumda; bu dosyadaki formüller varsayım değil.
@@ -241,6 +241,55 @@ hiçbiri geçmediyse:
 
 ---
 
+### 5.4 Aday seçimi — ağırlık kime ait
+
+> **Karar (2026-08-25): `agirlik` ŞABLONA ait, `(şablon × kapı)` çiftine değil.**
+> Seçim iki aşamalı yapılır.
+
+```
+1) ŞABLON seç        — ağırlıklı rastgele, havuzdan çekilir (yerine konmadan)
+2) KAPI seç          — o şablonun kapıları karıştırılır, sırayla denenir
+3) hiçbiri oturmazsa — şablon havuzdan düşer, 1'e dön
+4) havuz boşalırsa   — kapı ÖLÜ (§7 tıpa)
+```
+
+**Neden çifte değil.** Aday bir `(şablon × kapı)` çifti olduğu için 4 kapılı bir oda
+4 aday üretiyor. Ağırlık çifte ait olsaydı o oda ağırlığını 4 kez sayardı — haritacının
+yazmadığı bir özellik (kapı sayısı) yazdığı değeri ezerdi.
+
+Mevcut test setiyle somut sonuç:
+
+| Oda | Kapı | Ağırlık | Çifte ait olsa | **Şablona ait (seçilen)** |
+|---|---|---|---|---|
+| test_corridor | 2 | **150** | %21.4 | **%25.4** |
+| test_corner | 2 | 120 | %17.1 | %20.3 |
+| test_cross | 4 | 100 | **%28.6** | %16.9 |
+| test_even | 3 | 80 | %17.1 | %13.6 |
+| test_long | 2 | 80 | %11.4 | %13.6 |
+| test_deadend | 1 | 60 | **%4.3** | %10.2 |
+
+Sadece dağılım kaymıyor — **sıralama tersine dönüyor.** Haritacı koridora 150, cross'a 100
+yazmış; çifte ait olsaydı cross (%28.6) koridoru (%21.4) geçerdi. Config'in söylediğinin
+tersi olurdu.
+
+Ve sapma **birikiyor**: çok kapılı oda koydukça daha fazla boş kapı açılıyor, her boş kapı
+yine çok kapılı odayı kayırıyor. 20 odalık dungeon'da tek seferlik değil, büyüyen bir sapma.
+
+**Marketplace gerekçesi:** `agirlik`'i sunucu sahibi YAML'den düzenleyecek. "200 yazarsam
+100'ün iki katı sıklıkta gelir" beklentisi tutulmak zorunda. Kapı sayısının bunu sessizce
+ezmesi, sebebi hiçbir yerde yazmadığı için teşhis edilemeyen bir hata olurdu.
+
+**Karşı argüman ve neden yetmiyor.** 4 kapılı oda motora gerçekten daha faydalı: daha çok
+geometrik duruma cevap veriyor, grafın büyümesini sürdürüyor. Ama bu **ayrı bir endişe**,
+haritacının ağırlığıyla karıştırılmamalı. Dallanmayı teşvik etmek istersek açık ve
+kapatılabilir bir config düğmesi eklenir — §6.4'ün dönüş yanlılığı da tam olarak böyle,
+ağırlığın içine gömülmüyor, aday sıralamasında ayrı bir katsayı olarak duruyor.
+
+**Havuz filtresi:** `giris` ve `boss` normal aday havuzunda **yok**. İkisi de §6.2'de
+atanıyor; havuzda kalsalardı boss odası dungeon'ın ortasında belirebilirdi.
+
+---
+
 ## 6. Graf üretimi
 
 ### 6.1 Boyut → oda sayısı
@@ -264,6 +313,33 @@ denirse boss'un giriş'ten kaç oda uzakta olduğu kontrol edilemez — bazı du
 biter, bazıları 15. Path'i önce kurmak **oynanış süresini garanti altına alır**. Prosedürel
 üretimde aranan şey bu: rastgelelik çeşitlilik için, iskelet garanti için.
 
+> ### ⚠️ Bu artık teorik bir gerekçe değil — 1C'de ölçüldü
+>
+> 1C'nin "her boş kapıyı doldur" stratejisi hedef oda sayısını **garanti etmiyor**.
+> 2000 seed, 12 oda hedefi, 512'lik slot:
+>
+> | Ölçüm | Sonuç |
+> |---|---|
+> | Hedefe ulaşan | **%70.8** |
+> | Tıkanan | 584 koşum |
+> | Bunların içinde **ölü kapı** olan | sadece **81** |
+> | Tam **2 odada** duran | **204** (%10.2) |
+>
+> Yani tıkanmaların **%86'sı çakışma değil** — kapı frontier'ının tükenmesi. Bu bir
+> **dallanma süreci (Galton-Watson) sönümlenmesi**: her yerleştirme 1 kapı tüketip
+> `(kapı − 1)` kapı ekliyor, yani net `(kapı − 2)`. Mevcut oda setinde beklenen net
+> değişim **+0.373 / oda** — pozitif, ama tek kapılı bir kökten başlarken erken sönme
+> olasılığı yüksek.
+>
+> **%10.2 rakamı tesadüf değil:** `test_deadend`'in çekiliş oranı %10.17. Kök
+> (`test_giris`) tek kapılı; ilk çekilen oda çıkmazsa frontier anında sıfırlanıyor ve
+> dungeon 2 odada bitiyor.
+>
+> **1D'nin somut gereksinimi:** kritik path kurulurken **tek kapılı şablonlar havuzdan
+> çıkarılmalı** (boss son düğüm olarak atanana kadar). Aynı 2000 seed, tek kapılı odalar
+> elenince: **%97.1**. Yan dallarda çıkmaz odalar serbest — orada zaten sona ermeleri
+> isteniyor.
+
 ### 6.3 Yan dallar
 Kritik path bir odaya girdiğinde odanın diğer kapıları **kullanılmamış** kalıyor. Yan dal
 üretimi bu boş kapılardan başlıyor, kota bitene ya da yer kalmayana kadar.
@@ -279,8 +355,17 @@ cetvelle çizilmiş gibi dizilir. A'nın kuzey kapısı ortadan +5 sağda, B'nin
 soldaysa B yanal olarak 8 blok kayarak oturur. Zincir boyunca kaymalar birikince yerleşim
 kendiliğinden kıvrılıyor.
 
-**Dönüş yanlılığı.** Aday sıralamasında "ebeveynle aynı yöne devam eden" seçeneklere ceza
-uygulanır. Basit ağırlık, tek satır.
+**Dönüş yanlılığı.** "Ebeveynle aynı yöne devam eden" seçeneklere ceza uygulanır.
+
+Ceza **kapı seçimi aşamasında** (§5.4 adım 2), şablon seçimi aşamasında değil. Sebebi §5.4:
+şablon aşamasına dokunmak `agirlik`'in anlamını bozar — az önce tam bundan kaçındık.
+Çocuğun hangi kapısından bağlandığı yönelimini belirliyor, dolayısıyla kalan kapılarının
+nereye bakacağını da; ceza oraya ait.
+
+Bir kapı seçeneği "düz" sayılır: yerleştirmeden sonra çocuğun **başka bir kapısı**
+ebeveynin dışa bakan yönünü gösteriyorsa. Karşılıklı çift kapılı odada (koridor) iki seçenek
+de düz olduğu için ceza etkisiz kalır — bu dürüst bir sonuç, asıl motor zaten kapı
+ofsetleri (yukarıdaki madde).
 
 ---
 
@@ -339,7 +424,9 @@ Her schematic'in yanında aynı adlı `.yml`. **Merkezi tek dosya değil** — h
 ```yaml
 # schematics/test_cross.yml
 tip: normal          # giris | normal | boss
-agirlik: 100         # aday seçiminde ağırlıklı rastgele (loot weight mantığı)
+agirlik: 100         # ŞABLONUN aday seçimindeki payı (loot weight mantığı).
+                     # Kapı sayısından BAĞIMSIZ — bkz. §5.4. 4 kapılı oda da
+                     # 1 kapılı oda da ağırlığını bir kez sayar.
 
 # Kapı anchor'ları: ORIGIN'E (oda merkezine) göre yerel koordinat.
 # [x, y, z] — kapı açıklığının taban-merkez bloğu.
@@ -401,7 +488,7 @@ bozmuyor — asimetri AABB'ye yansıyor, o da rotasyon sonrası hesaplandığı 
 
 ---
 
-## 10. Yazılmış olan — FAZ 1A + 1B
+## 10. Yazılmış olan — FAZ 1A + 1B + 1C
 
 Bu bölüm mevcut kodu tarif eder. Detaylı sistem kayıtları `isleyis.md`'de.
 
@@ -458,26 +545,64 @@ konan sınır kontrolü bunu `/tdungeons gen` anında patlatıyor; ofset +10'a �
 
 ---
 
+### FAZ 1C — aday seçimi, çakışma, geri çekilme
+
+| Ne | Nerede |
+|---|---|
+| Kapı durumu (BOŞ / BAĞLI / ÖLÜ) | `generation/DoorState.java` |
+| Doldurulmayı bekleyen kapı | `generation/OpenDoor.java` |
+| Yerleşmiş oda + kapı durumları | `generation/LayoutNode.java` |
+| Yerleşim, çakışma testi, slot sınırı, kendi kendini denetleme | `generation/DungeonLayout.java` |
+| Havuz + **ağırlıklı seçim** (§5.4) | `generation/RoomLibrary.java` |
+| Aday deneme, geri çekilme, dönüş yanlılığı, ÖLÜ işaretleme | `generation/RoomPlacer.java` |
+| 1C doğrulaması için basit zincir üretici | `generation/ChainGenerator.java` |
+| Komutlar | `command/DungeonsCommand.java` — `weights`, `build` |
+
+**`DungeonLayout.validate()`** üretim yolunda çağrılmıyor; bir hata varsa *hangi* değişmezin
+bozulduğunu söylemesi için var: çakışma, slot taşması, hizasız geçit, kopuk graf. Prosedürel
+üretimde en pahalı hata bozuk çıktının sessizce kabul edilmesi.
+
+**Doğrulanmış:**
+- 29 kontrol (sunucusuz, `GenProbe`): 200.000 çekilişte ağırlık dağılımı (sapma < %0.3),
+  havuz filtresi, yerine koymadan çekme, 500 seed'de sıfır tutarsızlık, dar slot'ta sıfır
+  taşma, ÖLÜ işaretleme, tekrarlanabilirlik.
+- 13 blok kontrolü (sunucuda): üretilmiş dungeon'da geçitler açık, duvarlar sırt sırta,
+  döndürülmüş odanın tavan ışığı yerinde, **ÖLÜ kapının açıklığı duruyor** (tıpa 1D'de).
+- Sunucudaki `weights` çıktısı `GenProbe`'un ölçtüğü dağılımla birebir aynı.
+- 3 seed × 12 oda sunucuda üretildi, üçü de `validate()` temiz.
+
+**Üretim tekrarlanabilir:** `/tdungeons build <oda> <seed>` aynı seed'de aynı dungeon'ı
+veriyor. Hata ayıklanamayan prosedürel üretim hata ayıklanmaz — seed olmadan "şu bozuk
+dungeon"u geri getirmek imkânsız olurdu.
+
+---
+
 ## 11. Açık sorular
 
 ### Kapananlar (1B)
 
 1. ~~**Rotasyon işareti.**~~ ✅ **`+1`, saat yönü.** Ölçüldü, bkz. §3.
 2. ~~**Tek sayı kenar kuralı.**~~ ✅ **Kalktı, doğrulandı.** `test_even` ile, bkz. §9.
+3. ~~**Ağırlık şablona mı, çifte mi ait?**~~ ✅ **Şablona.** İki aşamalı seçim, bkz. §5.4.
+
+### 1C'de ortaya çıkan, 1D'de kapanacak
+
+7. **Kritik path havuzu.** Tek kapılı şablonlar path kurulurken elenmeli — ölçüm ve
+   gerekçe §6.2'deki uyarı kutusunda. Yan dallarda serbest kalacaklar.
+8. **Tıkanma durumunda ne yapılacak?** Path hedefe ulaşamazsa: yeniden mi denenecek
+   (farklı seed), yoksa kısa dungeon kabul mü edilecek? Marketplace tarafı "kullanıcının
+   istediği boyut" sözünü tutmayı gerektiriyor — muhtemel cevap: N kez yeniden dene,
+   olmazsa en iyisini kullan ve logla.
 
 ### Duranlar (1C / 1D'de karara bağlanacak)
 
-3. **Tıpa yöntemi:** prosedürel mi, biome schematic'i mi ilk yazılacak? Prosedürel daha hızlı
+4. **Tıpa yöntemi:** prosedürel mi, biome schematic'i mi ilk yazılacak? Prosedürel daha hızlı
    ve 1D'yi bloklamaz; biome tıpaları FAZ 10 ile birlikte gelebilir. *(§7)*
-4. **Koridor parçası olacak mı?** Odalar doğrudan sırt sırta bağlanabiliyor. Araya 2 kapılı
+5. **Koridor parçası olacak mı?** Odalar doğrudan sırt sırta bağlanabiliyor. Araya 2 kapılı
    ince koridor parçaları sokmak yerleşimi daha organik yapar ama oda kotasını nasıl etkileyeceği
    (koridor "oda" sayılacak mı) karara bağlanmalı. *(§6)*
-5. **Giriş odası** tekil mi, her biome'un kendi giriş odası mı?
-6. **Aday ağırlığı nasıl kullanılacak?** `agirlik` metadata'da var ve okunuyor ama henüz
-   kimse kullanmıyor — ağırlıklı seçim 1C'de yazılacak. Ağırlık *şablon* başına mı,
-   yoksa *(şablon × kapı)* çifti başına mı uygulanacak? 4 kapılı bir oda 4 aday üretiyor;
-   şablon başına ağırlık verilirse çok kapılı odalar kendiliğinden 4 kat şanslı oluyor.
-   Muhtemel cevap: ağırlık şablona ait, çift seçilirken kapı **eşit** dağılsın.
+6. **Giriş odası** tekil mi, her biome'un kendi giriş odası mı?
+*(Ağırlık sorusu 2026-08-25'te kapandı — §5.4'e taşındı.)*
 
 ---
 
@@ -492,23 +617,29 @@ konan sınır kontrolü bunu `/tdungeons gen` anında patlatıyor; ofset +10'a �
 
 ---
 
-## 13. Sıradaki adım — FAZ 1C (kapı eşleştirme + çakışma)
+## 13. FAZ 1C — bitti ✅
 
-1B geometriyi verdi: "bu oda buraya şu açıyla oturur." 1C'nin sorusu farklı:
-**"oturabilir mi, ve hangi oda seçilmeli?"**
+1. ✅ Aday havuzu + iki aşamalı ağırlıklı seçim (§5.4)
+2. ✅ 3B çakışma testi + slot sınırı (`DungeonLayout`)
+3. ✅ Dönüş yanlılığı, kapı seçimi aşamasında (§6.4)
+4. ✅ ÖLÜ kapı işaretleme + geri çekilme (§5.3)
+5. ✅ **Doğrulama:** 500 seed sunucusuz + 3 seed sunucuda, hepsi tutarlı
 
-1. **Aday havuzu:** `(şablon × kapı)` çiftleri — §5.2 adım 1. `RoomTemplateStore.loadAll`
-   ile bütün şablonlar yüklenip çiftler çıkarılacak.
-2. **Çakışma testi** — §5.2 adım 5. `Aabb.intersects` hazır; eksik olan:
-   - yerleştirilmiş odaların listesini tutan bir `DungeonLayout` sınıfı
-   - slot sınırı kontrolü (`GridSlot`'tan kutu üretilecek)
-3. **Ağırlıklı aday seçimi** + karıştırma — §5.3. Açık soru #6 burada kapanacak.
-4. **Dönüş yanlılığı** — §6.4'ün ikinci mekanizması: ebeveynle aynı yöne devam eden
-   adaylara ceza.
-5. **ÖLÜ kapı işaretleme** — hiçbir aday geçmezse. Tıpa 1D'de.
-6. **Doğrulama:** 5-6 odalık bir zincir üret, hiçbir kutunun kesişmediğini ve her
-   bağlantının geçidinin açık olduğunu göster.
+---
 
-`GeoProbe`'daki `chainDrift` testi 1C için hazır bir başlangıç: ofsetli kapılarla kurulan
-6 odalık zincir kendine dolanıyor ve **çakışma tespit ediliyor** — 1C'nin reddedeceği
-adaylar tam olarak bunlar.
+## 14. Sıradaki adım — FAZ 1D (graf üretimi, gezilebilir dungeon milestone'u)
+
+1C "bir kapıya oda takabiliyorum"u verdi. 1D'nin işi **grafın şeklini garanti altına almak**.
+
+1. **Kritik path** — §6.2. Hedef oda sayısı → path uzunluğu `round(hedef × 0.65)`, min 2.
+   Giriş odasından zincir. **Tek kapılı şablonlar bu aşamada havuzdan çıkarılacak**
+   (açık soru #7; gerekçe ve ölçüm §6.2'deki uyarı kutusunda).
+2. **Boss ataması** — path'in son düğümü, random değil.
+3. **Yan dallar** — kalan kota, path odalarının boş kapılarından (§6.3).
+4. **Tıpa** — kalan BOŞ ve ÖLÜ kapılar kapatılacak (§7). Prosedürel yöntem önce
+   (0 dosya, 1D'yi bloklamaz); biome tıpaları FAZ 10 ile gelebilir — açık soru #4.
+5. **Boyut seçimi** — small 3-6 / medium 7-12 / large 13-20 (§6.1).
+6. **Tıkanma politikası** — açık soru #8.
+7. **Milestone:** komutla boş ama **gezilebilir** bir dungeon üretiliyor.
+
+`LayoutNode.depth` ve `deadDoors()` 1D için şimdiden hazır duruyor.
