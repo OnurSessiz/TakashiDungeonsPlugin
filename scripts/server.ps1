@@ -19,7 +19,14 @@ $java = "$($jdk21.FullName)\bin\java.exe"
 
 Push-Location $runDir
 try {
-    & $java -Xms2G -Xmx2G -XX:+UseG1GC -Dfile.encoding=UTF-8 -jar paper.jar nogui
+    # Argumanlar diziden veriliyor ve TIRNAKLI: Windows PowerShell 5.1, tirnaksiz
+    # -Dfile.encoding=UTF-8 tokenini noktadan bolup java'ya iki ayri arguman olarak
+    # geciriyor ("Could not find or load main class .encoding=UTF-8").
+    $javaArgs = @(
+        '-Xms2G', '-Xmx2G', '-XX:+UseG1GC', '-Dfile.encoding=UTF-8',
+        '-jar', 'paper.jar', 'nogui'
+    )
+    & $java @javaArgs
 } finally {
     Pop-Location
 }
