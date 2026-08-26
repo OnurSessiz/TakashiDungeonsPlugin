@@ -1,75 +1,75 @@
-# geo-probe — generation paketinin sunucusuz testleri
+# geo-probe — server-free tests for the generation package
 
-FAZ 1B (geometri), 1C (seçim + çakışma) ve 1D (graf üretimi) için regresyon koruması.
-**Sunucu gerekmiyor**, saniyeler içinde koşuyor — `generation` paketi bilerek saf Java
-olduğu için mümkün. Toplam **112 kontrol**.
+Regression cover for phase 1B (geometry), 1C (selection + collision) and 1D (graph generation).
+**No server needed**, and it runs in seconds — possible because the `generation` package is
+deliberately pure Java. **112 checks** in total.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-Önce `scripts\build.ps1` çalıştırılmış olmalı (`target\classes` gerekiyor).
+`scripts\build.ps1` must have been run first (`target\classes` is required).
 
-## Dosyalar
+## Files
 
-| Dosya | Ne yapar | Ne zaman koşulur |
+| File | What it does | When to run |
 |---|---|---|
-| `GeoProbe.java` | **1B — 53 kontrol:** rotasyon, `align`, duvar türetme, çakışma kuralları, 48 yerleştirme kombinasyonu | `generation` paketinde her değişiklikte |
-| `GenProbe.java` | **1C — 28 kontrol:** 200.000 çekilişte ağırlık dağılımı, havuz filtresi, geri çekilme, 500 seed'de tutarlılık, ÖLÜ kapı, tekrarlanabilirlik | aynı |
-| `DungeonProbe.java` | **1D — 31 kontrol:** kritik path garantisi (3×1000 üretim), boss ataması, boyut aralıkları, tıpa kapsamı, ardışık tohum bağımsızlığı, out-of-box fallback'ler | aynı |
-| `Rooms.java` | Ortak test oda seti — **alfabetik sırada**, sunucudaki `SchematicService.list()` ile aynı | (kütüphane) |
-| `RotProbe.java` | WorldEdit'in `AffineTransform().rotateY(-derece)` işaretini ölçer | Sadece WorldEdit sürümü değişince |
+| `GeoProbe.java` | **1B — 53 checks:** rotation, `align`, wall derivation, collision rules, 48 placement combinations | on every change to the `generation` package |
+| `GenProbe.java` | **1C — 28 checks:** weight distribution over 200,000 draws, pool filtering, backing off, consistency across 500 seeds, DEAD doors, reproducibility | same |
+| `DungeonProbe.java` | **1D — 31 checks:** critical path guarantee (3×1000 generations), boss assignment, size ranges, plug coverage, consecutive-seed independence, out-of-the-box fallbacks | same |
+| `Rooms.java` | The shared test room set — in **alphabetical order**, matching `SchematicService.list()` on the server | (library) |
+| `RotProbe.java` | Measures the sign of WorldEdit's `AffineTransform().rotateY(-degrees)` | only when the WorldEdit version changes |
 
-## `GenProbe`'un iki özel bölümü
+## Two special sections in `GenProbe`
 
-**Ağırlık dağılımı** — `generation.md` §5.4 kararının ampirik kanıtı. `agirlik`'in ŞABLONA
-ait olduğunu (kapı sayısından bağımsız) gösteriyor, ve çifte ait olsaydı haritacının yazdığı
-sıralamanın tersine döneceğini yan yana hesaplıyor. Bu bölüm düşerse config yalan söylüyor
-demektir.
+**Weight distribution** — the empirical evidence for the decision in `generation.md` §5.4. It
+shows that `weight` belongs to the TEMPLATE (independent of door count), and computes, side by
+side, how the ordering the mapper wrote would invert if it belonged to the pair. If this section
+fails, the config is lying.
 
-**Dallanma sönümlenmesi** — hata değil, **ölçüm**. Naif "her boş kapıyı doldur"
-stratejisinin hedef oda sayısını garanti etmediğini ve tıkanmaların çakışmadan değil kapı
-frontier'ının tükenmesinden kaynaklandığını raporluyor. 1D'nin kritik path tasarımı bu
-sayılara dayanıyor; değişirlerse 1D'nin varsayımı da değişmiş demektir.
+**Branching extinction** — not a failure, a **measurement**. It reports that the naive "fill
+every open door" strategy does not guarantee the target room count, and that the stalls come
+from the door frontier running dry rather than from collisions. 1D's critical path design rests
+on these numbers; if they change, so has 1D's assumption.
 
-## `DungeonProbe`'un iki özel bölümü
+## Two special sections in `DungeonProbe`
 
-**Ardışık tohum bağımsızlığı** — `new Random(seed)`'in ardışık tohumlarda korelasyonlu
-olduğunu *önce kanıtlıyor*, sonra `Seeds` karıştırmasının düzelttiğini gösteriyor. Bu bölüm
-düşerse `small` dungeon'ların oda sayısı aralık yerine tek bir değere sabitlenmiş demektir.
+**Consecutive-seed independence** — it *first proves* that `new Random(seed)` is correlated
+across consecutive seeds, then shows that the `Seeds` mixing fixes it. If this section fails,
+small dungeons have had their room count pinned to a single value instead of a range.
 
-**Out-of-box fallback'ler** — boss odası yokken, giriş odası yokken, hiç oda yokken ve
-sadece tek kapılı odalar varken üretimin durmadığını sınıyor. `anahedef.md`'nin out-of-box
-garantisi bu.
+**Out-of-the-box fallbacks** — it checks that generation does not stop when there is no boss
+room, no entrance room, no rooms at all, or only single-door rooms. This is what backs the
+project's out-of-the-box guarantee.
 
-## Sunucuyla aynı sonucu verirler
+## They give the same answer as the server
 
-`Rooms.java` şablonları **alfabetik** sırada tutuyor, çünkü sunucuda sıra
-`SchematicService.list()`'ten geliyor ve o metot dosya adlarını sıralıyor. Ağırlıklı seçim
-kümülatif tarama yaptığı için sıra sonucu değiştiriyor.
+`Rooms.java` keeps its templates in **alphabetical** order, because on the server the order
+comes from `SchematicService.list()` and that method sorts file names. Since weighted selection
+does a cumulative scan, the order changes the outcome.
 
-Pratik faydası: probe'lar sunucunun ne üreteceğini **önceden hesaplayabiliyor**. Blok
-testlerinin beklenen koordinatları böyle çıkarılıyor — offline hesap ile sunucu çıktısının
-birebir eşleşmesi, üretimin tekrarlanabilirliğinin uçtan uca kanıtı.
+The practical benefit: the probes can compute **in advance** what the server will build. That is
+how the expected coordinates for the block tests are derived — an offline calculation matching
+server output block for block is end-to-end proof that generation is reproducible.
 
-`RotProbe` bir kereye mahsus bir ölçüm değil, **canlı bir varsayım kontrolü**:
-`Rotation` sınıfının bütün formülleri o transform'un saat yönü olmasına dayanıyor.
-WorldEdit bir gün işareti değiştirirse üretilen dungeon'ların kapıları tutmaz ve hata
-*sessiz* olur — oda pastelenir, geçit kapalı çıkar. Sürüm yükseltmeden sonra koşulmalı.
+`RotProbe` is not a one-off measurement but a **live assumption check**: every formula in the
+`Rotation` class depends on that transform being clockwise. If WorldEdit ever flips the sign,
+generated dungeons will have mismatched doors and the failure will be *silent* — the room pastes
+fine, the passage comes out sealed. Run it after a version upgrade.
 
-## Neden JUnit değil (henüz)
+## Why not JUnit (yet)
 
-`pom.xml`'de test dependency yok; eklemek build'i değiştirir ve bu karar henüz verilmedi.
-`surefire` zaten yapılandırılmış durumda, test kaynağı olmadığı için atlıyor —
-`src/test/java` altına taşımak sadece bir dependency satırı meselesi.
+There is no test dependency in `pom.xml`; adding one changes the build, and that decision has
+not been made. `surefire` is already configured and skips because there are no test sources —
+moving these under `src/test/java` is a single dependency line away.
 
-Ertelenmesinin sebebi kararsızlık değil: FAZ 1 bitene kadar test odaları ve beklenen
-değerler hızla değişiyor, bu dosyalar da onlarla birlikte. Şekil oturunca taşınacak.
+The delay is not indecision: until phase 1 was finished, the test rooms and their expected
+values changed rapidly, and so did these files. They move once the shape settles.
 
-Bu klasördeki dosyalar **derlemeye girmiyor** (`src/` altında değiller), bu yüzden
-build'i bozma riski yok.
+The files in this folder are **not part of the build** (they are not under `src/`), so there is
+no risk of them breaking it.
 
-## Beklenen çıktı
+## Expected output
 
 ```
 ################ FAZ 1B - geometri ################
@@ -84,10 +84,14 @@ GECEN: 31   KALAN: 0
 TUM TESTLER GECTI
 ```
 
-Bir kontrol düşerse hangi formülün bozulduğu satır satır yazılıyor.
+(The probes' own console output is still Turkish; it belongs to the operator-facing message set
+that gets translated as a whole.)
 
-## Ne kapsamıyor
+When a check fails, the formula that broke is printed line by line.
 
-Bloğun dünyada gerçekten doğru yere yazıldığını **göstermiyor** — o paste yolunun işi,
-sunucuda `execute if block` ile doğrulanıyor (`generation.md` §10). Burası sadece
-"motor hangi koordinatı hesaplıyor" sorusunu cevaplıyor.
+## What it does not cover
+
+It does **not** show that a block really landed in the right place in the world — that is the
+paste path's job, and it is verified on the server with `execute if block`
+(`docs/generation.md` §10). This only answers the question "what coordinate does the engine
+compute".

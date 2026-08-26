@@ -84,6 +84,9 @@ The point is that inconsistency becomes unrepresentable. There is no way to writ
 facing. It also means a door doesn't have to sit in the middle of a wall, and one wall can
 hold several doors.
 
+The full specification — every formula, every measurement, and the reasoning behind each
+decision — is in **[docs/generation.md](docs/generation.md)**.
+
 Rotation is computed the same way — never searched:
 
 ```
@@ -114,20 +117,20 @@ single central manifest turns every export from a 3-person map team into a merge
 
 ```yaml
 # schematics/test_cross.yml
-tip: normal          # type:   giris (entrance) | normal | boss
-agirlik: 100         # weight: this template's share of the candidate draw.
-                     # Independent of door count — a 4-door room and a 1-door
-                     # room each count their weight once.
+type: normal         # entrance | normal | boss
+weight: 100          # this template's share of the candidate draw. Independent of
+                     # door count — a 4-door room and a 1-door room each count
+                     # their weight once.
 
-kapilar:             # doors: [x, y, z] anchors, local to the room origin
+doors:               # [x, y, z] anchors, local to the room origin
   - [ 0, 1, -8]      # north wall
   - [ 8, 1,  0]      # east wall
   - [ 0, 1,  8]      # south wall
   - [-8, 1,  0]      # west wall
 ```
 
-Field names are Turkish, as the project is written in Turkish: `tip` = type,
-`agirlik` = weight, `kapilar` = doors.
+`y: 1` because the anchor is the base block of the opening, one above the room floor. An
+upper-storey door on a two-level room is just `[0, 9, -8]` — the scheme doesn't change.
 
 Bad metadata fails loudly at load time, naming the file and the offending line. A silently
 defaulted anchor shifts a room by one block, and you only find out by looking at the seam

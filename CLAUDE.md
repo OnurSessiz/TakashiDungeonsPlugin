@@ -13,6 +13,11 @@ edilebilir ve kurulum senaryosundan bağımsız çalışmalı. Amaç satış de�
 
 Proje belleği `AI Yönergeleri/` altında. Kod okumadan önce bunlar okunur:
 
+> **Bu klasör repoda YOK** — `.gitignore`'da, sadece Onur'un makinesinde duruyor. Temiz bir
+> klonda bulunmazlar; o durumda okunacak yer `README.md` ve `docs/generation.md`.
+> `generation.md`'nin İngilizce ve public karşılığı `docs/generation.md`; **algoritma
+> değişirse ikisi birden güncellenir**, yoksa public doküman yalan söylemeye başlar.
+
 | # | Dosya | Ne için |
 |---|---|---|
 | 1 | `AI Yönergeleri/anahedef.md` | Değişmez çerçeve + **ASLA YAPMA** listesi |
