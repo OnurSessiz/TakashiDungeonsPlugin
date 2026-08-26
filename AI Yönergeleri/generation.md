@@ -278,7 +278,7 @@ tersi olurdu.
 Ve sapma **birikiyor**: çok kapılı oda koydukça daha fazla boş kapı açılıyor, her boş kapı
 yine çok kapılı odayı kayırıyor. 20 odalık dungeon'da tek seferlik değil, büyüyen bir sapma.
 
-**Marketplace gerekçesi:** `agirlik`'i sunucu sahibi YAML'den düzenleyecek. "200 yazarsam
+**Kullanıcı gerekçesi:** `agirlik`'i sunucu sahibi YAML'den düzenleyecek. "200 yazarsam
 100'ün iki katı sıklıkta gelir" beklentisi tutulmak zorunda. Kapı sayısının bunu sessizce
 ezmesi, sebebi hiçbir yerde yazmadığı için teşhis edilemeyen bir hata olurdu.
 

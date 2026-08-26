@@ -147,10 +147,15 @@
 - [ ] Market GUI
 - [ ] Concurrency güvenli coin işlemleri
 
-## FAZ 13 — Marketplace Hazırlığı
+## FAZ 13 — Yayın Hazırlığı
+
+> Ücretsiz + GPLv3 dağıtım (`anahedef.md` §8). Hedef satış değil görünürlük — ama
+> "ücretsiz" hiçbir maddeyi ucuzlatmıyor: kırılan bir plugin'de dönen şey isim.
 
 - [ ] Çoklu sunucu versiyonunda test (1.20+ / 1.21+)
 - [ ] Performans testi (çok instance açıkken TPS)
 - [ ] Default config'ler + örnek schematic paketi
 - [ ] Kullanıcı dokümantasyonu
-- [ ] Tanıtım görselleri / video
+- [ ] GitHub Releases — sürümlenmiş jar + değişiklik notu
+- [ ] Dağıtım sayfaları (SpigotMC / Modrinth / Hangar)
+- [ ] Tanıtım görselleri / video (sosyal medya içeriği — projenin asıl getirisi bu)

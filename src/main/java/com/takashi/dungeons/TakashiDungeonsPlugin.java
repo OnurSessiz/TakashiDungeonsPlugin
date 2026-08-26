@@ -48,6 +48,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         detectIntegrations();
 
         getLogger().info("TakashiDungeons v" + getPluginMeta().getVersion() + " etkinleştirildi.");
+        // İmza jar'la birlikte seyahat eder; README silinir, bu satır kalır.
+        getLogger().info("  Onur Sessiz — github.com/OnurSessiz/TakashiDungeonsPlugin (GPLv3)");
         getLogger().info("Entegrasyonlar:");
         integrations.forEach((name, present) ->
                 getLogger().info("  - " + name + ": " + (present ? "bulundu" : "yok")));

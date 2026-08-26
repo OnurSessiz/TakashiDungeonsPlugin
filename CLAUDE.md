@@ -1,8 +1,9 @@
 # TakashiDungeonsPlugin
 
 Minecraft **Paper 1.21.8 / Java 21** için prosedürel dungeon sistemi. Belirli bir sunucu için
-değil, **marketplace'te satılmak üzere** geliştiriliyor — her şey konfigüre edilebilir ve
-kurulum senaryosundan bağımsız çalışmalı.
+değil, **ücretsiz + açık kaynak (GPLv3)** dağıtılmak üzere geliştiriliyor — her şey konfigüre
+edilebilir ve kurulum senaryosundan bağımsız çalışmalı. Amaç satış değil görünürlük;
+ücretsiz olması standardı düşürmüyor (`anahedef.md` §1 ve §8).
 
 `com.takashi:TakashiDungeons` · paket `com.takashi.dungeons`
 
