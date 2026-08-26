@@ -1,8 +1,8 @@
-# TakashiDungeons — build + deploy
-# Kullanim: powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+# TakashiDungeons - build + deploy
+# Usage: powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 #
-# Derleme JDK 21 ile yapilir: hedef Paper 1.21.8 Java 21 uzerinde calisir,
-# sistemde daha yeni bir JDK varsa PATH'e guvenmeyip acikca 21'i seciyoruz.
+# The build runs on JDK 21: the target, Paper 1.21.8, runs on Java 21. If a newer JDK is
+# installed we do not trust PATH and pick 21 explicitly.
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -29,7 +29,8 @@ try {
     $pluginsDir = "$root\run\plugins"
     if (-not (Test-Path $pluginsDir)) { New-Item -ItemType Directory -Force $pluginsDir | Out-Null }
 
-    # eski surumu birak, yenisini kopyala (iki jar birden durursa sunucu ikisini de yuklemeye calisir)
+    # drop the old version before copying the new one (with two jars present the server
+    # tries to load both)
     Get-ChildItem "$pluginsDir\TakashiDungeons-*.jar" -File -ErrorAction SilentlyContinue | Remove-Item -Force
     Copy-Item $jar.FullName $pluginsDir -Force
 

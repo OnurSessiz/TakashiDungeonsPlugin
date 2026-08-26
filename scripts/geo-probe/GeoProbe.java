@@ -4,12 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * FAZ 1B geometrisinin sunucusuz dogrulamasi.
+ * Server-free verification of the phase 1B geometry.
  *
- * generation paketi bilerek saf Java: ne Bukkit ne WorldEdit. Bu yuzden butun
- * yerlestirme matematigi sunucu acmadan sinanabiliyor. TestRoomFactory'nin
- * urettigi anchor degerleri burada ELLE hesaplanmis sabitler olarak duruyor;
- * gercekten o degerleri urettigi sunucuda /tdungeons room ile dogrulanacak.
+ * The generation package is deliberately pure Java: no Bukkit, no WorldEdit. That is why all
+ * the placement maths can be exercised without starting a server. The anchor values
+ * TestRoomFactory produces are kept here as HAND-computed constants; that it really produces
+ * them is verified on the server with /tdungeons room.
  */
 public class GeoProbe {
 
@@ -32,9 +32,9 @@ public class GeoProbe {
         if (fail > 0) System.exit(1);
     }
 
-    // ---------------------------------------------------------------- test odalari
+    // ---------------------------------------------------------------- test rooms
     // TestRoomFactory formulu: origin = (sizeX/2, 0, sizeZ/2)
-    //                          anchor = duvarBlogu - origin
+    //                          anchor = wallBlock - origin
 
     static RoomTemplate cross() {   // 17x17, 4 kapi, ofsetsiz
         return template("test_cross", box(17, 9, 17),
@@ -58,7 +58,7 @@ public class GeoProbe {
                 new Vec3i(1, 1, -8), new Vec3i(-2, 1, 7), new Vec3i(4, 1, 3));
     }
 
-    /** Tek sayi kenarli oda icin origin merkezde: kutu -n..n. */
+    /** For an odd-sided room the origin is centred: box -n..n. */
     static Aabb box(int sizeX, int height, int sizeZ) {
         return new Aabb(-(sizeX / 2), 0, -(sizeZ / 2),
                 sizeX - 1 - sizeX / 2, height - 1, sizeZ - 1 - sizeZ / 2);
@@ -72,7 +72,7 @@ public class GeoProbe {
         return new RoomTemplate(name, RoomType.NORMAL, 100, doors, box);
     }
 
-    // ---------------------------------------------------------------- testler
+    // ---------------------------------------------------------------- tests
 
     static void rotationRoundTrip() {
         section("Rotasyon: 4 adim = birim, ve olculen isaret");
@@ -216,9 +216,9 @@ public class GeoProbe {
 
     static void chainDrift() {
         section("Zincir: ofsetli kapilar duz sirayi kiriyor mu (generation.md 6.4)");
-        // test_long: kuzey kapisi ortada, dogu kapisi guney ucunda (ofset +10).
-        // Kuzey kapisindan zincirleyip her seferinde dogu kapisindan devam edersek
-        // yerlesim kendiliginden kivrilmali.
+        // test_long: north door centred, east door near the south end (offset +10).
+        // Chaining from the north door and always continuing through the east door, the
+        // layout should meander on its own.
         RoomTemplate t = longRoom();
         Vec3i anchor = new Vec3i(0, 64, 0);
         Direction out = Direction.NORTH;
@@ -239,13 +239,13 @@ public class GeoProbe {
         check("zincir tek eksende kalmadi (kivriliyor)",
                 placed.stream().map(Aabb::minX).distinct().count() > 1
                         && placed.stream().map(Aabb::minZ).distinct().count() > 1, "");
-        // NOT: cakisma BEKLENIYOR olabilir -- bu zincir bilerek kendine dolaniyor.
-        // Onemli olan cakismanin TESPIT EDILEBILMESI; reddetme 1C'nin isi.
+        // NOTE: a collision may well be EXPECTED -- this chain deliberately tangles itself.
+        // What matters is that the collision is DETECTABLE; rejecting it is 1C's job.
         System.out.println("   cakisma tespit edildi mi: " + (anyOverlap ? "EVET" : "hayir")
                 + "  (1C'de bu adaylari reddedecek)");
     }
 
-    // ---------------------------------------------------------------- yardimcilar
+    // ---------------------------------------------------------------- helpers
 
     static void section(String title) {
         System.out.println("--- " + title + " ---");

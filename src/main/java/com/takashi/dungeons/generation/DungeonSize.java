@@ -4,10 +4,11 @@ import java.util.Locale;
 import java.util.random.RandomGenerator;
 
 /**
- * Dungeon boyutu ve karşılık geldiği oda sayısı aralığı — {@code generation.md} §6.1.
+ * A dungeon size and the room-count range it maps to — {@code generation.md} §6.1.
  *
- * <p>Aralık sabit değil, <b>rastgele</b>: aynı boyutu seçen iki oyuncu aynı uzunlukta
- * dungeon görmesin diye. Ama aralık dar tutuluyor ki "medium" sözü anlamını korusun.
+ * <p>The count is drawn at <b>random</b> from the range rather than fixed, so two players
+ * picking the same size don't get dungeons of identical length. The range is kept narrow so
+ * that the word "medium" keeps its meaning.
  */
 public enum DungeonSize {
 
@@ -37,26 +38,27 @@ public enum DungeonSize {
         return maxRooms;
     }
 
-    /** Bu boyut için hedef oda sayısı çeker. */
+    /** Draws a target room count for this size. */
     public int pickRoomCount(RandomGenerator random) {
         return minRooms + random.nextInt(maxRooms - minRooms + 1);
     }
 
     /**
-     * Kritik path'in hedef uzunluğu — {@code generation.md} §6.2: {@code round(hedef × 0.65)},
-     * en az 2.
+     * The critical path's target length — {@code generation.md} §6.2:
+     * {@code round(target × 0.65)}, minimum 2.
      *
-     * <p>Uzunluğa <b>giriş ve boss dahil</b>. En az 2 olması giriş + boss'un her zaman
-     * ayrı oda olmasını garanti ediyor; 1 olsaydı boss girişin kendisi olurdu.
+     * <p>The length <b>includes the entrance and the boss</b>. The minimum of 2 guarantees they
+     * are always separate rooms; at 1 the boss would be the entrance itself.
      *
-     * <p>%65 oranı: odaların üçte ikisi zorunlu yolda, üçte biri yan dallarda. Yan dalların
-     * payı çok büyürse dungeon "geniş ama sığ" hissediyor, çok küçülürse tek koridor oluyor.
+     * <p>The 65% ratio: roughly two thirds of the rooms sit on the mandatory path and one third
+     * on side branches. Give side branches too much and the dungeon feels wide but shallow;
+     * too little and it becomes a single corridor.
      */
     public static int criticalPathLength(int targetRooms) {
         return Math.max(2, Math.round(targetRooms * 0.65f));
     }
 
-    /** YAML/komut değerini çözer; bulunamazsa {@code null}. */
+    /** Parses a YAML/command value; returns {@code null} if there is no match. */
     public static DungeonSize parse(String raw) {
         if (raw == null) {
             return null;
@@ -72,6 +74,6 @@ public enum DungeonSize {
 
     @Override
     public String toString() {
-        return key + " (" + minRooms + "-" + maxRooms + " oda)";
+        return key + " (" + minRooms + "-" + maxRooms + " rooms)";
     }
 }

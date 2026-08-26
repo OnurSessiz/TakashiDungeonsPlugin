@@ -1,13 +1,12 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Tam sayı 3B vektör — kapı anchor'ları, oda origin'leri ve kutu köşeleri için.
+ * Integer 3D vector — used for door anchors, room origins and box corners.
  *
- * <p><b>Neden WorldEdit'in {@code BlockVector3}'ü değil:</b> generation paketindeki
- * geometri saf fonksiyon olarak kalsın diye. Bu sayede rotasyon ve duvar hesabı
- * WorldEdit classpath'te olmadan da test edilebiliyor, ve FAZ 8'de dışarı açılacak
- * API'ye üçüncü parti bir kütüphanenin tipi sızmıyor (breaking change riski).
- * Dönüşüm sadece paste sınırında, tek satırda yapılıyor.
+ * <p><b>Why not WorldEdit's {@code BlockVector3}:</b> so the geometry in this package stays
+ * pure. Rotation and wall derivation can then be tested without WorldEdit on the classpath,
+ * and no third-party type leaks into the API exposed in phase 8 (a breaking-change risk).
+ * The conversion happens only at the paste boundary, on one line.
  */
 public record Vec3i(int x, int y, int z) {
 

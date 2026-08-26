@@ -23,40 +23,42 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Boşluğa açılan kapıları kapatır — {@code generation.md} §7 (tıpa).
+ * Seals doors that open into the void — {@code generation.md} §7 (plugging).
  *
- * <h2>Neden oda varyantı değil, tıpa</h2>
- * "Her odanın 1/2/3 kapılı versiyonu olsun" fikri elendi: kapı <b>sayısı</b> versiyonu
- * tanımlamıyor, kapı <b>kümesi</b> tanımlıyor ({K,G} ≠ {K,D}). Rotasyonla 5 şekle inse bile
- * 40 oda × 5 = 200 schematic — harita ekibi projenin en dar boğazı. Tıpa aynı görsel sonucun
- * neredeyse tamamını <b>0 dosyayla</b> veriyor.
+ * <h2>Why plugs rather than room variants</h2>
+ * The idea "give every room a 1/2/3-door version" was rejected: a variant is not defined by the
+ * door <b>count</b> but by the door <b>set</b> ({N,S} is not {N,E}). Even collapsed to 5 shapes
+ * by rotation that is 40 rooms × 5 = 200 schematics — and the map team is this project's
+ * tightest bottleneck. Plugging delivers almost all of the same visual result for
+ * <b>zero files</b>.
  *
- * <h2>Açıklığın boyutu ölçülüyor, verilmiyor</h2>
- * Metadata'da "kapı 3×3" diye bir alan <b>yok</b>. Motor, anchor'dan başlayıp odanın duvar
- * düzleminde hava bloklarını tarayarak açıklığı kendisi buluyor. Sebebi §9'un ruhu:
- * yazılabilen her alan yanlış yazılabilen bir alandır. Haritacı 3×4 bir kapı çizerse tıpa
- * yine tutar; kemerli, basamaklı, asimetrik açıklıklar da çalışır.
+ * <h2>The opening's size is measured, not declared</h2>
+ * There is <b>no</b> "door is 3×3" field in the metadata. The engine starts at the anchor and
+ * scans air blocks in the room's wall plane to find the opening itself. This follows the spirit
+ * of §9: every field that can be written is a field that can be written wrong. If a mapper draws
+ * a 3×4 door the plug still fits, and arched, stepped or asymmetric openings work too.
  *
- * <h2>Malzeme de ölçülüyor</h2>
- * Tıpa bloğu config'den gelmiyor — açıklığın <b>kenarındaki duvar bloğu</b> örnekleniyor.
- * Böylece Nether odasında nether brick, End odasında end stone çıkıyor; biome başına ayrı
- * ayar gerekmiyor. {@code generation.md} §7'nin "biome tıpası" seçeneğinin faydasını
- * dosya maliyeti olmadan veriyor.
+ * <h2>The material is measured too</h2>
+ * The plug block does not come from config — the <b>wall block at the edge of the opening</b> is
+ * sampled. A Nether room therefore yields nether brick and an End room end stone, with no
+ * per-biome setting. That delivers the benefit of {@code generation.md} §7's "biome plug" option
+ * at no file cost.
  *
- * <h2>Tarama neden odanın kutusuyla sınırlı</h2>
- * Duvar düzlemi (örn. {@code z = Z0}) matematiksel olarak sonsuz. Odanın dışında o düzlem
- * void — yani hava. Sınır konmasaydı tarama açıklıktan çıkıp boşluğa sızar ve dungeon'ın
- * yarısını taş duvarla doldururdu.
+ * <h2>Why the scan is bounded by the room's box</h2>
+ * A wall plane (say {@code z = Z0}) is mathematically infinite, and outside the room that plane
+ * is void — that is, air. Without the bound the scan would leak out of the opening into empty
+ * space and fill half the dungeon with stone wall.
  */
 public final class DoorPlugger {
 
     /**
-     * Bir açıklıkta taranacak en fazla blok. 3×3 bir kapı 9 blok; 64 bolca pay bırakıyor.
+     * The most blocks one opening may scan. A 3×3 door is 9 blocks; 64 leaves plenty of slack.
      *
-     * <p>Sınır asıl olarak <b>bozuk metadata'ya karşı</b>: anchor duvarın üstünde değil de
-     * odanın içindeyse ({@code RoomTemplateStore} bunu uyarıyor ama patlatmıyor) tarama
-     * duvar düzleminde değil boş bir iç düzlemde başlar ve odanın bütün kesitini doldururdu.
-     * Sınır aşılırsa o kapı atlanıyor ve uyarı yazılıyor.
+     * <p>The limit exists mainly <b>as a guard against broken metadata</b>: if the anchor sits
+     * inside the room rather than on a wall ({@code RoomTemplateStore} warns about this but does
+     * not throw), the scan starts on an empty interior plane instead of a wall plane and would
+     * fill the room's entire cross-section. When the limit is exceeded, that door is skipped and
+     * a warning is logged.
      */
     private static final int MAX_OPENING_BLOCKS = 64;
 
@@ -68,15 +70,15 @@ public final class DoorPlugger {
         this.async = async;
     }
 
-    /** Tıpa işleminin sonucu. */
+    /** The outcome of a plugging pass. */
     public record Report(int plugged, int skipped, int blocks, List<String> warnings) {
     }
 
     /**
-     * Verilen kapıların hepsini kapatır.
+     * Seals every door in the list.
      *
-     * <p>Tek bir {@link EditSession} kullanılıyor: her kapı için ayrı session açmak
-     * FAWE'nin batch'lemesini bozar ve büyük dungeon'da gözle görülür yavaşlar.
+     * <p>A single {@link EditSession} is used: opening one per door would break FAWE's batching
+     * and become visibly slow on a large dungeon.
      */
     public CompletableFuture<Report> plugAll(World world, List<PlugTarget> targets) {
         CompletableFuture<Report> future = new CompletableFuture<>();
@@ -111,20 +113,20 @@ public final class DoorPlugger {
                 Opening opening = scan(session, target);
                 if (opening == null) {
                     skipped++;
-                    warnings.add(target.anchor() + " " + target.outward().turkish()
-                            + ": açıklık " + MAX_OPENING_BLOCKS
-                            + " bloktan büyük, atlandı (anchor duvarın üstünde mi?)");
+                    warnings.add(target.anchor() + " " + target.outward().displayName()
+                            + ": opening is larger than " + MAX_OPENING_BLOCKS
+                            + " blocks, skipped (is the anchor really on a wall?)");
                     continue;
                 }
                 if (opening.cells.isEmpty()) {
-                    // Zaten kapalı: aynı dungeon iki kez tıpalanmışsa ya da haritacı
-                    // kapıyı kapalı çizmişse olur. Hata değil.
+                    // Already sealed: happens when the same dungeon was plugged twice, or the
+                    // mapper drew the door closed. Not an error.
                     continue;
                 }
                 if (opening.material == null) {
                     skipped++;
-                    warnings.add(target.anchor() + " " + target.outward().turkish()
-                            + ": açıklığın kenarında duvar bloğu bulunamadı, malzeme örneklenemedi");
+                    warnings.add(target.anchor() + " " + target.outward().displayName()
+                            + ": no wall block at the edge of the opening, could not sample a material");
                     continue;
                 }
                 for (BlockVector3 cell : opening.cells) {
@@ -134,22 +136,22 @@ public final class DoorPlugger {
                 blocks += opening.cells.size();
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Tıpa başarısız: " + e.getMessage(), e);
+            throw new IllegalStateException("Plugging failed: " + e.getMessage(), e);
         }
         return new Report(plugged, skipped, blocks, warnings);
     }
 
-    /** Taranmış açıklık: doldurulacak hücreler + kenarından örneklenmiş duvar malzemesi. */
+    /** A scanned opening: the cells to fill plus the wall material sampled from its edge. */
     private record Opening(List<BlockVector3> cells, BlockState material) {
     }
 
     /**
-     * Açıklığı duvar düzleminde tarar ve kenarından malzeme örnekler.
+     * Scans the opening within the wall plane and samples a material from its edge.
      *
-     * <p>Düzlem, {@code outward} yönünün ekseni sabit tutularak elde ediliyor: kuzey/güney
-     * kapısında Z sabit (X-Y düzlemi), doğu/batı kapısında X sabit (Z-Y düzlemi).
+     * <p>The plane is obtained by holding the axis of {@code outward} fixed: for a north/south
+     * door Z is fixed (the X-Y plane), for an east/west door X is fixed (the Z-Y plane).
      *
-     * @return açıklık, ya da sınır aşıldıysa {@code null}
+     * @return the opening, or {@code null} if the block limit was exceeded
      */
     private static Opening scan(EditSession session, PlugTarget target) {
         Vec3i anchor = target.anchor();
@@ -159,9 +161,9 @@ public final class DoorPlugger {
         List<BlockVector3> cells = new ArrayList<>();
         Set<Long> seen = new HashSet<>();
         Deque<BlockVector3> queue = new ArrayDeque<>();
-        // Kenardan örneklenen malzemeler — en sık görüleni kullanılıyor. Tek bir komşuya
-        // bakmak yanıltıcı olabilir: kapının hemen yanında meşale, pencere ya da farklı
-        // bir süs bloğu olabilir.
+        // Materials sampled from the edge — the most frequent one wins. Looking at a single
+        // neighbour would be misleading: right beside a door there may be a torch, a window or
+        // some other decorative block.
         Map<BlockState, Integer> materials = new HashMap<>();
 
         BlockVector3 start = BlockVector3.at(anchor.x(), anchor.y(), anchor.z());
@@ -172,11 +174,11 @@ public final class DoorPlugger {
             BlockVector3 pos = queue.poll();
 
             if (!contains(bounds, pos)) {
-                continue;   // odanın dışına sızma
+                continue;   // don't leak outside the room
             }
             BlockState state = session.getBlock(pos);
             if (!state.getBlockType().getMaterial().isAir()) {
-                materials.merge(state, 1, Integer::sum);   // açıklığın kenarı = duvar
+                materials.merge(state, 1, Integer::sum);   // the edge of the opening is wall
                 continue;
             }
 
@@ -198,7 +200,7 @@ public final class DoorPlugger {
         return new Opening(cells, material);
     }
 
-    /** Duvar düzlemi içindeki 4 komşu: yukarı/aşağı + duvar boyunca iki yan. */
+    /** The 4 neighbours within the wall plane: up/down plus the two sides along the wall. */
     private static BlockVector3[] neighbours(BlockVector3 p, boolean alongX) {
         if (alongX) {
             return new BlockVector3[]{
@@ -214,7 +216,7 @@ public final class DoorPlugger {
                 && p.z() >= box.minZ() && p.z() <= box.maxZ();
     }
 
-    /** Koordinatı tek bir long'a paketler — ziyaret kümesi için. */
+    /** Packs a coordinate into a single long — for the visited set. */
     private static long key(BlockVector3 p) {
         return ((long) (p.x() & 0x3FFFFF) << 42)
                 | ((long) (p.y() & 0xFFFFF) << 22)

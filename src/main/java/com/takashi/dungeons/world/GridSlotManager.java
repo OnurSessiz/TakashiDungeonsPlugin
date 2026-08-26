@@ -8,20 +8,20 @@ import java.util.NoSuchElementException;
 import java.util.TreeSet;
 
 /**
- * Dungeon dünyasını sabit boyutlu karelere böler ve instance başına bir kare ayırır.
+ * Divides the dungeon world into fixed-size squares and reserves one square per instance.
  *
- * <p>Neden grid: instanced dungeon'da iki party'nin blokları asla kesişmemeli. Rastgele
- * konum yerine deterministik grid kullanmanın iki faydası var — (1) çakışma matematiksel
- * olarak imkânsız, (2) slot numarasından konum hesaplanabildiği için DB'de sadece index
- * saklamak yeterli (FAZ 7).
+ * <p>Why a grid: in instanced dungeons two parties' blocks must never intersect. A
+ * deterministic grid beats random placement on two counts — (1) overlap becomes
+ * mathematically impossible, and (2) since the position is computed from the slot number,
+ * storing only the index in the database is enough (phase 7).
  *
- * <p>Slot'lar satır düzeninde yerleşir: {@code x = (index % columns) * size},
- * {@code z = (index / columns) * size}. Serbest bırakılan index'ler havuzda tutulur ve
- * en küçüğünden yeniden kullanılır — böylece dünya sonsuza kadar büyümez.
+ * <p>Slots are laid out in rows: {@code x = (index % columns) * size},
+ * {@code z = (index / columns) * size}. Released indices are pooled and reused smallest
+ * first, so the world does not grow forever.
  *
- * <p><b>Dikkat:</b> {@code release} sadece index'i geri verir, blokları TEMİZLEMEZ.
- * Blok temizliği FAZ 2'nin (instance yaşam döngüsü) işi; o gelene kadar aynı slot'a
- * ikinci paste yapılırsa eski yapı altta kalır.
+ * <p><b>Caution:</b> {@code release} only returns the index; it does NOT clear the blocks.
+ * Block cleanup belongs to phase 2 (instance lifecycle); until then, a second paste into the
+ * same slot leaves the old structure underneath.
  */
 public final class GridSlotManager {
 
@@ -29,26 +29,26 @@ public final class GridSlotManager {
     private final int columns;
     private final int baseY;
 
-    /** Serbest kalmış, yeniden kullanılabilir index'ler (küçükten büyüğe). */
+    /** Released, reusable indices (smallest first). */
     private final TreeSet<Integer> freed = new TreeSet<>();
-    /** Şu an ayrılmış slot'lar — index → slot. */
+    /** Currently allocated slots — index → slot. */
     private final Map<Integer, GridSlot> allocated = new LinkedHashMap<>();
 
     private int nextIndex = 0;
 
     public GridSlotManager(int slotSize, int columns, int baseY) {
         if (slotSize <= 0) {
-            throw new IllegalArgumentException("slotSize > 0 olmalı: " + slotSize);
+            throw new IllegalArgumentException("slotSize must be > 0: " + slotSize);
         }
         if (columns <= 0) {
-            throw new IllegalArgumentException("columns > 0 olmalı: " + columns);
+            throw new IllegalArgumentException("columns must be > 0: " + columns);
         }
         this.slotSize = slotSize;
         this.columns = columns;
         this.baseY = baseY;
     }
 
-    /** Yeni bir slot ayırır. Önce serbest havuzuna, yoksa sıradaki yeni index'e bakar. */
+    /** Allocates a new slot: the released pool first, otherwise the next fresh index. */
     public synchronized GridSlot allocate() {
         int index = freed.isEmpty() ? nextIndex++ : freed.pollFirst();
         GridSlot slot = slotAt(index);
@@ -56,7 +56,7 @@ public final class GridSlotManager {
         return slot;
     }
 
-    /** Slot'u serbest bırakır (blokları temizlemez — bkz. sınıf notu). */
+    /** Releases the slot (does not clear its blocks — see the class note). */
     public synchronized boolean release(int index) {
         if (allocated.remove(index) == null) {
             return false;
@@ -65,7 +65,7 @@ public final class GridSlotManager {
         return true;
     }
 
-    /** Tüm ayırmaları iptal eder; index sayacı sıfırlanır. */
+    /** Cancels every allocation; the index counter is reset. */
     public synchronized void releaseAll() {
         allocated.clear();
         freed.clear();
@@ -75,7 +75,7 @@ public final class GridSlotManager {
     public synchronized GridSlot get(int index) {
         GridSlot slot = allocated.get(index);
         if (slot == null) {
-            throw new NoSuchElementException("Ayrılmış slot yok: " + index);
+            throw new NoSuchElementException("No such allocated slot: " + index);
         }
         return slot;
     }
@@ -92,7 +92,7 @@ public final class GridSlotManager {
         return slotSize;
     }
 
-    /** Index'in geometrik karşılığı — ayrılmış olması gerekmez. */
+    /** The geometry an index maps to — it does not have to be allocated. */
     public GridSlot slotAt(int index) {
         int col = index % columns;
         int row = index / columns;

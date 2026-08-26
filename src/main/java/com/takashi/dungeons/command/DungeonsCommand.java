@@ -38,11 +38,15 @@ import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * {@code /tdungeons} — yönetim ve FAZ 1 doğrulama komutu.
+ * {@code /tdungeons} — the administration and phase 1 verification command.
  *
- * <p>Buradaki {@code gen}/{@code paste}/{@code free} alt komutları geliştirme amaçlı:
- * generation zincirini (slot ayır → schematic yükle → paste) elle tetikleyip doğrulamak
- * için var. Oyuncuya açık dungeon komutları (join/leave) FAZ 2'de gelecek.
+ * <p>The {@code gen}/{@code paste}/{@code free} subcommands here are for development: they
+ * exist to trigger the generation chain (allocate a slot → load a schematic → paste) by hand
+ * and check it. Player-facing dungeon commands (join/leave) arrive in phase 2.
+ *
+ * <p>Note: the messages this class sends are still Turkish. They are the operator-facing
+ * message set and will be translated as a whole, together with the {@code messages.yml}
+ * extraction, rather than piecemeal.
  */
 public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
@@ -52,7 +56,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
 
-    /** Tab-complete icin kapi indeksi onerileri; en cok kapili test odasi 4 kapili. */
+    /** Door index suggestions for tab-complete; the test room with the most doors has 4. */
     private static final List<String> DOOR_INDICES = List.of("0", "1", "2", "3");
 
     private final TakashiDungeonsPlugin plugin;
@@ -154,13 +158,13 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (service == null) {
             return;
         }
-        // Dosya yazma I/O — main thread'de yapılmaz
+        // Writing files is I/O — never on the main thread
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int count = TestRoomFactory.writeStandardSet(service.getDirectory());
                 service.invalidateCache();
-                // Şablon cache'i clipboard cache'inin ÜSTÜNDE duruyor; sadece alttakini
-                // temizlemek eski kapı metadata'sını bellekte bırakırdı.
+                // The template cache sits ON TOP of the clipboard cache; clearing only the
+                // lower one would leave stale door metadata in memory.
                 RoomTemplateStore store = plugin.getTemplateStore();
                 if (store != null) {
                     store.invalidateCache();
@@ -215,7 +219,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         rot, false))
                 .whenComplete((millis, error) -> {
                     if (error != null) {
-                        // Paste patladıysa slot'u tutmanın anlamı yok
+                        // No point holding the slot if the paste blew up
                         plugin.getSlotManager().release(slot.index());
                         Throwable cause = error.getCause() == null ? error : error.getCause();
                         sender.sendMessage(Component.text("Paste başarısız: " + cause.getMessage(),
@@ -229,7 +233,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 });
     }
 
-    /** Paste async bitmiş olabilir; teleport her zaman main thread'de yapılmalı. */
+    /** The paste may have finished async; a teleport must always run on the main thread. */
     private void teleportToSlot(CommandSender sender, World world, GridSlot slot) {
         if (!(sender instanceof Player player)) {
             return;
@@ -241,9 +245,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         });
     }
 
-    // ---------------------------------------------------------------- FAZ 1B: oda modeli
+    // ---------------------------------------------------------------- Phase 1B: room model
 
-    /** Klasordeki sablonlari metadata ile birlikte listeler. */
+    /** Lists the templates in the folder together with their metadata. */
     private void rooms(CommandSender sender) {
         RoomTemplateStore store = requireTemplates(sender);
         if (store == null) {
@@ -264,7 +268,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             for (RoomTemplate t : templates) {
                 String walls = t.doors().isEmpty()
                         ? "kapisiz"
-                        : t.doors().stream().map(d -> d.wall().turkish())
+                        : t.doors().stream().map(d -> d.wall().displayName())
                                 .reduce((a, b) -> a + "+" + b).orElse("");
                 sender.sendMessage(Component.text("  " + t.name(), NamedTextColor.WHITE)
                         .append(Component.text("  " + t.type().yamlValue()
@@ -275,7 +279,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         });
     }
 
-    /** Tek bir sablonun cozumlenmis halini doker \u2014 metadata dogrulamak icin. */
+    /** Dumps one template in resolved form — for verifying its metadata. */
     private void room(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
             sender.sendMessage(Component.text("Kullanim: /" + label + " room <oda>", NamedTextColor.RED));
@@ -291,8 +295,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 return;
             }
             sender.sendMessage(Component.text("Oda: " + t.name(), NamedTextColor.GOLD));
-            sender.sendMessage(Component.text("  tip: " + t.type().yamlValue()
-                    + "   agirlik: " + t.weight(), NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  type: " + t.type().yamlValue()
+                    + "   weight: " + t.weight(), NamedTextColor.GRAY));
             sender.sendMessage(Component.text("  boyut: " + t.describeSize()
                     + "   kutu (origin'e gore): " + t.localBox(), NamedTextColor.GRAY));
             if (t.doors().isEmpty()) {
@@ -300,26 +304,26 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         NamedTextColor.YELLOW));
                 return;
             }
-            sender.sendMessage(Component.text("  kapilar:", NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  doors:", NamedTextColor.GRAY));
             for (DoorAnchor d : t.doors()) {
                 sender.sendMessage(Component.text("    #" + d.index() + " " + d.local()
-                        + " -> " + d.wall().turkish() + " duvari", NamedTextColor.WHITE));
+                        + " -> " + d.wall().displayName() + " duvari", NamedTextColor.WHITE));
             }
         });
     }
 
     /**
-     * Iki odayi kapilarindan birbirine takar \u2014 {@code generation.md} 12. bolum, adim 6.
+     * Attaches two rooms to each other through their doors.
      *
-     * <p>Ebeveyn slot merkezine rot=0 ile konuyor; cocugun rotasyonu ve konumu
-     * {@link RoomTemplate#attachTo} ile <b>hesaplaniyor</b> (aranmiyor). Ciktida kutularin
-     * kesismedigi de raporlaniyor: sirt sirta konvansiyonu geregi iki oda hicbir blogu
-     * paylasmamali ({@code generation.md} 5.2).
+     * <p>The parent is placed at the slot centre with rot=0; the child's rotation and position
+     * are <b>computed</b> by {@link RoomTemplate#attachTo}, not searched for. The output also
+     * reports that the boxes do not intersect: under the back-to-back convention the two rooms
+     * must share no block at all ({@code generation.md} §5.2).
      */
     private void connect(CommandSender sender, String label, String[] args) {
         if (args.length < 3) {
             sender.sendMessage(Component.text(
-                    "Kullanim: /" + label + " connect <ebeveyn> <cocuk> [ebeveynKapi] [cocukKapi]",
+                    "Kullanim: /" + label + " connect <ebeveyn> <cocuk> [parentDoor] [childDoor]",
                     NamedTextColor.RED));
             return;
         }
@@ -362,7 +366,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 });
     }
 
-    /** Once ebeveyn, sonra cocuk \u2014 sira deterministik olsun diye zincirleniyor. */
+    /** Parent first, then child — chained so the order stays deterministic. */
     private CompletableFuture<Long> pasteBoth(SchematicService service, World world, PlacedRoom[] pair) {
         return service.load(pair[0].template().name())
                 .thenCompose(clip -> pasteAt(service, world, clip, pair[0]))
@@ -386,10 +390,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("Baglandi \u2014 " + slot, NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  ebeveyn: " + parent
                 + "  kapi#" + parentDoor + " " + parentAnchor
-                + " " + parent.doorOutward(parentDoor).turkish(), NamedTextColor.GRAY));
+                + " " + parent.doorOutward(parentDoor).displayName(), NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  cocuk:   " + child
                 + "  kapi#" + childDoor + " " + childAnchor
-                + " " + child.doorOutward(childDoor).turkish(), NamedTextColor.GRAY));
+                + " " + child.doorOutward(childDoor).displayName(), NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  rotasyon hesaplandi: R=" + child.rotation().steps()
                 + " (" + child.rotation().degrees() + " derece)", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  kutular: " + parent.bounds()
@@ -403,7 +407,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 ? Component.text("  [HATA] kutular CAKISIYOR", NamedTextColor.RED)
                 : Component.text("  [OK] kutular cakismiyor", NamedTextColor.GREEN));
 
-        // Gecidin blok testiyle dogrulanacagi iki nokta \u2014 konsoldan forceload + execute if block.
+        // The two points where the passage gets verified by block test — from the console,
+        // forceload followed by execute if block.
         sender.sendMessage(Component.text("  gecit bloklari: " + parentAnchor + " ve " + childAnchor,
                 NamedTextColor.DARK_GRAY));
 
@@ -427,21 +432,22 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         return store;
     }
 
-    /** Future zinciri {@code CompletionException} ile sariyor; kullaniciya asil sebep gosterilir. */
+    /** The future chain wraps errors in {@code CompletionException}; show the real cause. */
     private void sendFailure(CommandSender sender, String prefix, Throwable error) {
         Throwable cause = error.getCause() == null ? error : error.getCause();
         sender.sendMessage(Component.text(prefix + ": " + cause.getMessage(), NamedTextColor.RED));
         plugin.getLogger().warning(prefix + ": " + cause);
     }
 
-    // ------------------------------------------------------- FAZ 1C: seçim + çakışma
+    // ------------------------------------------------- Phase 1C: selection + collision
 
     /**
-     * Aday havuzunun ağırlık dağılımını gösterir — {@code generation.md} §5.4 kararının
-     * gözle doğrulanması.
+     * Shows the candidate pool's weight distribution — a by-eye check of the decision in
+     * {@code generation.md} §5.4.
      *
-     * <p>Yüzdeler kapı sayısından bağımsız olmalı: 4 kapılı bir oda ağırlığını bir kez
-     * sayar. Bu komut, config'in söylediğiyle motorun yaptığının aynı olduğunu gösteriyor.
+     * <p>The percentages must be independent of door count: a 4-door room counts its weight
+     * once. This command demonstrates that what the config says and what the engine does are
+     * the same thing.
      */
     private void weights(CommandSender sender) {
         RoomTemplateStore store = requireTemplates(sender);
@@ -480,9 +486,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Tam dungeon üretir: kritik path → boss → yan dallar → paste → tıpa.
+     * Generates a full dungeon: critical path → boss → side branches → paste → plugs.
      *
-     * <p>FAZ 1D milestone'u — {@code generation.md} §6 ve §7.
+     * <p>The phase 1D milestone — {@code generation.md} §6 and §7.
      */
     private void dungeon(CommandSender sender, String label, String[] args) {
         RoomTemplateStore store = requireTemplates(sender);
@@ -541,7 +547,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 });
     }
 
-    /** Odaları sırayla paste eder — sıra deterministik olsun diye zincirleniyor. */
+    /** Pastes the rooms one after another — chained so the order stays deterministic. */
     private CompletableFuture<Long> pasteDungeon(SchematicService service, World world,
                                                  DungeonGenerator.Result result) {
         CompletableFuture<Long> chain = CompletableFuture.completedFuture(0L);
@@ -554,8 +560,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Tıpa — paste BİTTİKTEN sonra. Önce basılsaydı sonraki odanın paste'i tıpayı ezerdi;
-     * ayrıca bir kapının boş kalıp kalmadığı ancak graf tamamlanınca belli oluyor.
+     * Plugging — only AFTER the pastes are done. Done earlier, the next room's paste would
+     * overwrite the plug; and whether a door is left open is only known once the graph is
+     * complete.
      */
     private CompletableFuture<DoorPlugger.Report> plugDoors(World world,
                                                             DungeonGenerator.Result result,
@@ -608,10 +615,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * Slot'un 3B sınırı. X/Z slot'tan, Y dünyanın yükseklik sınırlarından geliyor.
+     * The slot's 3D bounds. X/Z come from the slot, Y from the world's height limits.
      *
-     * <p>X/Z sınırı sert bir gereklilik: taşan bir oda komşu instance'ın bloklarına girer.
-     * Y'de slot kavramı yok, dünya sınırı yeterli.
+     * <p>The X/Z bound is a hard requirement: a room that overflows reaches into a neighbouring
+     * instance's blocks. There is no slot concept on Y, so the world limits suffice.
      */
     private static Aabb slotBounds(GridSlot slot, World world) {
         return new Aabb(
@@ -692,7 +699,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
-        // schematic adi bekleyen konumlar: paste/room 2. argumanda, connect 2. ve 3.
+        // Positions that expect a schematic name: paste/room at arg 2, connect at args 2 and 3.
         boolean wantsRoomName = (args.length == 2 && (sub.equals("paste") || sub.equals("room")
                 || sub.equals("connect")))
                 || (args.length == 3 && sub.equals("connect"));

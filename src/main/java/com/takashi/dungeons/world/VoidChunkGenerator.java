@@ -12,18 +12,18 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Tamamen boş (void) chunk üreteci — dungeon dünyasının zemini.
+ * A completely empty (void) chunk generator — the substrate of the dungeon world.
  *
- * <p>Hiçbir aşamayı üretmiyoruz: taş yok, mağara yok, yapı yok, dekorasyon yok, bedrock yok.
- * Sebep: dungeon'ın tek içeriği paste edilen schematic'ler. Vanilla generation açık kalırsa
- * hem CPU harcanır hem de odaların dışında ilgisiz blok/mob birikir.
+ * <p>No stage is generated: no stone, no caves, no structures, no decoration, no bedrock. The
+ * reason is that a dungeon's only content is the schematics pasted into it. Leaving vanilla
+ * generation on would burn CPU and accumulate unrelated blocks and mobs outside the rooms.
  *
- * <p>Biome {@code THE_VOID} seçildi: doğal mob spawn tablosu boş olduğu için oda dışına
- * mob sızmaz, ayrıca çim/su rengi gibi görsel artıklar oluşmaz.
+ * <p>{@code THE_VOID} was chosen as the biome: its natural mob spawn table is empty, so no mob
+ * leaks in outside the rooms, and there are no visual artefacts such as grass or water tint.
  */
 public final class VoidChunkGenerator extends ChunkGenerator {
 
-    /** Bütün dünyada tek biome döndüren sağlayıcı. */
+    /** A provider that returns a single biome for the entire world. */
     private static final class VoidBiomeProvider extends BiomeProvider {
         @Override
         public @NotNull Biome getBiome(@NotNull WorldInfo worldInfo, int x, int y, int z) {
@@ -72,8 +72,8 @@ public final class VoidChunkGenerator extends ChunkGenerator {
     }
 
     /**
-     * Void dünyada yükseklik haritası anlamsız; 0 döndürüyoruz ki Bukkit'in
-     * "en üst blok" sorguları dünya tavanına tırmanmasın.
+     * A height map is meaningless in a void world; returning the minimum keeps Bukkit's
+     * "highest block" queries from climbing to the world ceiling.
      */
     @Override
     public int getBaseHeight(@NotNull WorldInfo worldInfo, @NotNull Random random,
@@ -82,8 +82,8 @@ public final class VoidChunkGenerator extends ChunkGenerator {
     }
 
     /**
-     * Oyuncular buraya asla doğrudan düşmemeli (girişler ışınlanarak yapılır) ama
-     * Bukkit yine de bir spawn noktası ister — grid'in dışında, sabit bir nokta veriyoruz.
+     * Players should never land here directly — entries happen by teleport — but Bukkit still
+     * insists on a spawn point, so we hand it a fixed one outside the grid.
      */
     @Override
     public org.bukkit.Location getFixedSpawnLocation(@NotNull World world, @NotNull Random random) {

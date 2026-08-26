@@ -1,13 +1,13 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Yatay yönler — {@code generation.md} §3'teki index düzeninde: K=0, D=1, G=2, B=3.
+ * Horizontal directions, in the index order from {@code generation.md} §3: N=0, E=1, S=2, W=3.
  *
- * <p>Sıra <b>saat yönü</b>. Bu, {@link Rotation}'ın {@code (d + R) mod 4} formülünü
- * doğrudan {@code ordinal()} aritmetiğine indirgiyor — enum sırası değiştirilirse
- * rotasyon matematiği sessizce bozulur.
+ * <p>The order is <b>clockwise</b>. That reduces {@link Rotation}'s {@code (d + R) mod 4}
+ * formula to plain {@code ordinal()} arithmetic — which also means that reordering this enum
+ * silently breaks the rotation maths.
  *
- * <p>Minecraft ekseni: {@code +X = Doğu}, {@code +Z = Güney}, dolayısıyla Kuzey {@code -Z}.
+ * <p>Minecraft axes: {@code +X = East}, {@code +Z = South}, therefore North is {@code -Z}.
  */
 public enum Direction {
 
@@ -19,31 +19,34 @@ public enum Direction {
     private static final Direction[] VALUES = values();
 
     private final Vec3i step;
-    private final String turkish;
+    private final String displayName;
 
-    Direction(int dx, int dy, int dz, String turkish) {
+    Direction(int dx, int dy, int dz, String displayName) {
         this.step = new Vec3i(dx, dy, dz);
-        this.turkish = turkish;
+        this.displayName = displayName;
     }
 
-    /** Bu yönde bir blokluk yer değiştirme. */
+    /** A one-block displacement in this direction. */
     public Vec3i step() {
         return step;
     }
 
-    /** Yön index'i (K=0, D=1, G=2, B=3). */
+    /** The direction index (N=0, E=1, S=2, W=3). */
     public int index() {
         return ordinal();
     }
 
-    /** {@code karşıt(d) = (d + 2) mod 4}. */
+    /** {@code opposite(d) = (d + 2) mod 4}. */
     public Direction opposite() {
         return VALUES[(ordinal() + 2) & 3];
     }
 
-    /** Mesajlarda kullanılacak Türkçe ad. */
-    public String turkish() {
-        return turkish;
+    /**
+     * Name shown in messages. Currently Turkish; changing the language is a job for this text,
+     * not for the API name.
+     */
+    public String displayName() {
+        return displayName;
     }
 
     public static Direction byIndex(int index) {
@@ -51,21 +54,23 @@ public enum Direction {
     }
 
     /**
-     * Kapı anchor'ının hangi duvarda olduğunu türetir — {@code generation.md} §4.
+     * Derives which wall a door anchor lies in — {@code generation.md} §4.
      *
-     * <p><b>Neden ham {@code |dx| > |dz|} değil:</b> o kural sadece kare odada doğru.
-     * 9 geniş × 25 uzun bir koridorda, doğu duvarının güney ucuna yakın bir kapı
-     * {@code (dx=+4, dz=+11)} verir; {@code |dz| > |dx|} olduğu için naif kural "güney
-     * duvarı" der — yanlış. Doğrusu her bileşeni <b>kendi yönündeki yarı boyuta</b>
-     * normalize edip hangisinin ±1'e ulaştığına bakmak: nokta o duvara değiyordur.
+     * <p><b>Why not the raw {@code |dx| > |dz|} rule:</b> that rule is only correct for square
+     * rooms. In a 9-wide × 25-long corridor, a door in the east wall near the south end gives
+     * {@code (dx=+4, dz=+11)}; since {@code |dz| > |dx|}, the naive rule answers "south wall",
+     * which is wrong. The correct approach normalizes each component against
+     * <b>the half-extent in its own direction</b> and asks which one reaches ±1: that is the
+     * wall the point is touching.
      *
-     * <p>Normalizasyon yön başına ayrı yapılıyor (doğu ve batı uzanımları ayrı okunuyor),
-     * çünkü {@code generation.md} §9 ile tek-sayı-kenar kuralı kalktı: origin artık odanın
-     * tam ortasında olmak zorunda değil, oda origin'e göre asimetrik olabilir.
+     * <p>Normalization is done per direction (east and west extents are read separately),
+     * because {@code generation.md} §9 dropped the odd-side-length rule: the origin no longer
+     * has to sit at the exact middle of the room, so a room may be asymmetric about it.
      *
-     * @param local    anchor'ın origin'e göre yerel koordinatı
-     * @param localBox odanın origin'e göre sınır kutusu
-     * @throws IllegalArgumentException anchor tam origin'in üstündeyse (duvar türetilemez)
+     * @param local    the anchor's local coordinate relative to the origin
+     * @param localBox the room's bounding box relative to the origin
+     * @throws IllegalArgumentException if the anchor sits exactly on the origin (no wall can be
+     *                                  derived)
      */
     public static Direction ofAnchor(Vec3i local, Aabb localBox) {
         double nx = ratio(local.x(), localBox.maxX(), -localBox.minX());
@@ -73,10 +78,10 @@ public enum Direction {
 
         if (nx == 0.0 && nz == 0.0) {
             throw new IllegalArgumentException(
-                    "Kapı anchor'ı odanın origin'iyle aynı noktada — duvar türetilemez: " + local);
+                    "Door anchor coincides with the room origin — no wall can be derived: " + local);
         }
-        // Eşitlikte X kazanır (generation.md §4: |nx| >= |nz|). Köşe anchor'ında
-        // seçimin belirsiz kalmaması için kural sabit tutuluyor.
+        // X wins ties (generation.md §4: |nx| >= |nz|). The rule is fixed so that a corner
+        // anchor never leaves the choice ambiguous.
         if (nx >= nz) {
             return local.x() > 0 ? EAST : WEST;
         }
@@ -84,10 +89,10 @@ public enum Direction {
     }
 
     /**
-     * Bileşenin, işaret ettiği yöndeki uzanıma oranı.
+     * The component's ratio against the extent in the direction it points.
      *
-     * <p>Uzanım 0 ise (origin o kenarın tam üstünde) oran sonsuz sayılır: nokta zaten
-     * o duvarda demektir. Sıfıra bölmeyi bu yüzden ayrı ele alıyoruz.
+     * <p>If the extent is 0 (the origin sits right on that edge) the ratio counts as infinite:
+     * the point is already on that wall. That is why division by zero is handled separately.
      */
     private static double ratio(int delta, int positiveExtent, int negativeExtent) {
         if (delta == 0) {

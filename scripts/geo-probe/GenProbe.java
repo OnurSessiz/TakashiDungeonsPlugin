@@ -9,11 +9,11 @@ import java.util.Deque;
 import java.util.Random;
 
 /**
- * FAZ 1C dogrulamasi: agirlikli secim, cakisma testi, geri cekilme, OLU kapi.
+ * Phase 1C verification: weighted selection, collision testing, backing off, DEAD doors.
  *
- * generation paketi saf Java oldugu icin sunucu gerekmiyor. Test odalarinin
- * anchor ve agirlik degerleri TestRoomFactory'nin urettikleriyle ayni
- * (.yml dosyalarindan dogrulanabilir).
+ * Because the generation package is pure Java, no server is needed. The anchor and weight
+ * values of the test rooms match what TestRoomFactory produces (verifiable against the
+ * generated .yml files).
  */
 public class GenProbe {
 
@@ -37,11 +37,11 @@ public class GenProbe {
         if (fail > 0) System.exit(1);
     }
 
-    // ---------------------------------------------------------------- 1C testleri
+    // ---------------------------------------------------------------- 1C tests
 
     /**
-     * generation.md 5.4 karari: agirlik SABLONA ait, (sablon x kapi) ciftine degil.
-     * 4 kapili oda agirligini BIR kez saymali.
+     * The generation.md §5.4 decision: weight belongs to the TEMPLATE, not to the
+     * (template x door) pair. A 4-door room must count its weight ONCE.
      */
     static void weightBelongsToTemplate() {
         section("Agirlik sablona ait mi -- 200k cekilis");
@@ -68,8 +68,8 @@ public class GenProbe {
         }
         check("gozlenen dagilim sablon agirligiyla ortusuyor (sapma < %0.5)", allClose, "");
 
-        // Kapi sayisiyla korelasyon OLMAMALI. test_cross 4 kapili ama agirligi
-        // test_corridor'dan dusuk; gozlenen sikligi da dusuk cikmali.
+        // There must be NO correlation with door count. test_cross has 4 doors but a lower
+        // weight than test_corridor, so its observed frequency must come out lower too.
         double cross = 100.0 * hits.get("test_cross") / draws;
         double corridor = 100.0 * hits.get("test_corridor") / draws;
         check("test_cross (4 kapi, ag=100) < test_corridor (2 kapi, ag=150)",
@@ -77,8 +77,8 @@ public class GenProbe {
     }
 
     /**
-     * Asil argumanin kaniti: cifte ait olsaydi haritacinin yazdigi SIRALAMA
-     * tersine donerdi. Burada iki modeli yan yana hesapliyoruz.
+     * The proof of the real argument: under pair ownership the ORDERING the mapper wrote
+     * would invert. Here the two models are computed side by side.
      */
     static void weightOrderingPreserved() {
         section("Cifte ait olsaydi ne olurdu -- siralama karsilastirmasi");
@@ -119,7 +119,7 @@ public class GenProbe {
         RoomLibrary lib = new RoomLibrary(allTemplates());
 
         check("normal havuzda giris yok",
-                lib.normalPool().stream().noneMatch(t -> t.type() == RoomType.GIRIS), "");
+                lib.normalPool().stream().noneMatch(t -> t.type() == RoomType.ENTRANCE), "");
         check("normal havuzda boss yok",
                 lib.normalPool().stream().noneMatch(t -> t.type() == RoomType.BOSS), "");
         check("giris havuzu dolu", lib.entrances().size() == 1, "" + lib.entrances().size());
@@ -127,7 +127,7 @@ public class GenProbe {
         check("normal havuzda 6 oda var", lib.normalPool().size() == 6, "" + lib.normalPool().size());
         check("kutuphane kullanilabilir", lib.isUsable(), "");
 
-        // kapisiz oda havuza girmemeli
+        // a doorless room must not enter the pool
         List<RoomTemplate> withDoorless = new ArrayList<>(allTemplates());
         withDoorless.add(new RoomTemplate("sussuz_oda", RoomType.NORMAL, 500,
                 List.of(), box(11, 5, 11)));
@@ -178,11 +178,11 @@ public class GenProbe {
     }
 
     /**
-     * "Her bos kapiyi doldur" -- 1C'nin naif stratejisi.
+     * "Fill every open door" -- 1C's naive strategy.
      *
-     * Uretim kodunda ARTIK YOK (1D'nin DungeonGenerator'i onun yerini aldi), ama
-     * olcum icin burada duruyor: 1D'nin kritik path tasariminin NEDEN gerekli
-     * oldugunu gosteren karsilastirma tabani bu.
+     * NO LONGER in the production code (1D's DungeonGenerator replaced it), but kept here as
+     * a measurement: this is the baseline that shows WHY 1D's critical path design is
+     * necessary.
      */
     static DungeonLayout naiveFill(RoomLibrary lib, java.util.random.RandomGenerator rnd, Aabb slot, Vec3i origin,
                                    int target) {
@@ -199,7 +199,7 @@ public class GenProbe {
         Deque<OpenDoor> queue = new ArrayDeque<>(root.openDoors());
         while (layout.size() < target && !queue.isEmpty()) {
             OpenDoor door = queue.poll();
-            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.BOS) {
+            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
                 continue;
             }
             RoomPlacer.Attempt a = placer.fill(layout, door, lib.normalPool());
@@ -211,18 +211,19 @@ public class GenProbe {
     }
 
     /**
-     * OLCUM, hata degil: 1C'nin "her bos kapiyi doldur" stratejisi hedef oda sayisini
-     * GARANTI ETMIYOR. Sebep geometri degil, dallanma sureci (Galton-Watson) sonumlenmesi.
+     * A MEASUREMENT, not a failure: 1C's "fill every open door" strategy does NOT guarantee
+     * the target room count. The cause is not geometry but a branching process
+     * (Galton-Watson) going extinct.
      *
-     * Bu bolum 1D'nin neden kritik path'i ONCE kurmasi gerektiginin kaniti
-     * (generation.md 6.2). Sayilar degisirse 1D'nin varsayimi da degismis demektir.
+     * This section is the proof of why 1D has to build the critical path FIRST
+     * (generation.md §6.2). If these numbers change, 1D's assumption has changed too.
      */
     static void branchingExtinction() {
         section("OLCUM: hedefe ulasma orani ve tikanma MEKANIZMASI");
         List<RoomTemplate> pool = normalPool();
         long total = pool.stream().mapToLong(RoomTemplate::weight).sum();
 
-        // Bir yerlestirme 1 kapi tuketip (kapi-1) kapi ekliyor -> net (kapi-2)
+        // Each placement consumes 1 door and adds (doors-1) -> a net (doors-2)
         double netDoors = 0;
         for (RoomTemplate t : pool) {
             netDoors += (double) t.weight() / total * (t.doorCount() - 2);
@@ -262,7 +263,7 @@ public class GenProbe {
                 String.format("durma %%%.1f  vs  cikmaz cekilisi %%%.1f",
                         100.0 * stoppedAtTwo / runs, deadendShare));
 
-        // Cikmaz odayi havuzdan cikarinca ne oluyor -> 1D'nin cozumu tam olarak bu
+        // What happens when dead ends leave the pool -> this is exactly 1D's fix
         List<RoomTemplate> noTerminal = new ArrayList<>();
         for (RoomTemplate t : allTemplates()) {
             if (t.doorCount() != 1 || t.type() != RoomType.NORMAL) noTerminal.add(t);
@@ -284,7 +285,7 @@ public class GenProbe {
     static void slotBoundsRespected() {
         section("Slot siniri: dar slot'ta hicbir oda disari tasmamali");
         RoomLibrary lib = new RoomLibrary(allTemplates());
-        // 96 bloklik dar slot: 33x33 boss odasi bile zor sigar, cakisma cok olacak.
+        // A narrow 96-block slot: even the 33x33 boss room barely fits, so expect collisions.
         Aabb slot = slotBox(96);
         Vec3i center = new Vec3i(48, 64, 48);
 
@@ -307,7 +308,7 @@ public class GenProbe {
     static void deadEndMarking() {
         section("OLU kapi: yer kalmayinca kapi olu isaretlenmeli, sessizce yutulmamali");
         RoomLibrary lib = new RoomLibrary(allTemplates());
-        // Cok dar slot -> giris odasindan sonra neredeyse hicbir sey sigmaz.
+        // A very narrow slot -> almost nothing fits after the entrance room.
         Aabb slot = slotBox(40);
         DungeonLayout l = naiveFill(lib, Seeds.from(3L), slot, new Vec3i(20, 64, 20), 10);
 
@@ -343,8 +344,8 @@ public class GenProbe {
         return sb.toString();
     }
 
-    // ---------------------------------------------------------------- test odalari
-    // Tek kaynak: Rooms.java. Set degisince tek yerden guncelleniyor.
+    // ---------------------------------------------------------------- test rooms
+    // Single source: Rooms.java. When the set changes, it changes in one place.
 
     static List<RoomTemplate> allTemplates() {
         return Rooms.all();
@@ -366,7 +367,7 @@ public class GenProbe {
         return pool.stream().filter(x -> x.name().equals(name)).findFirst().orElseThrow();
     }
 
-    // ---------------------------------------------------------------- yardimcilar
+    // ---------------------------------------------------------------- helpers
 
     static void section(String title) {
         System.out.println("--- " + title + " ---");

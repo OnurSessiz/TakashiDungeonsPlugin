@@ -1,8 +1,8 @@
-# TakashiDungeons — yerel Paper test sunucusu (1.21.8)
-# Kullanim: powershell -ExecutionPolicy Bypass -File scripts\server.ps1
+# TakashiDungeons - local Paper test server (1.21.8)
+# Usage: powershell -ExecutionPolicy Bypass -File scripts\server.ps1
 #
-# Paper 1.21.8 Java 21 ister. Sistem PATH'inde daha yeni bir JDK varsa sunucu
-# acilmaz, bu yuzden java.exe yolu burada acikca veriliyor.
+# Paper 1.21.8 requires Java 21. With a newer JDK on PATH the server refuses to start, so the
+# path to java.exe is given explicitly here.
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot

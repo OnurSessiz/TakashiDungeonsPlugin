@@ -2,15 +2,15 @@ import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.math.transform.AffineTransform;
 
 /**
- * generation.md §3 / §11-1: SchematicService.pasteBlocking'in kullandigi transform'un
- * yon isaretini olcer. Paste, clipboard origin'ine gore yerel offset v'yi
- * to + transform.apply(v) noktasina yaziyor; dolayisiyla burada olculen sey
- * pastelenen bloklarin gittigi yerin ta kendisi.
+ * generation.md §3: measures the direction sign of the transform
+ * SchematicService.pasteBlocking uses. A paste writes a local offset v (relative to the
+ * clipboard origin) to the point to + transform.apply(v), so what is measured here is exactly
+ * where the pasted blocks end up.
  */
 public class RotProbe {
 
     static final String[] NAME = {"KUZEY", "DOGU", "GUNEY", "BATI"};
-    // yon index: K=0 D=1 G=2 B=3   -> adim vektoru
+    // direction index: N=0 E=1 S=2 W=3   -> step vector
     static final int[][] STEP = {{0,-1},{1,0},{0,1},{-1,0}};
 
     public static void main(String[] args) {
@@ -22,11 +22,11 @@ public class RotProbe {
 
             System.out.println("--- rotateY(-" + deg + ")  [R=" + (deg/90) + "] ---");
 
-            // 1) genel nokta: (x,y,z) nereye gidiyor
+            // 1) a general point: where does (x,y,z) go
             BlockVector3 p = t.apply(BlockVector3.at(3, 7, 5).toVector3()).toBlockPoint();
             System.out.println("  nokta (3,7,5) -> (" + p.x() + "," + p.y() + "," + p.z() + ")");
 
-            // 2) her yon birim vektoru nereye donuyor
+            // 2) where each direction unit vector turns to
             StringBuilder sb = new StringBuilder("  yonler: ");
             boolean saatYonu = true, tersYonu = true;
             for (int d = 0; d < 4; d++) {
@@ -43,7 +43,7 @@ public class RotProbe {
             System.out.println();
         }
 
-        // 3) test_corner senaryosu: K+D kapili oda 90 derece dondurulunce hangi kapilar?
+        // 3) the test_corner scenario: rotate an N+E room by 90 degrees -- which doors?
         System.out.println("=== test_corner (kapilar: KUZEY + DOGU) 90 derece dondurulurse ===");
         AffineTransform t90 = (AffineTransform) new AffineTransform().rotateY(-90);
         StringBuilder r = new StringBuilder();
@@ -55,7 +55,7 @@ public class RotProbe {
         System.out.println("  DOGU+GUNEY beklenir  -> spec'teki +1 (saat yonu) DOGRU");
         System.out.println("  BATI+KUZEY cikarsa   -> isaret ters, butun formuller cevrilecek");
 
-        // 4) spec §3'teki nokta formulleri birebir tutuyor mu
+        // 4) do the point formulas in spec §3 hold exactly
         System.out.println("\n=== spec §3 nokta formulleri dogrulamasi ===");
         int x = 3, y = 7, z = 5;
         int[][] beklenen = {{x,y,z}, {-z,y,x}, {-x,y,-z}, {z,y,-x}};
@@ -73,7 +73,7 @@ public class RotProbe {
         System.out.println(hepsi ? "\nSPEC §3 NOKTA FORMULLERI DOGRU" : "\nSPEC §3 YANLIS - duzeltilecek");
     }
 
-    /** birim vektorden yon index'i; degilse -1 */
+    /** direction index from a unit vector; -1 if it is not one */
     static int dirOf(BlockVector3 v) {
         for (int d = 0; d < 4; d++) {
             if (v.x() == STEP[d][0] && v.z() == STEP[d][1]) return d;

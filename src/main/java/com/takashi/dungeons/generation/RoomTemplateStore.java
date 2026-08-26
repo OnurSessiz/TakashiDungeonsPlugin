@@ -16,31 +16,33 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 /**
- * Oda şablonlarını yükler: {@code .schem} (geometri) + yanındaki {@code .yml} (metadata).
+ * Loads room templates: the {@code .schem} (geometry) plus the {@code .yml} beside it
+ * (metadata).
  *
- * <p><b>İki kaynak, tek nesne.</b> Kutu schematic'ten, kapı anchor'ları {@code .yml}'den
- * geliyor; duvar yönü ikisinin birleşiminden türetiliyor ({@code generation.md} §4).
- * Metadata dosyası yoksa oda kapısız NORMAL sayılır — yüklenir ama grafa bağlanamaz.
- * Sessizce atlanmıyor, {@code /tdungeons rooms} listesinde "kapısız" olarak görünüyor.
+ * <p><b>Two sources, one object.</b> The box comes from the schematic, the door anchors from
+ * the {@code .yml}, and the wall facing is derived from the combination
+ * ({@code generation.md} §4). With no metadata file, the room counts as a doorless NORMAL room:
+ * it loads but cannot be connected to the graph. It is not skipped silently — it shows up as
+ * "doorless" in the {@code /tdungeons rooms} listing.
  *
- * <p><b>Her şey async.</b> Hem NBT parse hem YAML okuma disk I/O; main thread'de yapılırsa
- * dungeon üretimi sırasında sunucu donar.
+ * <p><b>Everything is async.</b> Both NBT parsing and YAML reading are disk I/O; done on the
+ * main thread they would freeze the server during dungeon generation.
  */
 public final class RoomTemplateStore {
 
     private final Plugin plugin;
     private final SchematicService schematics;
 
-    /** Ad (küçük harf) → yüklenmiş şablon. */
+    /** Name (lower-cased) → loaded template. */
     private final Map<String, CompletableFuture<RoomTemplate>> cache = new ConcurrentHashMap<>();
 
     /**
-     * Metadata okumayı main thread'e düşürmemek için açık executor.
+     * An explicit executor, so metadata reading never falls back onto the main thread.
      *
-     * <p>Gerekli, çünkü {@code SchematicService.load} cache'ten dönerse future <b>zaten
-     * tamamlanmış</b> gelir; düz {@code thenApply} o durumda çağıranın thread'inde
-     * (yani main thread'de) çalışır ve YAML dosyasını orada okurdu. İkinci yüklemede
-     * ortaya çıkan, ilkinde görünmeyen türden bir tuzak.
+     * <p>It is necessary because when {@code SchematicService.load} returns from its cache, the
+     * future comes back <b>already completed</b>; a plain {@code thenApply} would then run on
+     * the caller's thread — the main thread — and read the YAML file there. The kind of trap
+     * that only appears on the second load, never the first.
      */
     private final Executor async;
 
@@ -50,7 +52,7 @@ public final class RoomTemplateStore {
         this.async = task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task);
     }
 
-    /** Schematic klasöründeki bütün oda adları (metadata'sı olsun olmasın). */
+    /** Every room name in the schematic folder, with or without metadata. */
     public List<String> list() {
         return schematics.list();
     }
@@ -60,9 +62,9 @@ public final class RoomTemplateStore {
     }
 
     /**
-     * Şablonu yükler; aynı ad için ikinci çağrı cache'ten döner.
+     * Loads a template; a second call for the same name comes from the cache.
      *
-     * @param name uzantısız dosya adı
+     * @param name file name without extension
      */
     public CompletableFuture<RoomTemplate> load(String name) {
         String key = name.toLowerCase(Locale.ROOT);
@@ -71,11 +73,11 @@ public final class RoomTemplateStore {
             return cached;
         }
 
-        // Future ÖNCE cache'e konuyor, zincir SONRA kuruluyor. Ters sırada
-        // (computeIfAbsent içinde zincirleyerek) bir açık var: executor task'ı
-        // reddederse — plugin disable olurken olur — zincir senkron patlıyor ve
-        // temizlik computeIfAbsent henüz eklemeden çalışıyor; başarısız future
-        // sonra cache'e girip orada kalıyor. Bu sırada o pencere yok.
+        // The future goes into the cache FIRST and the chain is built after. The other order
+        // (chaining inside computeIfAbsent) has a hole: if the executor rejects the task —
+        // which happens while the plugin is being disabled — the chain fails synchronously and
+        // the cleanup runs before computeIfAbsent has inserted anything, so the failed future
+        // lands in the cache afterwards and stays there. This order has no such window.
         CompletableFuture<RoomTemplate> created = new CompletableFuture<>();
         CompletableFuture<RoomTemplate> raced = cache.putIfAbsent(key, created);
         if (raced != null) {
@@ -86,9 +88,10 @@ public final class RoomTemplateStore {
                 .thenApplyAsync(clipboard -> build(key, clipboard), async)
                 .whenComplete((template, error) -> {
                     if (error != null) {
-                        // Başarısız yükleme cache'te kalmasın: dosya düzeltilince yeniden
-                        // denensin. İki argümanlı remove — bu arada invalidateCache() olup
-                        // başkası yeni bir future koyduysa onu silme.
+                        // Don't leave a failed load in the cache: once the file is fixed it
+                        // should be retried. The two-argument remove is deliberate — if
+                        // invalidateCache() ran in the meantime and someone installed a new
+                        // future, don't delete theirs.
                         cache.remove(key, created);
                         created.completeExceptionally(error);
                     } else {
@@ -98,14 +101,14 @@ public final class RoomTemplateStore {
         return created;
     }
 
-    /** Verilen adların hepsini paralel yükler; biri patlarsa sonuç da patlar. */
+    /** Loads all the given names in parallel; if one fails, the result fails. */
     public CompletableFuture<List<RoomTemplate>> loadAll(List<String> names) {
         List<CompletableFuture<RoomTemplate>> futures = names.stream().map(this::load).toList();
         return CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                 .thenApply(ignored -> futures.stream().map(CompletableFuture::join).toList());
     }
 
-    /** Şablonun metadata dosyası. */
+    /** The template's metadata file. */
     public File metadataFile(String name) {
         return new File(schematics.getDirectory(), name + ".yml");
     }
@@ -118,9 +121,10 @@ public final class RoomTemplateStore {
         for (int i = 0; i < metadata.doorLocal().size(); i++) {
             Vec3i local = metadata.doorLocal().get(i);
             if (!localBox.contains(local)) {
-                throw new IllegalArgumentException(name + ": kapilar[" + i + "] " + local
-                        + " odanın dışında. Oda kutusu (origin'e göre): " + localBox
-                        + ". Anchor origin'e GÖRE yazılır, schematic'in köşesine göre değil.");
+                throw new IllegalArgumentException(name + ": doors[" + i + "] " + local
+                        + " is outside the room. Room box (relative to origin): " + localBox
+                        + ". Anchors are written relative to the ORIGIN, not to the schematic's"
+                        + " corner.");
             }
             DoorAnchor door = DoorAnchor.of(i, local, localBox);
             warnIfNotOnWall(name, door, localBox);
@@ -131,12 +135,12 @@ public final class RoomTemplateStore {
     }
 
     /**
-     * Anchor türetilen duvarın yüzeyinde değilse uyarır.
+     * Warns when an anchor is not on the surface of the wall it was derived from.
      *
-     * <p>Patlatmıyor: içeri çekilmiş (girintili) bir kapı bilinçli bir tasarım tercihi
-     * olabilir. Ama {@code generation.md} §9'un dediği gibi "bu sistemlerin kırıldığı tek
-     * yer burası" — bir blok kayan anchor duvarları iç içe geçirir. Uyarı, hatayı paste
-     * sonrası gözle aramak yerine yükleme anında yakalatıyor.
+     * <p>It does not throw: a recessed door can be a deliberate design choice. But as
+     * {@code generation.md} §9 puts it, "this is the single place where these systems break" —
+     * an anchor off by one block makes walls interpenetrate. The warning catches the mistake at
+     * load time instead of leaving it to be spotted by eye after the paste.
      */
     private void warnIfNotOnWall(String name, DoorAnchor door, Aabb box) {
         Vec3i local = door.local();
@@ -152,13 +156,13 @@ public final class RoomTemplateStore {
         };
         if (actual != expected) {
             plugin.getLogger().warning(name + ": " + door + " duvarın yüzeyinde değil — "
-                    + door.wall().turkish() + " duvarı " + expected + ", anchor " + actual
+                    + door.wall().displayName() + " duvarı " + expected + ", anchor " + actual
                     + " (" + Math.abs(actual - expected) + " blok içeride). Bilerek yapılmadıysa "
                     + "bağlanan odalar arasında boşluk kalır.");
         }
     }
 
-    /** Metadata dosyası yoksa {@link RoomMetadata#DEFAULT}; varsa çözülür, bozuksa patlar. */
+    /** {@link RoomMetadata#DEFAULT} if there is no metadata file; otherwise parsed, or thrown. */
     private RoomMetadata readMetadata(String name) {
         File file = metadataFile(name);
         if (!file.isFile()) {
@@ -169,11 +173,12 @@ public final class RoomTemplateStore {
     }
 
     /**
-     * Clipboard'ın sınırlarını <b>origin'e göre</b> kutuya çevirir.
+     * Converts the clipboard's bounds into a box <b>relative to the origin</b>.
      *
-     * <p>Origin'e göre olması şart: rotasyon origin etrafında dönüyor, paste hedefi de
-     * origin'in gideceği nokta. Kutuyu clipboard'ın kendi koordinatlarında tutsaydık her
-     * hesapta ayrıca origin çıkarmamız gerekirdi — ve bir yerde unutulurdu.
+     * <p>Relative to the origin is essential: rotation turns around the origin, and the paste
+     * target is where the origin will land. Keeping the box in the clipboard's own coordinates
+     * would mean subtracting the origin in every calculation — and it would get forgotten
+     * somewhere.
      */
     private static Aabb localBoxOf(Clipboard clipboard) {
         BlockVector3 origin = clipboard.getOrigin();

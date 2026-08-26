@@ -1,32 +1,33 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Bir odanın kapı bağlantı noktası — {@code generation.md} §2.
+ * A room's door connection point — {@code generation.md} §2.
  *
- * <p>Anchor, kapı açıklığının <b>taban-merkez bloğu</b>; odanın origin'ine göre yerel
- * koordinat olarak saklanır.
+ * <p>The anchor is the <b>base-center block of the door opening</b>, stored as a local
+ * coordinate relative to the room's origin.
  *
- * <p><b>Yön saklanmıyor, türetiliyor.</b> {@link #wall} metadata'dan okunmuyor,
- * {@link Direction#ofAnchor} ile anchor vektöründen hesaplanıyor. Sebebi tek bir cümle:
- * "metadata kuzey diyor ama anchor doğu duvarında" tutarsızlığının doğabileceği bir yer
- * bırakmamak. Harita ekibi 40+ oda için elle metadata yazacak; yazılabilen her alan
- * yanlış yazılabilen bir alandır.
+ * <p><b>Facing is not stored, it is derived.</b> {@link #wall} is not read from metadata; it is
+ * computed from the anchor vector by {@link Direction#ofAnchor}. The reason fits in one
+ * sentence: leave nowhere for the inconsistency "metadata says north but the anchor is in the
+ * east wall" to arise. The map team will hand-write metadata for 40+ rooms, and every field
+ * that can be written is a field that can be written wrong.
  *
- * @param index odanın kapı listesindeki sırası — {@code generation.md} §8'deki "adres".
- *              Doldurma sırası DEĞİL (ona geometri karar veriyor); hangi kapının bağlandığını
- *              ve hangisine tıpa basılacağını takip etmeye yarıyor.
- * @param local anchor'ın origin'e göre koordinatı
- * @param wall  anchor'dan türetilmiş duvar (= kapının dışa bakan yönü, oda döndürülmeden önce)
+ * @param index position in the room's door list — the "address" from {@code generation.md} §8.
+ *              NOT a fill order (geometry decides that); it tracks which door got connected and
+ *              which one gets plugged.
+ * @param local the anchor's coordinate relative to the origin
+ * @param wall  the wall derived from the anchor (= the door's outward facing, before the room
+ *              is rotated)
  */
 public record DoorAnchor(int index, Vec3i local, Direction wall) {
 
-    /** Anchor'dan duvarı türeterek kapıyı kurar. */
+    /** Builds the door by deriving its wall from the anchor. */
     public static DoorAnchor of(int index, Vec3i local, Aabb localBox) {
         return new DoorAnchor(index, local, Direction.ofAnchor(local, localBox));
     }
 
     @Override
     public String toString() {
-        return "kapı#" + index + " " + local + " " + wall.turkish();
+        return "door#" + index + " " + local + " " + wall.displayName();
     }
 }

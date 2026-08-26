@@ -1,20 +1,20 @@
 package com.takashi.dungeons.generation;
 
 /**
- * 90°'lik saat yönü rotasyon adımı — {@code generation.md} §3'teki {@code R ∈ {0,1,2,3}}.
+ * A 90° clockwise rotation step — {@code R ∈ {0,1,2,3}} from {@code generation.md} §3.
  *
- * <p><b>Yön işareti ÖLÇÜLDÜ (2026-08-25), varsayım değil.</b> {@code SchematicService}'in
- * paste'te uyguladığı {@code AffineTransform().rotateY(-derece)} doğrudan çalıştırıldı:
+ * <p><b>The sign was MEASURED, not assumed.</b> The exact call {@code SchematicService} makes
+ * during paste, {@code AffineTransform().rotateY(-degrees)}, was run directly:
  * <pre>
- *   rotateY(-90):  (x,y,z) -> (-z,y,x)     KUZEY -> DOĞU -> GÜNEY -> BATI
+ *   rotateY(-90):  (x,y,z) -> (-z,y,x)     NORTH -> EAST -> SOUTH -> WEST
  * </pre>
- * Yani {@code R=1} saat yönü ve {@code d' = (d + R) mod 4} doğru. Dördü de
- * {@code generation.md} §3'teki nokta formülleriyle birebir eşleşti. Bu işaret yanlış
- * olsaydı üretilen bütün dungeon'ların kapıları tutmazdı ve hata sessiz olurdu — o yüzden
- * koda geçmeden önce ölçüldü.
+ * So {@code R=1} is clockwise and {@code d' = (d + R) mod 4} holds. All four steps matched the
+ * point formulas in {@code generation.md} §3 exactly. Had this sign been wrong, every generated
+ * dungeon would have had mismatched doors and the failure would have been silent — which is why
+ * it was measured before any of this was written.
  *
- * <p><b>Y ekseni korunuyor.</b> {@code rotateY} sadece X-Z düzleminde döndürür. Çok katlı
- * odanın (alttan giriş, üstten devam) ek kod istememesinin sebebi bu.
+ * <p><b>The Y axis is preserved.</b> {@code rotateY} only turns the X-Z plane. That is why a
+ * multi-storey room (enter from below, continue above) needs no extra code.
  */
 public enum Rotation {
 
@@ -31,12 +31,12 @@ public enum Rotation {
         this.steps = steps;
     }
 
-    /** Kaç adet 90°'lik saat yönü adımı (0-3). */
+    /** Number of 90° clockwise steps (0-3). */
     public int steps() {
         return steps;
     }
 
-    /** Saat yönü derece karşılığı — {@code SchematicService.paste} bu değeri bekler. */
+    /** The equivalent in clockwise degrees — {@code SchematicService.paste} expects this. */
     public int degrees() {
         return steps * 90;
     }
@@ -47,7 +47,7 @@ public enum Rotation {
 
     public static Rotation ofDegrees(int degrees) {
         if (Math.floorMod(degrees, 90) != 0) {
-            throw new IllegalArgumentException("Rotation 90'ın katı olmalı: " + degrees);
+            throw new IllegalArgumentException("Rotation must be a multiple of 90: " + degrees);
         }
         return ofSteps(Math.floorMod(degrees, 360) / 90);
     }
@@ -58,7 +58,7 @@ public enum Rotation {
     }
 
     /**
-     * Noktayı origin etrafında döndürür — {@code generation.md} §3.
+     * Rotates a point around the origin — {@code generation.md} §3.
      *
      * <pre>
      *   R=0 -> ( x, y,  z)      R=1 -> (-z, y,  x)
@@ -75,16 +75,16 @@ public enum Rotation {
     }
 
     /**
-     * Çocuk odanın kapısını ebeveyn kapısına <b>sırt sırta</b> getiren rotasyon —
-     * {@code generation.md} §5.2 adım 2: {@code R = (d_p + 2 - d_c) mod 4}.
+     * The rotation that brings a child room's door <b>back to back</b> with the parent's door —
+     * {@code generation.md} §5.2 step 2: {@code R = (d_p + 2 - d_c) mod 4}.
      *
-     * <p>Bu değer <b>aranmıyor, hesaplanıyor</b>. Çocuğun kapı duvarı, ebeveyn kapısının
-     * dışa bakan yönünün karşıtına dönmüş olur — iki duvar yüz yüze bakar. Aday havuzunu
-     * "şu yöne bakan kapısı olanlar" diye daraltmaya gerek kalmamasının sebebi bu:
-     * her oda her bağlantıya aday, rotasyon farkı kapatıyor.
+     * <p>This value is <b>computed, not searched for</b>. The child's door wall ends up facing
+     * the opposite of the parent door's outward direction, so the two walls face each other.
+     * That is why the candidate pool never has to be narrowed to "rooms with a door facing this
+     * way": every room is a candidate for every connection, and rotation closes the gap.
      *
-     * @param parentOutward ebeveyn kapısının DÜNYA çerçevesinde dışa bakan yönü
-     * @param childWall     çocuk kapısının odanın YEREL çerçevesindeki duvarı
+     * @param parentOutward the parent door's outward facing in the WORLD frame
+     * @param childWall     the child door's wall in the room's LOCAL frame
      */
     public static Rotation align(Direction parentOutward, Direction childWall) {
         return ofSteps(parentOutward.index() + 2 - childWall.index());

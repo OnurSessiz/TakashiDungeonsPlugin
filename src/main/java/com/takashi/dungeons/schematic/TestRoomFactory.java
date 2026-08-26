@@ -26,42 +26,43 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Kod içinde basit test odaları üretip {@code .schem} + {@code .yml} olarak diske yazar.
+ * Builds simple test rooms in code and writes them to disk as {@code .schem} + {@code .yml}.
  *
- * <p><b>Neden var:</b> FAZ 1'in generation mantığını gerçek haritalar (FAZ 10) hazır olmadan
- * test edebilmek için. Üretilen odalar geçici placeholder — haritacı ekibi gerçek odaları
- * yazdığında aynı dosya adlarıyla değiştirilirler.
+ * <p><b>Why it exists:</b> so phase 1's generation logic can be tested before the real maps
+ * (phase 10) are ready. The rooms it produces are temporary placeholders — once the map team
+ * draws the real ones, they are replaced under the same file names.
  *
- * <p><b>Metadata'yı da bu sınıf yazıyor.</b> Kapı anchor'ını hesaplayan tek yer burası
- * olduğu için {@code .yml}'yi elle yazmak gereksiz bir hata kaynağı olurdu: schematic
- * değişip metadata değişmezse kapılar tutmaz. İkisi tek fonksiyondan çıkıyor.
+ * <p><b>This class writes the metadata too.</b> Since it is the only place that computes a door
+ * anchor, writing the {@code .yml} by hand would be a needless source of error: if the schematic
+ * changes and the metadata does not, the doors stop lining up. Both come out of one function.
  *
- * <p><b>Origin merkezde:</b> Clipboard origin'i odanın yatay merkezine, taban seviyesine
- * ayarlanıyor. Böylece rotation odanın kendi ekseninde döner ve paste hedefi doğrudan
- * bir dünya noktası olur. Origin köşe olsaydı her rotation için ayrı ofset hesabı gerekirdi.
+ * <p><b>The origin is centred:</b> the clipboard origin is set to the room's horizontal centre
+ * at floor level. Rotation therefore turns the room on its own axis and the paste target is
+ * directly a world point. With a corner origin, every rotation would need its own offset
+ * calculation.
  *
- * <p><b>Çift sayı kenar artık serbest</b> ({@code generation.md} §9). Anchor tabanlı
- * yerleşimde odanın origin'e göre asimetrik olması sorun değil; {@code test_even} tam da
- * bunu doğrulamak için var.
+ * <p><b>Even side lengths are now allowed</b> ({@code generation.md} §9). With anchor-based
+ * placement a room being asymmetric about its origin is not a problem; {@code test_even} exists
+ * precisely to verify that.
  */
 public final class TestRoomFactory {
 
-    /** Odanın bir duvarı. */
+    /** One wall of a room. */
     public enum Door {
         NORTH, EAST, SOUTH, WEST;
 
-        /** Duvarın uzandığı eksen X mi (kuzey/güney duvarları) yoksa Z mi (doğu/batı). */
+        /** Whether the wall runs along X (north/south walls) or along Z (east/west). */
         boolean runsAlongX() {
             return this == NORTH || this == SOUTH;
         }
     }
 
     /**
-     * Bir kapı: hangi duvarda ve duvarın ortasından kaç blok kaymış.
+     * A door: which wall it is in, and how many blocks it is offset from the wall's centre.
      *
-     * <p>{@code offset} kuzey/güney duvarlarında +X, doğu/batı duvarlarında +Z yönünde.
-     * Sıfırdan farklı ofsetler {@code generation.md} §6.4'ün "düz sırayı kıran" mekanizması —
-     * odalar cetvelle çizilmiş gibi dizilmesin diye.
+     * <p>{@code offset} runs along +X on north/south walls and along +Z on east/west walls.
+     * Non-zero offsets are {@code generation.md} §6.4's "break up the straight run" mechanism —
+     * so that rooms don't line up as if drawn with a ruler.
      */
     public record DoorSpec(Door wall, int offset) {
         public static DoorSpec of(Door wall) {
@@ -69,42 +70,42 @@ public final class TestRoomFactory {
         }
     }
 
-    /** Kapı açıklığının genişliği (blok) — tek sayı ki bir merkez bloğu olsun. */
+    /** Width of the door opening, in blocks — odd, so that it has a centre block. */
     private static final int DOOR_WIDTH = 3;
-    /** Kapı açıklığının yüksekliği (blok), tabandan yukarı. */
+    /** Height of the door opening, in blocks, measured up from the floor. */
     private static final int DOOR_HEIGHT = 3;
-    /** Anchor'ın Y'si: açıklığın taban bloğu, oda tabanının bir üstü. */
+    /** The anchor's Y: the base block of the opening, one above the room floor. */
     private static final int DOOR_BASE_Y = 1;
 
     private TestRoomFactory() {
     }
 
-    /** Üretilmiş bir oda: clipboard + metadata'sı. Aynı yerden çıkarlar, ayrılamazlar. */
+    /** A built room: its clipboard plus its metadata. They come from one place and don't split. */
     public record BuiltRoom(Clipboard clipboard, RoomType type, int weight, List<Vec3i> doorAnchors) {
     }
 
     /**
-     * İçi boş, duvarları kapalı, verilen kapıları açık bir oda üretir.
+     * Builds a room that is hollow inside, closed on every wall, with the given doors cut open.
      *
-     * @param sizeX  doğu-batı genişliği
-     * @param sizeZ  kuzey-güney uzunluğu
-     * @param height toplam yükseklik (taban + iç + tavan)
-     * @param doors  açılacak kapılar
+     * @param sizeX  east-west width
+     * @param sizeZ  north-south length
+     * @param height total height (floor + interior + ceiling)
+     * @param doors  the doors to cut
      */
     public static BuiltRoom buildRoom(int sizeX, int sizeZ, int height,
                                       RoomType type, int weight, List<DoorSpec> doors) {
         if (sizeX < 5 || sizeZ < 5 || height < 5) {
             throw new IllegalArgumentException(
-                    "Oda en az 5x5x5 olmalı: " + sizeX + "x" + height + "x" + sizeZ);
+                    "A room must be at least 5x5x5: " + sizeX + "x" + height + "x" + sizeZ);
         }
 
         CuboidRegion region = new CuboidRegion(
                 BlockVector3.ZERO, BlockVector3.at(sizeX - 1, height - 1, sizeZ - 1));
         BlockArrayClipboard clipboard = new BlockArrayClipboard(region);
 
-        // rotation ve paste'in referans noktası: yatay merkez, taban seviyesi.
-        // Çift kenarda tam merkez blok yok; origin bir tarafa kayıyor ve oda origin'e göre
-        // asimetrik oluyor. Anchor tabanlı yerleşim bunu tolere ediyor (generation.md §9).
+        // The reference point for rotation and paste: horizontal centre, floor level.
+        // With an even side there is no true centre block; the origin shifts to one side and the
+        // room becomes asymmetric about it. Anchor-based placement tolerates that (§9).
         BlockVector3 origin = BlockVector3.at(sizeX / 2, 0, sizeZ / 2);
         clipboard.setOrigin(origin);
 
@@ -122,30 +123,31 @@ public final class TestRoomFactory {
                                 || x == 0 || x == sizeX - 1
                                 || z == 0 || z == sizeZ - 1;
                         if (!shell) {
-                            continue; // iç hacim boş kalır
+                            continue; // the interior volume stays empty
                         }
                         clipboard.setBlock(BlockVector3.at(x, y, z), y == 0 ? floor : wall);
                     }
                 }
             }
 
-            // tavan ortasına ışık: oda kendi kendini aydınlatsın (dungeon dünyasında güneş yok)
+            // light in the middle of the ceiling: the room lights itself (no sun in the
+            // dungeon world)
             clipboard.setBlock(BlockVector3.at(sizeX / 2, height - 1, sizeZ / 2), light);
 
             for (DoorSpec door : doors) {
                 anchors.add(carveDoor(clipboard, sizeX, sizeZ, origin, door, air));
             }
         } catch (WorldEditException e) {
-            throw new IllegalStateException("Test odası oluşturulamadı: " + e.getMessage(), e);
+            throw new IllegalStateException("Could not build the test room: " + e.getMessage(), e);
         }
 
         return new BuiltRoom(clipboard, type, weight, anchors);
     }
 
     /**
-     * Duvarda {@value #DOOR_WIDTH}x{@value #DOOR_HEIGHT} bir açıklık açar.
+     * Cuts a {@value #DOOR_WIDTH}x{@value #DOOR_HEIGHT} opening in a wall.
      *
-     * @return açıklığın taban-merkez bloğunun <b>origin'e göre</b> koordinatı — kapı anchor'ı
+     * @return the opening's base-centre block <b>relative to the origin</b> — the door anchor
      */
     private static Vec3i carveDoor(BlockArrayClipboard clipboard, int sizeX, int sizeZ,
                                    BlockVector3 origin, DoorSpec spec, BlockState air)
@@ -155,10 +157,11 @@ public final class TestRoomFactory {
         int center = along / 2 + spec.offset();
         int half = DOOR_WIDTH / 2;
 
-        // Açıklık köşeye taşarsa duvar yapısal olarak bozulur ve anchor duvarın dışına düşer.
+        // If the opening spills into a corner the wall breaks structurally and the anchor
+        // falls outside it.
         if (center - half < 1 || center + half > along - 2) {
-            throw new IllegalArgumentException(wall + " kapısı ofset " + spec.offset()
-                    + " ile duvarın dışına taşıyor (duvar uzunluğu " + along + ")");
+            throw new IllegalArgumentException("The " + wall + " door at offset " + spec.offset()
+                    + " spills past the wall (wall length " + along + ")");
         }
 
         for (int d = -half; d <= half; d++) {
@@ -172,7 +175,7 @@ public final class TestRoomFactory {
         return new Vec3i(local.x(), local.y(), local.z());
     }
 
-    /** Duvar üzerindeki bir noktanın clipboard koordinatı. */
+    /** The clipboard coordinate of a point on a wall. */
     private static BlockVector3 doorBlock(Door wall, int sizeX, int sizeZ, int along, int y) {
         return switch (wall) {
             case NORTH -> BlockVector3.at(along, y, 0);
@@ -183,14 +186,16 @@ public final class TestRoomFactory {
     }
 
     /**
-     * Sponge {@code .schem} formatının alias'ları — sürümden sürüme değişiyor, sırayla denenir.
+     * Aliases for the Sponge {@code .schem} format — they change between versions, so they are
+     * tried in order.
      *
-     * <p>{@code findByFile} kullanılmıyor: o metot formatı tespit için dosyayı AÇAR, henüz
-     * var olmayan bir dosyada {@code NoSuchFileException} atar. Yazma yolunda alias şart.
+     * <p>{@code findByFile} is deliberately not used: that method OPENS the file to detect its
+     * format, and throws {@code NoSuchFileException} for a file that does not exist yet. On the
+     * write path an alias is mandatory.
      */
     private static final List<String> SCHEM_ALIASES = List.of("sponge.3", "schem", "sponge", "sponge.2");
 
-    /** Clipboard'ı {@code .schem} (Sponge) olarak diske yazar; aynı adlı dosyanın üzerine yazar. */
+    /** Writes the clipboard to disk as {@code .schem} (Sponge), overwriting any file of that name. */
     public static File write(Clipboard clipboard, File directory, String name) throws IOException {
         File file = new File(directory, name + ".schem");
         ClipboardFormat format = null;
@@ -201,7 +206,7 @@ public final class TestRoomFactory {
             }
         }
         if (format == null) {
-            throw new IOException("'.schem' formatı bu WorldEdit sürümünde bulunamadı");
+            throw new IOException("The '.schem' format is not available in this WorldEdit version");
         }
         try (OutputStream out = new FileOutputStream(file);
              ClipboardWriter writer = format.getWriter(out)) {
@@ -211,34 +216,34 @@ public final class TestRoomFactory {
     }
 
     /**
-     * Odanın metadata dosyasını yazar — {@code generation.md} §8'deki şema.
+     * Writes the room's metadata file — the schema from {@code generation.md} §8.
      *
-     * <p>Yorum satırları bilerek dolu: bu dosyalar harita ekibinin kendi odaları için
-     * kopyalayacağı örnek. Anchor'ın neye göre yazıldığı burada anlatılmazsa başka
-     * hiçbir yerde okunmayacak.
+     * <p>The comments are deliberately verbose: these files are the example the map team will
+     * copy for their own rooms. If what an anchor is written relative to isn't explained here,
+     * it will not be read anywhere else.
      */
     public static File writeMetadata(BuiltRoom room, File directory, String name) throws IOException {
         File file = new File(directory, name + ".yml");
         try (Writer w = new BufferedWriter(
                 new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8))) {
-            w.write("# " + name + " — TakashiDungeons oda metadata'sı\n");
-            w.write("# TestRoomFactory tarafından üretildi; elle düzenlenirse /tdungeons gen ezer.\n");
+            w.write("# " + name + " — TakashiDungeons room metadata\n");
+            w.write("# Generated by TestRoomFactory; hand edits are overwritten by /tdungeons gen.\n");
             w.write("#\n");
-            w.write("# tip:     giris | normal | boss\n");
-            w.write("# agirlik: aday seçiminde ağırlıklı rastgele payı (yüksek = daha sık)\n");
-            w.write("# kapilar: [x, y, z] — kapı açıklığının TABAN-MERKEZ bloğu,\n");
-            w.write("#          odanın ORIGIN'ine göre (schematic köşesine göre DEĞİL).\n");
-            w.write("#          Yön burada yazmaz; anchor vektöründen hesaplanır.\n");
-            w.write("#          Listedeki sıra kapının adresi — hangi kapı bağlandı, hangisine\n");
-            w.write("#          tıpa basılacak bu indeksle takip ediliyor.\n");
+            w.write("# type:   entrance | normal | boss\n");
+            w.write("# weight: share in the weighted candidate draw (higher = more frequent)\n");
+            w.write("# doors:  [x, y, z] — the BASE-CENTER block of the door opening,\n");
+            w.write("#         relative to the room ORIGIN (NOT the schematic corner).\n");
+            w.write("#         Facing is not written here; it is derived from the anchor vector.\n");
+            w.write("#         List order is the door's address — which door got connected and\n");
+            w.write("#         which one gets plugged is tracked by this index.\n");
             w.write("\n");
-            w.write("tip: " + room.type().yamlValue() + "\n");
-            w.write("agirlik: " + room.weight() + "\n");
+            w.write("type: " + room.type().yamlValue() + "\n");
+            w.write("weight: " + room.weight() + "\n");
             w.write("\n");
             if (room.doorAnchors().isEmpty()) {
-                w.write("kapilar: []\n");
+                w.write("doors: []\n");
             } else {
-                w.write("kapilar:\n");
+                w.write("doors:\n");
                 for (Vec3i a : room.doorAnchors()) {
                     w.write("  - [" + a.x() + ", " + a.y() + ", " + a.z() + "]\n");
                 }
@@ -248,24 +253,25 @@ public final class TestRoomFactory {
     }
 
     /**
-     * FAZ 1 testleri için standart oda setini üretir ve diske yazar ({@code .schem} + {@code .yml}).
+     * Builds the standard test room set and writes it to disk ({@code .schem} + {@code .yml}).
      *
-     * <p>Set bilerek çeşitli — her oda bir şeyi sınıyor:
+     * <p>The set is deliberately varied — each room tests one thing:
      * <ul>
-     *   <li>{@code test_cross} 4 kapı — dallanma noktası (§6.3'ün labirent hissi)</li>
-     *   <li>{@code test_corridor} karşılıklı çift — zincir parçası</li>
-     *   <li>{@code test_corner} komşu çift — <b>rotasyon işaretini ölçen oda</b> (§11-1);
-     *       K-G simetrik olmadığı için saat yönü / ters yön ayırt edilebiliyor</li>
-     *   <li>{@code test_deadend} tek kapı — yan dalın ucu</li>
-     *   <li>{@code test_giris} tek kapı, tip {@code giris} — kritik path'in başlangıcı</li>
-     *   <li>{@code test_boss} tek kapı, 33x33 — farklı boyutun aynı dungeon'da yaşadığını gösterir</li>
-     *   <li>{@code test_long} 9x25 dikdörtgen, doğu kapısı güney ucunda — <b>§4'ün naif
-     *       mutlak-değer kuralını kıran oda.</b> Naif kural "güney duvarı" der; doğrusu doğu.</li>
-     *   <li>{@code test_even} 10x16 <b>çift kenarlı</b>, ofsetli kapılar — §9'daki
-     *       "tek sayı kenar kuralı kalktı" iddiasını sınar (açık soru #2)</li>
+     *   <li>{@code test_cross} 4 doors — the branch point (§6.3's maze feeling)</li>
+     *   <li>{@code test_corridor} opposite pair — a chain segment</li>
+     *   <li>{@code test_corner} adjacent pair — <b>the room that measures the rotation sign</b>;
+     *       because N-S is not symmetric, clockwise can be told apart from anticlockwise</li>
+     *   <li>{@code test_deadend} single door — the end of a side branch</li>
+     *   <li>{@code test_entrance} single door, type {@code entrance} — the critical path's start</li>
+     *   <li>{@code test_boss} single door, 33x33 — proves different sizes coexist in one dungeon</li>
+     *   <li>{@code test_long} 9x25 rectangle, east door near the south end — <b>the room that
+     *       breaks §4's naive absolute-value rule.</b> The naive rule says "south wall"; the
+     *       correct answer is east.</li>
+     *   <li>{@code test_even} 10x16 with <b>even sides</b> and offset doors — tests §9's claim
+     *       that the odd-side-length rule could be dropped</li>
      * </ul>
      *
-     * @return yazılan oda sayısı
+     * @return how many rooms were written
      */
     public static int writeStandardSet(File directory) throws IOException {
         record Spec(String name, int sizeX, int sizeZ, int height,
@@ -282,17 +288,17 @@ public final class TestRoomFactory {
                         DoorSpec.of(Door.NORTH), DoorSpec.of(Door.EAST))),
                 new Spec("test_deadend", 17, 17, 9, RoomType.NORMAL, 60, List.of(
                         DoorSpec.of(Door.NORTH))),
-                new Spec("test_giris", 17, 17, 9, RoomType.GIRIS, 100, List.of(
+                new Spec("test_entrance", 17, 17, 9, RoomType.ENTRANCE, 100, List.of(
                         DoorSpec.of(Door.NORTH))),
                 new Spec("test_boss", 33, 33, 15, RoomType.BOSS, 100, List.of(
                         DoorSpec.of(Door.NORTH))),
-                // doğu duvarı, güney ucuna yakın: v = (+4, +10). |dz| > |dx| olduğu için naif
-                // kural GÜNEY der — yanlış. Normalize edilince nx=4/4=1.0 > nz=10/12=0.833 -> DOĞU.
-                // Ofset +10 tavan: +11'de 3 bloklu açıklık köşe bloğuna taşıyor (25 uzunlukta
-                // son geçerli merkez 22). Sınır kontrolü carveDoor'da.
+                // East wall, near the south end: v = (+4, +10). Because |dz| > |dx| the naive
+                // rule says SOUTH -- wrong. Normalized, nx=4/4=1.0 > nz=10/12=0.833 -> EAST.
+                // Offset +10 is the ceiling: at +11 a 3-block opening spills into the corner
+                // block (in a 25-long wall the last valid centre is 22). carveDoor bounds it.
                 new Spec("test_long", 9, 25, 7, RoomType.NORMAL, 80, List.of(
                         DoorSpec.of(Door.NORTH), new DoorSpec(Door.EAST, 10))),
-                // çift kenar (10, 16) -> origin (5,0,8), kutu -5..4 / -8..7: origin'e göre asimetrik
+                // Even sides (10, 16) -> origin (5,0,8), box -5..4 / -8..7: asymmetric about it
                 new Spec("test_even", 10, 16, 8, RoomType.NORMAL, 80, List.of(
                         new DoorSpec(Door.NORTH, 1), new DoorSpec(Door.SOUTH, -2),
                         new DoorSpec(Door.EAST, 3))));
@@ -306,10 +312,11 @@ public final class TestRoomFactory {
         return specs.size();
     }
 
-    /** {@link BlockTypes} alanları nullable; eksikse sessizce hava koymak yerine patlat. */
+    /** {@link BlockTypes} fields are nullable; if one is missing, throw rather than silently
+     *  placing air. */
     private static BlockState state(BlockType type, String name) {
         if (type == null) {
-            throw new IllegalStateException("Blok tipi bu surumde yok: " + name);
+            throw new IllegalStateException("Block type not present in this version: " + name);
         }
         return type.getDefaultState();
     }

@@ -6,23 +6,23 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code .yml} dosyasından okunan ham metadata — schematic'ten bağımsız kısım.
+ * Raw metadata read from a {@code .yml} file — the part that is independent of the schematic.
  *
- * <p>Kapılar burada {@link Vec3i} olarak duruyor, {@link DoorAnchor} olarak DEĞİL: duvarın
- * hangisi olduğunu hesaplayabilmek için odanın kutusu lazım, o da schematic'ten geliyor.
- * Birleştirme {@link RoomTemplateStore}'da yapılıyor.
+ * <p>Doors are held here as {@link Vec3i}, NOT as {@link DoorAnchor}: working out which wall a
+ * door is in requires the room's box, and that comes from the schematic. The join happens in
+ * {@link RoomTemplateStore}.
  *
- * <p><b>Neden merkezi tek dosya değil, oda başına ayrı {@code .yml}:</b> harita ekibi
- * 2-3 kişi paralel çalışacak. Tek dosyada herkes aynı satırlara dokunur, her export merge
- * conflict üretir ({@code generation.md} §8).
+ * <p><b>Why one {@code .yml} per room rather than a single central file:</b> the map team will
+ * be 2-3 people working in parallel. In one shared file everybody touches the same lines and
+ * every export produces a merge conflict ({@code generation.md} §8).
  *
- * @param type      graf rolü
- * @param weight    ağırlıklı rastgele seçimde payı
- * @param doorLocal kapı anchor'ları, dosyadaki sırayla
+ * @param type      role in the graph
+ * @param weight    share in the weighted random selection
+ * @param doorLocal door anchors, in file order
  */
 public record RoomMetadata(RoomType type, int weight, List<Vec3i> doorLocal) {
 
-    /** Metadata dosyası yoksa varsayılan: normal oda, standart ağırlık, kapısız. */
+    /** Default when there is no metadata file: normal room, standard weight, no doors. */
     public static final RoomMetadata DEFAULT = new RoomMetadata(RoomType.NORMAL, 100, List.of());
 
     public RoomMetadata {
@@ -30,26 +30,26 @@ public record RoomMetadata(RoomType type, int weight, List<Vec3i> doorLocal) {
     }
 
     /**
-     * YAML'i çözer. Hatalarda net mesajla patlar — sessiz varsayılana düşmez.
+     * Parses the YAML. Fails loudly with a clear message rather than falling back to a default.
      *
-     * <p>Kasten katı: yanlış yazılmış bir anchor odayı bir blok kaydırır, duvarlar iç içe
-     * geçer ve hata paste'ten sonra, gözle bakınca fark edilir. Yükleme anında yüksek sesle
-     * patlamak harita ekibine dosyanın adını ve satırın hangisi olduğunu söylüyor.
+     * <p>Deliberately strict: a mistyped anchor shifts the room by one block, the walls
+     * interpenetrate, and the mistake only becomes visible after the paste, by eye. Blowing up
+     * loudly at load time tells the map team the file name and which line is at fault.
      *
-     * @param section dosyanın kök bölümü
-     * @param name    hata mesajlarında görünecek şablon adı
+     * @param section the file's root section
+     * @param name    the template name to show in error messages
      */
     public static RoomMetadata parse(ConfigurationSection section, String name) {
-        RoomType type = RoomType.parse(section.getString("tip", "normal"), name);
+        RoomType type = RoomType.parse(section.getString("type", "normal"), name);
 
-        int weight = section.getInt("agirlik", 100);
+        int weight = section.getInt("weight", 100);
         if (weight <= 0) {
-            throw new IllegalArgumentException(name + ": agirlik pozitif olmalı (bulunan: "
-                    + weight + "). Odayı devre dışı bırakmak için dosyayı taşıyın.");
+            throw new IllegalArgumentException(name + ": weight must be positive (found: "
+                    + weight + "). To disable a room, move the file out of the folder.");
         }
 
         List<Vec3i> doors = new ArrayList<>();
-        List<?> raw = section.getList("kapilar");
+        List<?> raw = section.getList("doors");
         if (raw != null) {
             for (int i = 0; i < raw.size(); i++) {
                 doors.add(parseAnchor(raw.get(i), name, i));
@@ -59,15 +59,15 @@ public record RoomMetadata(RoomType type, int weight, List<Vec3i> doorLocal) {
         return new RoomMetadata(type, weight, doors);
     }
 
-    /** Bir {@code [x, y, z]} girdisini çözer. */
+    /** Parses a single {@code [x, y, z]} entry. */
     private static Vec3i parseAnchor(Object entry, String name, int index) {
-        String where = name + ": kapilar[" + index + "]";
+        String where = name + ": doors[" + index + "]";
         if (!(entry instanceof List<?> list)) {
-            throw new IllegalArgumentException(where + " bir liste olmalı — beklenen biçim: [x, y, z]");
+            throw new IllegalArgumentException(where + " must be a list — expected form: [x, y, z]");
         }
         if (list.size() != 3) {
-            throw new IllegalArgumentException(where + " tam 3 sayı içermeli [x, y, z] "
-                    + "(bulunan: " + list.size() + " öğe)");
+            throw new IllegalArgumentException(where + " must contain exactly 3 numbers [x, y, z] "
+                    + "(found: " + list.size() + " entries)");
         }
         return new Vec3i(
                 intAt(list.get(0), where, "x"),
@@ -77,14 +77,15 @@ public record RoomMetadata(RoomType type, int weight, List<Vec3i> doorLocal) {
 
     private static int intAt(Object value, String where, String axis) {
         if (value instanceof Number number) {
-            // Ondalık yazılmış bir koordinat (8.5) sessizce yuvarlanırsa oda yarım blok
-            // kayar; blok koordinatında ondalığın anlamı yok, reddediliyor.
+            // A coordinate written with decimals (8.5) would shift the room half a block if
+            // silently rounded; decimals are meaningless in block coordinates, so they are
+            // rejected.
             if (number.doubleValue() != number.intValue()) {
                 throw new IllegalArgumentException(where + " " + axis
-                        + " tam sayı olmalı (bulunan: " + number + ")");
+                        + " must be a whole number (found: " + number + ")");
             }
             return number.intValue();
         }
-        throw new IllegalArgumentException(where + " " + axis + " sayı olmalı (bulunan: " + value + ")");
+        throw new IllegalArgumentException(where + " " + axis + " must be a number (found: " + value + ")");
     }
 }

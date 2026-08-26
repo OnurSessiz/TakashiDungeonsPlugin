@@ -1,18 +1,19 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Dünyaya oturtulmuş bir oda: şablon + rotasyon + origin'in dünya koordinatı.
+ * A room seated in the world: template + rotation + the world coordinate of its origin.
  *
- * <p>Değişmez ve sadece <b>geometri</b> taşıyor. Kapıların bağlı/boş/ölü durumu burada
- * DEĞİL — o graf katmanının (1C/1D) tuttuğu çalışma zamanı durumu
- * ({@code generation.md} §8). Ayrımın sebebi: geometri hesabı yerleştirmeyi kabul etmeden
- * önce yapılıyor (çakışma testi için kutu lazım), graf durumu ise kabul edildikten sonra
- * doğuyor. İkisini tek nesnede birleştirmek "yarı kurulmuş oda" hâli üretirdi.
+ * <p>Immutable, and carries <b>geometry only</b>. Whether a door is connected, open or dead is
+ * NOT here — that is runtime state held by the graph layer (1C/1D), per
+ * {@code generation.md} §8. The reason for the split: geometry is computed before a placement
+ * is accepted (the collision test needs the box), whereas graph state only comes into
+ * existence once it has been accepted. Merging the two into one object would create a
+ * "half-built room" state.
  *
- * @param template odanın şablonu
- * @param rotation uygulanan saat yönü rotasyon
- * @param origin   şablonun origin'inin oturduğu DÜNYA koordinatı — paste hedefi budur
- * @param bounds   döndürülmüş ve dünyaya taşınmış sınır kutusu
+ * @param template the room's template
+ * @param rotation the clockwise rotation applied
+ * @param origin   the WORLD coordinate the template's origin sits on — this is the paste target
+ * @param bounds   the bounding box, rotated and translated into the world
  */
 public record PlacedRoom(RoomTemplate template, Rotation rotation, Vec3i origin, Aabb bounds) {
 
@@ -21,19 +22,19 @@ public record PlacedRoom(RoomTemplate template, Rotation rotation, Vec3i origin,
         return new PlacedRoom(template, rotation, origin, bounds);
     }
 
-    /** Kapı anchor'ının DÜNYA koordinatı. */
+    /** The door anchor's WORLD coordinate. */
     public Vec3i doorAnchor(int index) {
         return origin.plus(rotation.apply(template.door(index).local()));
     }
 
-    /** Kapının DÜNYA çerçevesinde dışa bakan yönü — {@code d' = (d + R) mod 4}. */
+    /** The door's outward facing in the WORLD frame — {@code d' = (d + R) mod 4}. */
     public Direction doorOutward(int index) {
         return rotation.apply(template.door(index).wall());
     }
 
     /**
-     * Bu kapıya bağlanacak çocuğun kapı anchor'ının oturacağı nokta.
-     * Sırt sırta konvansiyonu gereği bir blok dışarıda ({@code generation.md} §5.2).
+     * Where the anchor of the child door attaching here will land.
+     * One block further out, per the back-to-back convention ({@code generation.md} §5.2).
      */
     public Vec3i doorMate(int index) {
         return doorAnchor(index).plus(doorOutward(index).step());

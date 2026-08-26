@@ -8,30 +8,31 @@ import java.util.List;
 import java.util.random.RandomGenerator;
 
 /**
- * Dungeon grafını üretir — {@code generation.md} §6.
+ * Builds the dungeon graph — {@code generation.md} §6.
  *
- * <h2>Kritik path önce, boss sona ATANIR</h2>
+ * <h2>The critical path comes first; the boss is ASSIGNED last</h2>
  *
- * Odaları rastgele serpip "en uzaktakine boss koyalım" denirse boss'un girişten kaç oda
- * uzakta olduğu kontrol edilemez. Path'i önce kurmak <b>oynanış süresini garanti altına
- * alıyor</b>: rastgelelik çeşitlilik için, iskelet garanti için.
+ * If you scatter rooms randomly and then say "put the boss in the furthest one", you have no
+ * control over how many rooms away from the entrance the boss ends up. Building the path first
+ * <b>puts a floor under playtime</b>: randomness for variety, skeleton for guarantees.
  *
- * <h2>Path havuzunda tek kapılı oda YOK</h2>
+ * <h2>No single-door rooms in the path pool</h2>
  *
- * 1C'de ölçüldü ({@code generation.md} §6.2'deki kutu): "her boş kapıyı doldur" stratejisi
- * 12 oda hedefinin sadece <b>%70'ini</b> tutturuyor ve tıkanmaların %86'sı çakışma değil,
- * kapı frontier'ının tükenmesi — bir dallanma süreci sönümlenmesi. Tek kapılı bir oda
- * çekildiğinde o dal anında ölüyor.
+ * Measured in 1C (the callout in {@code generation.md} §6.2): the "fill every open door"
+ * strategy only reaches a 12-room target <b>70%</b> of the time, and 86% of the stalls are not
+ * collisions but the door frontier running dry — a branching process going extinct. When a
+ * single-door room is drawn, that branch dies on the spot.
  *
- * <p>Path kurulurken tek kapılı şablonlar elenince aynı ölçüm <b>%97</b>'ye çıkıyor.
- * Yan dallarda serbestler — orada zaten sona ermeleri isteniyor.
+ * <p>Filtering single-door templates out while building the path lifts the same measurement to
+ * <b>97%</b>. They stay allowed on side branches — ending there is what you want.
  *
- * <h2>Tıkanırsa yeniden denenir</h2>
+ * <h2>A stall means a retry</h2>
  *
- * Path hedef uzunluğa ulaşamazsa bütün deneme çöpe atılıp yeni bir tohumla baştan
- * başlanıyor. Kısa dungeon'ı sessizce kabul etmek marketplace tarafında kabul edilemez:
- * kullanıcı "medium" seçtiyse medium almalı. Denemeler tükenirse <b>en iyi</b> deneme
- * kullanılıyor ve sonuç uyarıyla raporlanıyor — sessizce küçük dungeon verilmiyor.
+ * If the path cannot reach its target length, the whole attempt is thrown away and generation
+ * restarts with a new derived seed. Silently accepting a short dungeon would break the promise
+ * made to the user: if they asked for "medium", they should get medium. When the attempts run
+ * out the <b>best</b> one is used and the result is reported with a warning — a small dungeon is
+ * never handed over silently.
  */
 public final class DungeonGenerator {
 
@@ -46,17 +47,18 @@ public final class DungeonGenerator {
     }
 
     /**
-     * Üretim sonucu.
+     * The generation result.
      *
-     * @param layout           kurulan yerleşim
-     * @param size             istenen boyut
-     * @param targetRooms      hedef oda sayısı
-     * @param targetPathLength hedef kritik path uzunluğu (giriş + boss dahil)
-     * @param pathLength       ulaşılan path uzunluğu
-     * @param bossNodeId       boss odasının node id'si, yoksa -1
-     * @param attemptsUsed     kaç deneme harcandı
-     * @param seed             üretimi tekrarlamak için gereken tohum
-     * @param warning          bir şey tam istendiği gibi olmadıysa açıklaması, yoksa {@code null}
+     * @param layout           the layout that was built
+     * @param size             the requested size
+     * @param targetRooms      the target room count
+     * @param targetPathLength the target critical path length (entrance and boss included)
+     * @param pathLength       the path length actually reached
+     * @param bossNodeId       node id of the boss room, or -1 if there is none
+     * @param attemptsUsed     how many attempts were spent
+     * @param seed             the seed needed to reproduce this generation
+     * @param warning          an explanation if something did not come out as asked, else
+     *                         {@code null}
      */
     public record Result(DungeonLayout layout, DungeonSize size, int targetRooms,
                          int targetPathLength, int pathLength, int bossNodeId,
@@ -70,18 +72,18 @@ public final class DungeonGenerator {
             return warning == null;
         }
 
-        /** Tıpa basılacak kapılar — BOŞ ve ÖLÜ olanların hepsi ({@code generation.md} §7). */
+        /** Doors to plug — every OPEN and DEAD one ({@code generation.md} §7). */
         public List<PlugTarget> plugTargets() {
             List<PlugTarget> targets = new ArrayList<>();
             for (LayoutNode node : layout.nodes()) {
                 for (int i = 0; i < node.doorCount(); i++) {
                     DoorState state = node.doorState(i);
-                    if (state == DoorState.BAGLI) {
+                    if (state == DoorState.CONNECTED) {
                         continue;
                     }
                     targets.add(new PlugTarget(node.room().doorAnchor(i),
                             node.room().doorOutward(i), node.bounds(),
-                            state == DoorState.OLU));
+                            state == DoorState.DEAD));
                 }
             }
             return targets;
@@ -89,12 +91,12 @@ public final class DungeonGenerator {
     }
 
     /**
-     * Dungeon üretir. Başarısız denemeler atılır, en iyisi döner.
+     * Generates a dungeon. Failed attempts are discarded and the best one is returned.
      *
-     * @param bounds instance slot'unun sınırı
-     * @param origin giriş odasının origin'i (genelde slot merkezi)
-     * @param size   istenen boyut
-     * @param seed   ana tohum — aynı tohum aynı dungeon'ı verir
+     * @param bounds the instance slot's bounds
+     * @param origin the entrance room's origin (usually the slot centre)
+     * @param size   the requested size
+     * @param seed   the master seed — the same seed gives the same dungeon
      */
     public Result generate(Aabb bounds, Vec3i origin, DungeonSize size, long seed) {
         if (!library.isUsable()) {
@@ -104,9 +106,9 @@ public final class DungeonGenerator {
 
         Result best = null;
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
-            // Deneme tohumu ana tohumdan TÜRETİLİYOR: bütün üretim tek bir seed'den
-            // tekrar edilebilir kalsın diye. Rastgele yeni tohum çekilseydi "şu bozuk
-            // dungeon"u geri getirmek imkânsız olurdu.
+            // The attempt seed is DERIVED from the master seed, so the whole generation stays
+            // reproducible from a single seed. If a retry drew a fresh random seed, bringing
+            // back "that broken dungeon" would be impossible.
             Result candidate = attemptOnce(bounds, origin, size, seed, attempt);
             if (candidate.perfect()) {
                 return candidate;
@@ -118,7 +120,7 @@ public final class DungeonGenerator {
         return best;
     }
 
-    /** Daha uzun path daha değerli; eşitse daha çok oda. */
+    /** A longer path wins; on a tie, more rooms wins. */
     private static boolean isBetter(Result a, Result b) {
         if (a.pathLength() != b.pathLength()) {
             return a.pathLength() > b.pathLength();
@@ -128,10 +130,10 @@ public final class DungeonGenerator {
 
     private Result attemptOnce(Aabb bounds, Vec3i origin, DungeonSize size,
                                long seed, int attempt) {
-        // Seeds.derive: ardisik tohumlarda korelasyonu kiriyor. new Random(seed) burada
-        // KULLANILAMAZ -- ilk nextInt(kucuk) cagrisi ardisik tohumlarda hep ayni degeri
-        // verir ve small dungeon'larin oda sayisi aralik yerine tek bir degere sabitlenir.
-        // Olcum ve sayilar Seeds sinifinin yorumunda.
+        // Seeds.derive breaks the correlation between consecutive seeds. new Random(seed)
+        // CANNOT be used here -- its first nextInt(small) call returns the same value across
+        // consecutive seeds, which would pin a small dungeon's room count to one value instead
+        // of a range. The measurement and the numbers are in the Seeds class comment.
         RandomGenerator random = Seeds.derive(seed, attempt);
         RoomPlacer placer = new RoomPlacer(random, turnBias);
 
@@ -139,7 +141,7 @@ public final class DungeonGenerator {
         int targetPath = DungeonSize.criticalPathLength(targetRooms);
         DungeonLayout layout = new DungeonLayout(bounds);
 
-        // ---- 1) Giriş odası
+        // ---- 1) Entrance room
         RoomTemplate entrance = pickEntrance(random);
         if (entrance == null) {
             return new Result(layout, size, targetRooms, targetPath, 0, -1,
@@ -152,94 +154,99 @@ public final class DungeonGenerator {
                     attempt + 1, seed, e.getMessage());
         }
 
-        // ---- 2) Kritik path — giriş + (targetPath-2) normal oda + boss
-        // Tek kapılı şablonlar bu havuzda YOK: çekilirlerse dal anında ölür (§6.2 ölçümü).
+        // ---- 2) Critical path — entrance + (targetPath-2) normal rooms + boss
+        // Single-door templates are NOT in this pool: drawing one kills the branch on the
+        // spot (the §6.2 measurement).
         List<RoomTemplate> pathPool = library.branchingPool();
         if (pathPool.isEmpty()) {
-            // Out-of-box: haritacı henüz çok kapılı oda çizmediyse üretim durmasın,
-            // tam havuza düş. Path garantisi zayıflar ama dungeon yine çıkar.
+            // Out of the box: if the mapper hasn't drawn a multi-door room yet, don't stop
+            // generating — fall back to the full pool. The path guarantee weakens, but a
+            // dungeon still comes out.
             pathPool = library.normalPool();
         }
 
-        // Path'e giriş dahil targetPath-1 oda konuyor; sonuncusunu boss tamamlayacak.
-        int pathRooms = 1;                  // giriş odası path'in ilk düğümü
+        // targetPath-1 rooms go on the path including the entrance; the boss completes the last.
+        int pathRooms = 1;                  // the entrance room is the path's first node
         LayoutNode tip = layout.root();
         String warning = null;
 
         while (pathRooms < targetPath - 1) {
             OpenDoor door = pickOpenDoor(tip, random);
             if (door == null) {
-                warning = "kritik path " + pathRooms + "/" + targetPath
-                        + " odada tıkandı: " + tip.template().name() + " odasında boş kapı kalmadı";
+                warning = "critical path stalled at " + pathRooms + "/" + targetPath
+                        + " rooms: no open door left on " + tip.template().name();
                 break;
             }
             RoomPlacer.Attempt placed = placer.fill(layout, door, pathPool);
             if (!placed.success()) {
-                warning = "kritik path " + pathRooms + "/" + targetPath
-                        + " odada tıkandı: " + placed.failReason();
+                warning = "critical path stalled at " + pathRooms + "/" + targetPath
+                        + " rooms: " + placed.failReason();
                 break;
             }
             tip = placed.placed();
             pathRooms++;
         }
 
-        // ---- 3) Yan dallar — kalan kota, ama BOSS İÇİN BİR ODA AYRILIYOR (§6.3)
+        // ---- 3) Side branches — the remaining quota, but ONE ROOM IS RESERVED FOR THE BOSS
+        // (§6.3).
         //
-        // Yan dallar boss'tan ÖNCE büyüyor. Sıra bilerek böyle ve iki şeyi birden çözüyor:
+        // Side branches grow BEFORE the boss. The order is deliberate and fixes two things at
+        // once:
         //
-        // (a) targetPath == 2 olduğunda (small, hedef 3 oda) path sadece girişten ibaret.
-        //     Boss önce bağlansaydı tek kapılı girişin kapısı boss'a giderdi, boss da
-        //     terminal olduğu için yan dala BOŞ kapı kalmazdı — 3 odalık dungeon
-        //     üretilemezdi. Ölçüldü: small hedefi 3 hiç görünmüyordu, hep 4-6 çıkıyordu.
+        // (a) When targetPath == 2 (small, target 3 rooms) the path is nothing but the
+        //     entrance. Had the boss attached first, the single-door entrance would spend its
+        //     door on the boss, and since the boss is terminal there would be NO open door left
+        //     for a side branch — a 3-room dungeon could not be built. Measured: the small
+        //     target of 3 never appeared, it always came out 4-6.
         //
-        // (b) Boss'a çok daha fazla aday kapı kalıyor. Önce bağlandığında tek bir kapı
-        //     deneniyordu ve 33×33 boss odası çakışırsa dungeon BOSS'SUZ kalıyordu
-        //     (2000 medium üretimde 4 kez). Boss'suz dungeon oyuncuya hedef vermiyor.
+        // (b) The boss gets far more candidate doors. Attaching first, it tried a single door,
+        //     and if the 33x33 boss room collided the dungeon came out WITH NO BOSS (4 times in
+        //     2000 medium generations). A bossless dungeon gives the player nothing to aim at.
         growBranches(layout, placer, random, targetRooms - 1, -1);
 
-        // ---- 4) Boss — random değil, ATAMA: girişten EN UZAK boş kapıya.
+        // ---- 4) The boss — not random, ASSIGNED: to the open door FURTHEST from the entrance.
         //
-        // "Path'in son düğümü" kuralının pratikteki karşılığı bu. En derin kapıyı seçmek
-        // boss'un girişe olan mesafesini en büyük yapıyor; §6.2'nin garanti etmek istediği
-        // şey de tam olarak o mesafe. Tek bir kapıya bağlı kalmak yerine derinlik sırasıyla
-        // hepsi deneniyor — çakışma yüzünden boss'un düşmesi böylece ortadan kalkıyor.
+        // This is what the "last node of the path" rule means in practice. Picking the deepest
+        // door maximizes the boss's distance from the entrance, and that distance is exactly
+        // what §6.2 wants to guarantee. Rather than committing to one door, all of them are
+        // tried in depth order — which removes the case where a single collision drops the boss.
         int bossNodeId = -1;
         if (library.bosses().isEmpty()) {
-            // Out-of-box garantisi: boss odası çizilmemişse üretim yine tamamlanır.
-            warning = "boss odası şablonu yok — dungeon boss'suz üretildi";
+            // Out-of-the-box guarantee: with no boss room drawn, generation still completes.
+            warning = "no boss room template — the dungeon was generated without one";
         } else {
             bossNodeId = attachBoss(layout, placer, random);
             if (bossNodeId < 0) {
-                warning = "boss odası hiçbir boş kapıya sığmadı ("
-                        + layout.openDoorCount() + " kapı denendi)";
+                warning = "the boss room did not fit any open door ("
+                        + layout.openDoorCount() + " doors tried)";
             }
         }
 
-        // Kritik path uzunluğu = girişten boss'a giden rotadaki oda sayısı.
-        // Boss yoksa en derin odanın rotası.
+        // Critical path length = the number of rooms on the route from entrance to boss.
+        // With no boss, the route to the deepest room.
         int pathLength = bossNodeId >= 0
                 ? layout.node(bossNodeId).depth() + 1
                 : deepestDepth(layout) + 1;
 
         if (warning == null && pathLength < targetPath) {
-            warning = "kritik path kısa kaldı: " + pathLength + "/" + targetPath;
+            warning = "critical path came up short: " + pathLength + "/" + targetPath;
         }
         if (warning == null && layout.size() < targetRooms) {
-            warning = "oda kotası dolmadı: " + layout.size() + "/" + targetRooms
-                    + " (yer kalmadı)";
+            warning = "room quota not met: " + layout.size() + "/" + targetRooms
+                    + " (ran out of space)";
         }
         return new Result(layout, size, targetRooms, targetPath, pathLength,
                 bossNodeId, attempt + 1, seed, warning);
     }
 
     /**
-     * Boss odasını girişten en uzak boş kapıya bağlar.
+     * Attaches the boss room to the open door furthest from the entrance.
      *
-     * <p>Kapılar <b>derinliğe göre azalan</b> sırayla deneniyor: ilk oturan kazanıyor.
-     * Böylece boss mümkün olan en uzak noktaya gidiyor ve tek bir kapının çakışması
-     * yüzünden boss'suz dungeon üretilmiyor.
+     * <p>Doors are tried in <b>descending depth</b> order and the first one that seats wins. The
+     * boss therefore goes as far away as possible, and a single door colliding no longer
+     * produces a bossless dungeon.
      *
-     * @return boss node id'si, hiçbir kapıya sığmadıysa -1
+     * @return the boss node id, or -1 if it fit no door at all
      */
     private int attachBoss(DungeonLayout layout, RoomPlacer placer, RandomGenerator random) {
         List<OpenDoor> doors = new ArrayList<>(layout.openDoors());
@@ -247,19 +254,19 @@ public final class DungeonGenerator {
                 layout.node(b.nodeId()).depth(), layout.node(a.nodeId()).depth()));
 
         for (OpenDoor door : doors) {
-            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.BOS) {
+            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
                 continue;
             }
             RoomPlacer.Attempt placed = placer.fill(layout, door, library.bosses());
             if (placed.success()) {
                 return placed.placed().id();
             }
-            // fill() başarısızsa kapıyı ÖLÜ işaretledi — zaten bir daha denenmeyecek.
+            // When fill() fails it has already marked the door DEAD — it won't be tried again.
         }
         return -1;
     }
 
-    /** Yerleşimdeki en büyük derinlik. */
+    /** The greatest depth in the layout. */
     private static int deepestDepth(DungeonLayout layout) {
         int max = 0;
         for (LayoutNode node : layout.nodes()) {
@@ -269,17 +276,17 @@ public final class DungeonGenerator {
     }
 
     /**
-     * Kalan kotayı yan dallarla doldurur — {@code generation.md} §6.3.
+     * Fills the remaining quota with side branches — {@code generation.md} §6.3.
      *
-     * <p>Kritik path bir odaya girdiğinde odanın diğer kapıları kullanılmamış kalıyor;
-     * dallanma buralardan başlıyor. Oyuncu odaya girip üç çıkış görüyor: biri boss'a,
-     * ikisi ganimete. Hangisinin hangisi olduğunu bilmemesi labirent hissini veren şey.
+     * <p>When the critical path enters a room, that room's other doors are left unused; branching
+     * starts from those. The player walks in and sees three exits: one to the boss, two to loot.
+     * Not knowing which is which is what produces the maze feeling.
      *
-     * <p>Burada <b>tam havuz</b> kullanılıyor — çıkmaz odalar dahil. Yan dalın sona ermesi
-     * istenen bir şey; path'te sorun olan tam da burada özellik.
+     * <p>The <b>full pool</b> is used here, dead ends included. A side branch ending is a
+     * desirable thing; what is a problem on the path is a feature here.
      *
-     * <p>Genişlik öncelikli: derinlik öncelikli olsaydı tek uzun kuyruk çıkar ve yerleşim
-     * çabuk kendine dolanırdı.
+     * <p>Breadth first: depth first would produce a single long tail and the layout would tangle
+     * itself quickly.
      */
     private void growBranches(DungeonLayout layout, RoomPlacer placer,
                               RandomGenerator random, int targetRooms, int bossNodeId) {
@@ -292,7 +299,7 @@ public final class DungeonGenerator {
 
         while (layout.size() < targetRooms && !queue.isEmpty()) {
             OpenDoor door = queue.poll();
-            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.BOS) {
+            if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
                 continue;
             }
             RoomPlacer.Attempt placed = placer.fill(layout, door, library.normalPool());
@@ -303,14 +310,15 @@ public final class DungeonGenerator {
     }
 
     private RoomTemplate pickEntrance(RandomGenerator random) {
-        // Giriş odası çizilmemişse normal havuzdan biri kullanılır — out-of-box garantisi.
+        // With no entrance room drawn, one from the normal pool is used — the out-of-the-box
+        // guarantee.
         List<RoomTemplate> pool = library.entrances().isEmpty()
                 ? library.normalPool()
                 : library.entrances();
         return RoomLibrary.pickWeighted(pool, random);
     }
 
-    /** Odanın boş kapılarından rastgele biri; hiç yoksa {@code null}. */
+    /** A random one of the room's open doors; {@code null} if it has none. */
     private static OpenDoor pickOpenDoor(LayoutNode node, RandomGenerator random) {
         List<OpenDoor> open = new ArrayList<>(node.openDoors());
         if (open.isEmpty()) {
@@ -319,19 +327,19 @@ public final class DungeonGenerator {
         return open.get(random.nextInt(open.size()));
     }
 
-    /** Yerleşimi satır satır özetler — komut çıktısı. */
+    /** Summarizes the layout line by line — for command output. */
     public static List<String> describe(DungeonLayout layout, int bossNodeId) {
         List<String> lines = new ArrayList<>();
         for (LayoutNode node : layout.nodes()) {
             StringBuilder doors = new StringBuilder();
             for (int i = 0; i < node.doorCount(); i++) {
                 doors.append(switch (node.doorState(i)) {
-                    case BAGLI -> "→#" + node.linkedNode(i);
-                    case OLU -> "ölü";
-                    case BOS -> "boş";
+                    case CONNECTED -> "→#" + node.linkedNode(i);
+                    case DEAD -> "dead";
+                    case OPEN -> "open";
                 }).append(i == node.doorCount() - 1 ? "" : " ");
             }
-            String tag = node.id() == 0 ? " [GİRİŞ]" : (node.id() == bossNodeId ? " [BOSS]" : "");
+            String tag = node.id() == 0 ? " [ENTRANCE]" : (node.id() == bossNodeId ? " [BOSS]" : "");
             lines.add("#" + node.id() + " " + node.template().name()
                     + " rot=" + node.room().rotation().degrees()
                     + " d=" + node.depth()

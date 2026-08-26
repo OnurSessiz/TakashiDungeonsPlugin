@@ -4,37 +4,38 @@ import java.util.SplittableRandom;
 import java.util.random.RandomGenerator;
 
 /**
- * Üretim tohumlarını rastgelelik kaynağına çevirir.
+ * Turns generation seeds into a source of randomness.
  *
- * <h2>Neden ayrı bir sınıf — ölçülmüş bir tuzak var</h2>
+ * <h2>Why this is its own class — there is a measured trap here</h2>
  *
- * {@code new java.util.Random(seed)} <b>ardışık tohumlarda korelasyonlu</b>. Java'nın
- * {@code Random}'ı bir LCG ve ilk çıktısı tohumun üst bitlerinin doğrudan bir fonksiyonu;
- * bitişik tohumlar bitişik iç durum üretiyor. Ölçüldü (2026-08-25):
+ * {@code new java.util.Random(seed)} is <b>correlated across consecutive seeds</b>. Java's
+ * {@code Random} is an LCG whose first output is a direct function of the seed's high bits, so
+ * adjacent seeds produce adjacent internal state. Measured:
  *
  * <pre>
  *   new Random(seed).nextInt(4), seed = 1..40:
  *     2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
  *
- *   4000 ardışık tohumda dağılım: [0, 0, 1857, 2143]   ← 0 ve 1 HİÇ çıkmıyor
+ *   Distribution over 4000 consecutive seeds: [0, 0, 1857, 2143]   <- 0 and 1 never appear
  * </pre>
  *
- * <p><b>Bunun somut bedeli:</b> {@code small} dungeon'ın oda sayısı 3-6 aralığından
- * çekiliyor. Ardışık tohumlarla ilk çekiliş hep aynı gelseydi bütün small dungeon'lar
- * 5-6 oda olurdu, 3-4 hiç görülmezdi. "Aralık" sözü tutulmazdı.
+ * <p><b>The concrete cost:</b> a {@code small} dungeon's room count is drawn from the 3-6
+ * range. If the first draw always came out the same on consecutive seeds, every small dungeon
+ * would have 5-6 rooms and 3-4 would never be seen. The promise of a "range" would not hold.
  *
- * <p><b>Neden gerçekten olurdu:</b> FAZ 7'de instance'lar DB'ye yazılacak ve tohum olarak
- * artan bir id ya da {@code System.currentTimeMillis()} kullanmak en doğal seçim — ikisi de
- * ardışık. Hata da sessiz olurdu: dungeon'lar üretilir, sadece hep aynı boyda çıkardı.
+ * <p><b>Why it really would have happened:</b> in phase 7 instances get written to the
+ * database, and the natural things to seed with are an incrementing id or
+ * {@code System.currentTimeMillis()} — both consecutive. The failure would also have been
+ * silent: dungeons still generate, they just always come out the same size.
  *
- * <h2>Çözüm</h2>
- * Tohum önce <b>splitmix64</b> ile karıştırılıyor, sonra {@link SplittableRandom}'a
- * veriliyor. splitmix64 bit karıştırıcısı 1 bitlik tohum farkını bütün çıktı bitlerine
- * yayıyor; {@code SplittableRandom} da {@code Random}'dan çok daha iyi bir üreteç.
- * Aynı ölçüm karıştırma sonrası: {@code [977, 1010, 973, 1040]} — düzgün.
+ * <h2>The fix</h2>
+ * The seed is first mixed through <b>splitmix64</b>, then handed to a {@link SplittableRandom}.
+ * The splitmix64 bit mixer spreads a 1-bit difference in the seed across all output bits, and
+ * {@code SplittableRandom} is a far better generator than {@code Random}. The same measurement
+ * after mixing: {@code [977, 1010, 973, 1040]} — uniform.
  *
- * <p>Tekrarlanabilirlik korunuyor: karıştırma <b>deterministik</b>, aynı tohum aynı
- * dungeon'ı vermeye devam ediyor.
+ * <p>Reproducibility is preserved: the mixing is <b>deterministic</b>, so the same seed still
+ * gives the same dungeon.
  */
 public final class Seeds {
 
@@ -42,10 +43,10 @@ public final class Seeds {
     }
 
     /**
-     * splitmix64 son karıştırma adımı — 1 bitlik girdi farkını çıktının yarısına yayar.
+     * The splitmix64 final mixing step — spreads a 1-bit input difference across half the output.
      *
-     * <p>Sabitler referans splitmix64 uygulamasından; değiştirilmemeli, karıştırma
-     * kalitesi bu çarpanlara bağlı.
+     * <p>The constants come from the reference splitmix64 implementation and must not be
+     * changed; the quality of the mixing depends on these multipliers.
      */
     public static long mix(long seed) {
         long z = seed + 0x9E3779B97F4A7C15L;
@@ -54,17 +55,17 @@ public final class Seeds {
         return z ^ (z >>> 31);
     }
 
-    /** Tohumdan rastgelelik kaynağı üretir — ardışık tohumlar bağımsız akışlar verir. */
+    /** Builds a randomness source from a seed — consecutive seeds give independent streams. */
     public static RandomGenerator from(long seed) {
         return new SplittableRandom(mix(seed));
     }
 
     /**
-     * Aynı ana tohumun {@code n}. türevi — yeniden denemeler için.
+     * The {@code n}-th derivative of the same master seed — used for retries.
      *
-     * <p>Türev de deterministik: bütün üretim tek bir tohumdan tekrar edilebilir kalıyor.
-     * Yeniden denemede rastgele yeni tohum çekilseydi "şu bozuk dungeon"u geri getirmek
-     * imkânsız olurdu.
+     * <p>The derivation is deterministic too, so the whole generation stays reproducible from a
+     * single seed. If a retry drew a fresh random seed instead, bringing back "that broken
+     * dungeon" would be impossible.
      */
     public static RandomGenerator derive(long seed, int index) {
         return new SplittableRandom(mix(seed + index * 0x9E3779B97F4A7C15L));

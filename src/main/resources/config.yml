@@ -1,48 +1,49 @@
-# TakashiDungeons — ana konfigürasyon
-# Kural (anahedef.md): her şey önce YAML ile çalışır, GUI editör sonra gelir.
+# TakashiDungeons — main configuration
+# Rule: everything works through YAML first; GUI editors come later.
 
 dungeon-world:
-  # Instance'ların yaşadığı void dünyanın adı. Sunucudaki başka bir dünyayla
-  # çakışmasın diye benzersiz tutun.
+  # Name of the void world the instances live in. Keep it unique so it cannot
+  # collide with another world on the server.
   name: takashi_dungeons
 
-  # Bir instance'a ayrılan karenin kenarı (blok). Üretilebilecek en büyük
-  # dungeon'ın kapladığı alandan büyük olmalı; küçük seçilirse iki instance
-  # birbirinin bloklarına taşar.
+  # Edge length, in blocks, of the square reserved for one instance. It must be
+  # larger than the area the biggest possible dungeon covers; set it too small
+  # and two instances bleed into each other's blocks.
   slot-size: 512
 
-  # Grid'in kaç slot genişliğinde olduğu. slot-size * columns = dünyanın X ekseni
-  # boyunca uzunluğu; 512 * 32 = 16.384 blok (dünya sınırının çok altında).
+  # How many slots wide the grid is. slot-size * columns = the world's extent
+  # along X; 512 * 32 = 16,384 blocks, far inside the world border.
   columns: 32
 
-  # Odaların oturacağı taban yüksekliği.
+  # The base height rooms are seated at.
   base-y: 64
 
 schematics:
-  # true: FAWE kurulu olsa bile paste main thread'de yapılır.
-  # Sadece FAWE ile ilgili bir sorun teşhis edilirken açılmalı — açıkken büyük
-  # dungeon üretimi TPS düşürür.
+  # true: paste on the main thread even when FAWE is installed.
+  # Only turn this on while diagnosing a FAWE-related problem — with it enabled,
+  # generating a large dungeon costs TPS.
   force-sync-paste: false
 
 generation:
-  # Dönüş yanlılığı — generation.md 6.4. Zincirin cetvelle çizilmiş gibi düz gitmesini
-  # engeller: "ebeveynle aynı yöne devam eden" kapı seçenekleri geriye itilir.
+  # Turn bias — generation.md 6.4. Keeps the chain from running as if drawn with a
+  # ruler: door options that continue in the parent's direction get pushed back.
   #
-  # 1.0 = ceza yok (odalar düz dizilebilir)
-  # 2.0 = düz devam eden seçenek %50 ihtimalle yine de öne geçer (varsayılan)
-  # yüksek = dönüşler daha baskın
+  # 1.0 = no penalty (rooms may line up straight)
+  # 2.0 = a straight option still jumps ahead 50% of the time (default)
+  # higher = turns dominate more
   #
-  # Ceza KAPI seçimi aşamasında uygulanır, şablon seçimi aşamasında değil — yoksa
-  # 'agirlik' değerinin anlamı bozulurdu (bkz. generation.md 5.4).
+  # The penalty is applied when choosing a DOOR, not when choosing a template —
+  # otherwise the meaning of 'weight' would be corrupted (see generation.md 5.4).
   turn-bias: 2.0
 
-  # Kritik path hedef uzunluga ulasamazsa uretim bastan denenir (farkli tohumla).
-  # Kisa dungeon'i sessizce kabul etmek yerine yeniden denemek kullaniciya verilen
-  # sozun geregi: "medium" secildiyse medium gelmeli. Denemeler tukenirse EN IYI
-  # deneme kullanilir ve sonuc uyariyla raporlanir -- sessizce kucuk dungeon verilmez.
+  # If the critical path cannot reach its target length, generation restarts with a
+  # different seed. Retrying rather than silently accepting a short dungeon is what
+  # keeps the promise made to the player: if they chose "medium", they get medium.
+  # When the attempts run out the BEST attempt is used and the result is reported
+  # with a warning — a small dungeon is never handed over silently.
   max-attempts: 8
 
-  # Bosluga acilan kapilar kapatilsin mi (generation.md 7 -- tipa).
-  # Kapatilmazsa oyuncu odadan void'e duser. Sadece hata ayiklarken kapatin:
-  # kapali oldugunda grafin nerede tikandigi gozle gorulur.
+  # Whether doors opening into the void get sealed (generation.md 7 — plugging).
+  # Left unsealed, a player walks out of a room and falls into the void. Only turn
+  # this off while debugging: with it off you can see where the graph choked.
   plug-open-doors: true

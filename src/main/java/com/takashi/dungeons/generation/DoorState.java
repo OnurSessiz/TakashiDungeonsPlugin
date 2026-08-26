@@ -1,23 +1,22 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Yerleştirilmiş bir odanın kapısının çalışma zamanı durumu —
- * {@code generation.md} §8.
+ * Runtime state of a door on a placed room — {@code generation.md} §8.
  *
- * <p>Dosyada tutulmaz, sadece bellekte. Şablon "bu odada 3 kapı var" der; hangisinin
- * dolduğu o odanın grafın neresine düştüğüne bağlı.
+ * <p>Never stored in a file, only in memory. The template says "this room has 3 doors";
+ * which of them gets filled depends on where the room lands in the graph.
  */
 public enum DoorState {
 
-    /** Henüz denenmedi ya da denenecek — yan dal buradan büyüyebilir. */
-    BOS,
+    /** Not tried yet, or still to be tried — a side branch can grow from here. */
+    OPEN,
 
-    /** Başka bir odaya bağlandı, geçit açık. */
-    BAGLI,
+    /** Connected to another room; the passage is open. */
+    CONNECTED,
 
     /**
-     * Denendi, hiçbir aday oturmadı (hepsi çakıştı ya da slot sınırını taştı).
-     * Boşluğa açılıyor — {@code generation.md} §7 gereği tıpa basılacak.
+     * Tried, and no candidate fit (all of them collided or exceeded the slot bounds).
+     * It opens into the void, so {@code generation.md} §7 requires it to be plugged.
      */
-    OLU
+    DEAD
 }

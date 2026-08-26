@@ -21,16 +21,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Plugin giriş noktası.
+ * The plugin entry point.
  *
- * <p>Enable sırası bilinçli olarak şu şekilde: (1) config, (2) entegrasyon tespiti,
- * (3) dungeon dünyası, (4) schematic servisi, (5) komutlar. Her katman kendinden
- * öncekinin sonucuna bakıyor — schematic servisi WorldEdit yoksa hiç kurulmuyor,
- * plugin yine de enable oluyor (anahedef.md: hard depend YASAK).
+ * <p>The enable order is deliberate: (1) config, (2) integration detection, (3) dungeon world,
+ * (4) schematic service, (5) commands. Each layer looks at the result of the one before it —
+ * the schematic service is never built when WorldEdit is absent, and the plugin still enables.
+ * A hard dependency on any of these is forbidden.
  */
 public final class TakashiDungeonsPlugin extends JavaPlugin {
 
-    /** Softdepend olarak tanımlı, varlığı zorunlu OLMAYAN plugin'ler. */
+    /** Plugins declared as softdepend — none of them is required to be present. */
     private static final List<String> SOFT_INTEGRATIONS =
             List.of("WorldEdit", "FastAsyncWorldEdit", "MythicMobs", "Vault");
 
@@ -48,7 +48,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         detectIntegrations();
 
         getLogger().info("TakashiDungeons v" + getPluginMeta().getVersion() + " etkinleştirildi.");
-        // İmza jar'la birlikte seyahat eder; README silinir, bu satır kalır.
+        // The signature travels with the jar; a README can be deleted, this line stays.
         getLogger().info("  Onur Sessiz — github.com/OnurSessiz/TakashiDungeonsPlugin (GPLv3)");
         getLogger().info("Entegrasyonlar:");
         integrations.forEach((name, present) ->
@@ -65,9 +65,9 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     }
 
     /**
-     * Dünya level.dat'tan yüklenirse Bukkit generator'ı buradan ister.
-     * {@link DungeonWorldManager} zaten WorldCreator'a generator veriyor ama sunucu
-     * yeniden başlarken dünyayı bizden önce yükleyebilir — o yolda da void kalmalı.
+     * When the world is loaded from level.dat, Bukkit asks for the generator here.
+     * {@link DungeonWorldManager} already hands one to its WorldCreator, but on restart the
+     * server may load the world before we do — it has to stay void on that path too.
      */
     @Override
     public @Nullable ChunkGenerator getDefaultWorldGenerator(@NotNull String worldName, @Nullable String id) {
@@ -100,10 +100,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         boolean async = hasIntegration("FastAsyncWorldEdit") && !forceSync;
 
         schematicService = new SchematicService(this, new File(getDataFolder(), "schematics"), async);
-        // Şablon deposu schematic servisinin üstünde duruyor: geometri ondan, metadata
-        // yanındaki .yml'den geliyor. Servis kurulmadıysa depo da kurulmaz.
+        // The template store sits on top of the schematic service: geometry comes from it,
+        // metadata from the .yml beside each file. No service, no store.
         templateStore = new RoomTemplateStore(this, schematicService);
-        // Tıpa da blok yazıyor; paste ile aynı thread kuralına tabi (async sadece FAWE ile).
+        // Plugging writes blocks too, so it obeys the same threading rule as paste (async
+        // only with FAWE).
         doorPlugger = new DoorPlugger(this, async);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
@@ -112,7 +113,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private void registerCommands() {
         PluginCommand command = getCommand("tdungeons");
         if (command == null) {
-            // plugin.yml ile kod arasındaki uyumsuzluğu sessizce geçme
+            // Never pass over a mismatch between plugin.yml and the code in silence
             getLogger().severe("'tdungeons' komutu plugin.yml'de tanımlı değil — komut kaydedilemedi.");
             return;
         }
@@ -128,12 +129,12 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         }
     }
 
-    /** Enable sırasında tespit edilen opsiyonel entegrasyonlar (plugin adı → kurulu mu). */
+    /** Optional integrations detected during enable (plugin name → present). */
     public Map<String, Boolean> getIntegrations() {
         return Collections.unmodifiableMap(integrations);
     }
 
-    /** Belirtilen opsiyonel entegrasyon enable sırasında bulunduysa {@code true}. */
+    /** {@code true} if the named optional integration was present during enable. */
     public boolean hasIntegration(String pluginName) {
         return integrations.getOrDefault(pluginName, false);
     }
@@ -146,17 +147,17 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         return slotManager;
     }
 
-    /** WorldEdit/FAWE yoksa {@code null} — çağıran kontrol etmek zorunda. */
+    /** {@code null} without WorldEdit/FAWE — callers must check. */
     public @Nullable SchematicService getSchematicService() {
         return schematicService;
     }
 
-    /** Oda şablonu deposu. Schematic servisi kurulmadıysa {@code null}. */
+    /** The room template store. {@code null} when the schematic service was not built. */
     public @Nullable RoomTemplateStore getTemplateStore() {
         return templateStore;
     }
 
-    /** Boş kapıları kapatan tıpa servisi. Schematic servisi kurulmadıysa {@code null}. */
+    /** The service that plugs open doors. {@code null} when the schematic service was not built. */
     public @Nullable DoorPlugger getDoorPlugger() {
         return doorPlugger;
     }

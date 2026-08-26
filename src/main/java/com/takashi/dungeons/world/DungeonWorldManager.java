@@ -7,20 +7,21 @@ import org.bukkit.WorldType;
 import org.bukkit.plugin.Plugin;
 
 /**
- * Dungeon instance'larının yaşadığı void dünyanın kurulumu ve erişimi.
+ * Creation of, and access to, the void world the dungeon instances live in.
  *
- * <p>Nasıl çalışır:
+ * <p>How it works:
  * <ol>
- *   <li>{@code onEnable} → {@link #load()} çağrılır</li>
- *   <li>Dünya yoksa {@link VoidChunkGenerator} ile oluşturulur, varsa aynı generator'la yüklenir</li>
- *   <li>Gamerule'lar dungeon'a uygun sabitlenir (aşağıdaki nedenlerle)</li>
+ *   <li>{@code onEnable} calls {@link #load()}</li>
+ *   <li>If the world does not exist it is created with {@link VoidChunkGenerator}; if it does,
+ *       it is loaded with the same generator</li>
+ *   <li>Gamerules are pinned to values suited to a dungeon, for the reasons below</li>
  * </ol>
  *
- * <p><b>Neden bu gamerule'lar:</b> Dungeon'daki her mob/eşya bizim sistemimizden gelir.
- * Doğal spawn, hava, gündüz-gece, ateş yayılımı ve random tick açık kalırsa hem içerik
- * kontrolümüz bozulur hem de N tane instance açıkken boşuna TPS harcanır.
- * {@code SPAWN_CHUNK_RADIUS = 0}: spawn çevresini bellekte tutmanın anlamı yok, dungeon
- * chunk'ları zaten oyuncu girince yükleniyor.
+ * <p><b>Why these gamerules:</b> every mob and item in a dungeon comes from our own systems.
+ * Leaving natural spawning, weather, the day cycle, fire spread and random ticking enabled
+ * would both undermine that control and burn TPS for nothing while N instances are open.
+ * {@code SPAWN_CHUNK_RADIUS = 0}: there is no point keeping the area around spawn in memory,
+ * since dungeon chunks load when a player enters anyway.
  */
 public final class DungeonWorldManager {
 
@@ -35,9 +36,9 @@ public final class DungeonWorldManager {
     }
 
     /**
-     * Dungeon dünyasını oluşturur/yükler.
+     * Creates or loads the dungeon world.
      *
-     * @return dünya hazırsa {@code true}
+     * @return {@code true} once the world is ready
      */
     public boolean load() {
         World existing = plugin.getServer().getWorld(worldName);
@@ -77,13 +78,13 @@ public final class DungeonWorldManager {
         w.setGameRule(GameRule.SPAWN_CHUNK_RADIUS, 0);
         w.setGameRule(GameRule.ANNOUNCE_ADVANCEMENTS, false);
 
-        w.setTime(6000L);       // sabit öğle: oda aydınlatması schematic'in ışık kaynaklarına kalsın
+        w.setTime(6000L);       // fixed noon: room lighting is left to the schematic's own light sources
         w.setStorm(false);
         w.setThundering(false);
         w.setDifficulty(org.bukkit.Difficulty.NORMAL);
     }
 
-    /** Dungeon dünyası — {@link #load()} başarılı olmadıysa {@code null}. */
+    /** The dungeon world — {@code null} unless {@link #load()} succeeded. */
     public World getWorld() {
         return world;
     }

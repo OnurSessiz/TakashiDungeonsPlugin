@@ -4,22 +4,22 @@ import org.bukkit.Location;
 import org.bukkit.World;
 
 /**
- * Dungeon dünyasındaki bir instance'a ayrılmış kare alan.
+ * The square area reserved for one instance in the dungeon world.
  *
- * @param index    slot numarası (0'dan başlar, serbest kalınca yeniden kullanılır)
- * @param originX  slot'un kuzeybatı köşesinin dünya X'i
- * @param originY  slot'un taban Y'si
- * @param originZ  slot'un kuzeybatı köşesinin dünya Z'si
- * @param size     slot'un bir kenarı (blok)
+ * @param index    slot number (starts at 0, reused once released)
+ * @param originX  world X of the slot's north-west corner
+ * @param originY  the slot's floor Y
+ * @param originZ  world Z of the slot's north-west corner
+ * @param size     the slot's edge length, in blocks
  */
 public record GridSlot(int index, int originX, int originY, int originZ, int size) {
 
-    /** Slot içindeki (0,0,0) göreli koordinatı dünya konumuna çevirir. */
+    /** Converts a coordinate relative to the slot's (0,0,0) into a world location. */
     public Location toLocation(World world, int relX, int relY, int relZ) {
         return new Location(world, originX + relX, originY + relY, originZ + relZ);
     }
 
-    /** Slot'un merkezindeki taban konumu — test/teleport için. */
+    /** The floor location at the slot's centre — for testing and teleports. */
     public Location center(World world) {
         return new Location(world, originX + size / 2.0, originY, originZ + size / 2.0);
     }

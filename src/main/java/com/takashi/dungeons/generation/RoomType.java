@@ -3,20 +3,21 @@ package com.takashi.dungeons.generation;
 import java.util.Locale;
 
 /**
- * Odanın graf içindeki rolü — {@code generation.md} §8'deki {@code tip} alanı.
+ * The room's role in the graph — the {@code type} field from {@code generation.md} §8.
  *
- * <p>{@link #GIRIS} ve {@link #BOSS} graf üretiminde <b>atanır</b>, rastgele seçilmez:
- * kritik path giriş odasından başlar, son düğümü boss odasıdır ({@code generation.md} §6.2).
- * Bu, oynanış süresini garanti altına alan şey — odalar rastgele serpilip "en uzaktakine
- * boss koyalım" denseydi bazı dungeon'lar 2 odada biterdi.
+ * <p>{@link #ENTRANCE} and {@link #BOSS} are <b>assigned</b> during graph generation, never
+ * drawn at random: the critical path starts at the entrance room and its last node is the boss
+ * room ({@code generation.md} §6.2). This is what puts a floor under playtime — if rooms were
+ * scattered randomly and the furthest one declared the boss, some dungeons would end after two
+ * rooms.
  */
 public enum RoomType {
 
-    GIRIS,
+    ENTRANCE,
     NORMAL,
     BOSS;
 
-    /** YAML'deki {@code tip} değerini çözer; büyük/küçük harf ve boşluk toleranslı. */
+    /** Parses the {@code type} value from YAML; tolerant of case and surrounding whitespace. */
     public static RoomType parse(String raw, String templateName) {
         String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
         for (RoomType type : values()) {
@@ -24,8 +25,8 @@ public enum RoomType {
                 return type;
             }
         }
-        throw new IllegalArgumentException(templateName + ": geçersiz tip '" + raw
-                + "' — geçerli değerler: giris, normal, boss");
+        throw new IllegalArgumentException(templateName + ": invalid type '" + raw
+                + "' — valid values: entrance, normal, boss");
     }
 
     public String yamlValue() {

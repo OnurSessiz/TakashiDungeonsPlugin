@@ -27,39 +27,40 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Schematic dosyalarını yükler, önbelleğe alır ve dungeon dünyasına paste eder.
+ * Loads schematic files, caches them, and pastes them into the dungeon world.
  *
- * <p><b>Nasıl çalışır:</b>
+ * <p><b>How it works:</b>
  * <ol>
- *   <li>{@code plugins/TakashiDungeons/schematics/} altındaki {@code .schem} dosyası okunur</li>
- *   <li>Okuma <b>her zaman async</b> yapılır (disk I/O + NBT parse main thread'i bloklar)</li>
- *   <li>Elde edilen {@link Clipboard} bellekte cache'lenir - aynı oda yüzlerce kez paste
- *       edileceği için dosya bir kez okunur</li>
- *   <li>Paste, {@link #isAsyncPaste()} durumuna göre async ya da main thread'de çalışır</li>
+ *   <li>A {@code .schem} file under {@code plugins/TakashiDungeons/schematics/} is read</li>
+ *   <li>Reading is <b>always async</b> (disk I/O plus NBT parsing would block the main thread)</li>
+ *   <li>The resulting {@link Clipboard} is cached in memory — the same room gets pasted
+ *       hundreds of times, so the file is read once</li>
+ *   <li>The paste itself runs async or on the main thread depending on {@link #isAsyncPaste()}</li>
  * </ol>
  *
- * <p><b>Thread kararı - kritik:</b> FAWE'nin edit session'ı thread-safe ve batch'li yazar,
- * paste async yapılabilir. Düz WorldEdit'te bu <i>doğru değildir</i>; async yazmak konsol
- * hatası ve dünya bozulması üretir. Bu yüzden FAWE varsa async, yoksa main thread kullanılıyor.
- * Her iki durumda da <b>dosya okuma</b> async kalıyor - asıl pahalı kısım o.
+ * <p><b>The threading decision — this one matters:</b> FAWE's edit session is thread-safe and
+ * writes in batches, so a paste can be async. With plain WorldEdit that is <i>not</i> true;
+ * writing async there produces console errors and world corruption. Hence: async when FAWE is
+ * present, main thread otherwise. Either way <b>file reading</b> stays async — that is the
+ * genuinely expensive part.
  *
- * <p><b>Rotation:</b> WorldEdit'in {@code //rotate} komutuyla aynı yönü versin diye
- * {@code rotateY(-derece)} uygulanıyor (WorldEdit'in kendi ClipboardCommands'ı da böyle yapar).
- * Bu sayede haritacının editörde gördüğü yön ile plugin'in ürettiği yön birebir aynı olur.
+ * <p><b>Rotation:</b> {@code rotateY(-degrees)} is applied so the result matches WorldEdit's own
+ * {@code //rotate} command (WorldEdit's ClipboardCommands does the same). That way the direction
+ * a mapper sees in the editor is exactly the direction the plugin produces.
  *
- * <p><b>Entity kopyalama kapalı:</b> Oda içindeki mob'lar FAZ 3'te bizim sistemimizle spawn
- * edilecek. Schematic'e gömülü entity'ler her paste'te çoğalır ve stat sistemimizin dışında kalırdı.
+ * <p><b>Entity copying is off:</b> mobs inside a room are spawned by our own system in phase 3.
+ * Entities embedded in a schematic would multiply on every paste and sit outside the stat system.
  */
 public final class SchematicService {
 
-    /** Desteklenen uzantılar - Sponge {@code .schem} birincil, eski {@code .schematic} tolere edilir. */
+    /** Supported extensions — Sponge {@code .schem} is primary, legacy {@code .schematic} tolerated. */
     private static final List<String> EXTENSIONS = List.of(".schem", ".schematic");
 
     private final Plugin plugin;
     private final File directory;
     private final boolean asyncPaste;
 
-    /** Ad (uzantısız, küçük harf) -> yüklenmiş clipboard. */
+    /** Name (no extension, lower-cased) → loaded clipboard. */
     private final Map<String, CompletableFuture<Clipboard>> cache = new ConcurrentHashMap<>();
 
     public SchematicService(Plugin plugin, File directory, boolean asyncPaste) {
@@ -75,12 +76,12 @@ public final class SchematicService {
         return directory;
     }
 
-    /** Paste'in async çalışıp çalışmadığı (FAWE varsa true). */
+    /** Whether pasting runs async (true when FAWE is present). */
     public boolean isAsyncPaste() {
         return asyncPaste;
     }
 
-    /** Klasördeki schematic dosyalarının uzantısız adları. */
+    /** The extension-less names of the schematic files in the folder. */
     public List<String> list() {
         File[] files = directory.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
         if (files == null) {
@@ -89,15 +90,15 @@ public final class SchematicService {
         return Arrays.stream(files).map(f -> stripExtension(f.getName())).sorted().toList();
     }
 
-    /** Cache'i boşaltır - dosyalar diskte değiştiyse (reload) çağrılır. */
+    /** Empties the cache — called when the files on disk have changed (reload). */
     public void invalidateCache() {
         cache.clear();
     }
 
     /**
-     * Schematic'i yükler; aynı ad için ikinci çağrı diskten değil cache'ten döner.
+     * Loads a schematic; a second call for the same name comes from the cache, not the disk.
      *
-     * @param name uzantısız dosya adı
+     * @param name file name without extension
      */
     public CompletableFuture<Clipboard> load(String name) {
         String key = name.toLowerCase(Locale.ROOT);
@@ -110,8 +111,9 @@ public final class SchematicService {
             try {
                 future.complete(readBlocking(key));
             } catch (Exception e) {
-                // Başarısız yükleme cache'te kalmasın: dosya düzeltilince yeniden denenebilsin.
-                // İki argümanlı remove: bu arada başka bir thread yeni bir future koyduysa onu silme.
+                // Don't leave a failed load in the cache: once the file is fixed it should be
+                // retried. The two-argument remove avoids deleting a future another thread
+                // installed in the meantime.
                 cache.remove(key, future);
                 future.completeExceptionally(e);
             }
@@ -122,11 +124,11 @@ public final class SchematicService {
     private Clipboard readBlocking(String key) throws IOException {
         File file = resolve(key);
         if (file == null) {
-            throw new IOException("Schematic bulunamadı: " + key + " (" + directory.getName() + "/)");
+            throw new IOException("Schematic not found: " + key + " (" + directory.getName() + "/)");
         }
         ClipboardFormat format = ClipboardFormats.findByFile(file);
         if (format == null) {
-            throw new IOException("Tanınmayan schematic formatı: " + file.getName());
+            throw new IOException("Unrecognized schematic format: " + file.getName());
         }
         try (InputStream in = new FileInputStream(file);
              ClipboardReader reader = format.getReader(in)) {
@@ -141,7 +143,7 @@ public final class SchematicService {
                 return candidate;
             }
         }
-        // büyük/küçük harf toleransı
+        // case-insensitive fallback
         File[] files = directory.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
         if (files != null) {
             for (File f : files) {
@@ -154,15 +156,15 @@ public final class SchematicService {
     }
 
     /**
-     * Clipboard'ı verilen konuma paste eder.
+     * Pastes the clipboard at the given location.
      *
-     * @param rotation 0/90/180/270 - başka değer {@link IllegalArgumentException} atar
-     * @return paste süresi (ms)
+     * @param rotation 0/90/180/270 — any other value throws {@link IllegalArgumentException}
+     * @return how long the paste took, in ms
      */
     public CompletableFuture<Long> paste(Clipboard clipboard, World world,
                                          int x, int y, int z, int rotation, boolean ignoreAir) {
         if (rotation % 90 != 0) {
-            throw new IllegalArgumentException("Rotation 90'in katı olmalı: " + rotation);
+            throw new IllegalArgumentException("Rotation must be a multiple of 90: " + rotation);
         }
         CompletableFuture<Long> future = new CompletableFuture<>();
         Runnable task = () -> {
@@ -187,7 +189,7 @@ public final class SchematicService {
         ClipboardHolder holder = new ClipboardHolder(clipboard);
         int normalized = Math.floorMod(rotation, 360);
         if (normalized != 0) {
-            // WorldEdit'in //rotate komutuyla aynı yön: negatif açı
+            // Same direction as WorldEdit's //rotate command: a negative angle
             holder.setTransform(new AffineTransform().rotateY(-normalized));
         }
 
@@ -204,7 +206,7 @@ public final class SchematicService {
                     .build();
             Operations.complete(operation);
         } catch (Exception e) {
-            throw new IllegalStateException("Paste başarısız: " + e.getMessage(), e);
+            throw new IllegalStateException("Paste failed: " + e.getMessage(), e);
         }
     }
 

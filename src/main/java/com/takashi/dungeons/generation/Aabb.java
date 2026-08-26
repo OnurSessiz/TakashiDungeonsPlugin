@@ -1,24 +1,24 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Eksene hizalı 3B kutu; her iki uç da <b>dahil</b> (blok koordinatı, aralık değil).
+ * An axis-aligned 3D box with <b>both ends inclusive</b> (block coordinates, not a range).
  *
- * <p>İki yerde kullanılıyor:
+ * <p>Used in two places:
  * <ul>
- *   <li><b>Yerel kutu</b> — odanın origin'ine göre sınırları ({@link RoomTemplate})</li>
- *   <li><b>Dünya kutusu</b> — yerleştirilmiş odanın kapladığı hacim ({@link PlacedRoom})</li>
+ *   <li><b>Local box</b> — the room's bounds relative to its origin ({@link RoomTemplate})</li>
+ *   <li><b>World box</b> — the volume a placed room occupies ({@link PlacedRoom})</li>
  * </ul>
  *
- * <p><b>Neden 3B, neden 2B ayak izi değil:</b> {@code generation.md} §5.2 adım 5. Çok katlı
- * dungeon'da iki odanın ayak izi çakışıp hacimleri çakışmayabilir — üst kattaki oda alttakinin
- * üstünden geçer. Ayak izine bakan bir test bunu yanlışlıkla reddeder, yani mimarinin
- * desteklemek için tasarlandığı şeyi engeller.
+ * <p><b>Why 3D rather than a 2D footprint:</b> {@code generation.md} §5.2 step 5. In a
+ * multi-storey dungeon two rooms can overlap in footprint without overlapping in volume — the
+ * upper room passes over the lower one. A footprint test would reject that, i.e. block the very
+ * thing the architecture was designed to allow.
  */
 public record Aabb(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
 
     public Aabb {
         if (minX > maxX || minY > maxY || minZ > maxZ) {
-            throw new IllegalArgumentException("Geçersiz kutu: min > max");
+            throw new IllegalArgumentException("Invalid box: min > max");
         }
     }
 
@@ -55,12 +55,12 @@ public record Aabb(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
     }
 
     /**
-     * İki kutu ortak blok paylaşıyor mu.
+     * Whether two boxes share any block.
      *
-     * <p>Uçlar dahil olduğu için karşılaştırma {@code <=}: {@code maxX=10} ile
-     * {@code minX=10} kutuları x=10 sütununu <b>paylaşır</b>, kesişir. Sırt sırta
-     * bağlanan odalar bu yüzden çakışmaz — aralarında tam bir blokluk fark var
-     * ({@code generation.md} §5.2 adım 3).
+     * <p>Because the ends are inclusive the comparison is {@code <=}: a box with
+     * {@code maxX=10} and one with {@code minX=10} <b>share</b> the x=10 column, so they
+     * intersect. This is why rooms connected back to back do not collide — there is exactly one
+     * block of clearance between them ({@code generation.md} §5.2 step 3).
      */
     public boolean intersects(Aabb other) {
         return minX <= other.maxX && maxX >= other.minX
@@ -68,7 +68,7 @@ public record Aabb(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
                 && minZ <= other.maxZ && maxZ >= other.minZ;
     }
 
-    /** Kutuyu origin etrafında döndürür. Köşeler dönüp yeniden min/max alınıyor. */
+    /** Rotates the box around the origin: the corners are rotated and min/max retaken. */
     public Aabb rotate(Rotation rotation) {
         return Aabb.of(rotation.apply(min()), rotation.apply(max()));
     }
@@ -79,7 +79,7 @@ public record Aabb(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
                 maxX + offset.x(), maxY + offset.y(), maxZ + offset.z());
     }
 
-    /** Kutuyu her yönde {@code amount} blok küçültür — sınır testinde pay bırakmak için. */
+    /** Shrinks the box by {@code amount} on every side — used to leave slack in bounds tests. */
     public Aabb shrink(int amount) {
         return new Aabb(minX + amount, minY + amount, minZ + amount,
                 maxX - amount, maxY - amount, maxZ - amount);

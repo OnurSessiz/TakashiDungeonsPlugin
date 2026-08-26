@@ -6,39 +6,40 @@ import java.util.List;
 import java.util.random.RandomGenerator;
 
 /**
- * Boş bir kapıya oda takar: aday seçer, çakışmayı test eder, geçen ilkini yerleştirir —
- * {@code generation.md} §5.2 ve §5.3.
+ * Attaches a room to an open door: picks candidates, tests for collision, places the first one
+ * that passes — {@code generation.md} §5.2 and §5.3.
  *
- * <p><b>1B ile ayrım.</b> {@link RoomTemplate#attachTo} saf geometri: "bu oda buraya şu
- * açıyla oturur." Bu sınıfın sorusu farklı: <b>"oturabilir mi, ve hangi oda seçilmeli?"</b>
- * Ayrım, geometriyi dünyaya ve rastgeleliğe erişmeden test edilebilir tutuyor.
+ * <p><b>How this differs from 1B.</b> {@link RoomTemplate#attachTo} is pure geometry: "this
+ * room seats here, at this angle." The question this class asks is different:
+ * <b>"may it seat, and which room should be chosen?"</b> The split keeps the geometry testable
+ * without access to a world or to randomness.
  *
- * <p><b>İki aşamalı seçim</b> ({@code generation.md} §5.4 — karar verildi):
+ * <p><b>Two-stage selection</b> ({@code generation.md} §5.4):
  * <ol>
- *   <li>Şablon <b>ağırlıkla</b> çekilir, havuzdan çıkarılır (yerine konmadan)</li>
- *   <li>O şablonun kapıları sıralanır ve sırayla denenir</li>
- *   <li>Hiçbiri oturmazsa şablon elenmiş olur, 1'e dönülür</li>
- *   <li>Havuz boşalırsa kapı <b>ÖLÜ</b> işaretlenir → §7 tıpa</li>
+ *   <li>A template is drawn <b>by weight</b> and removed from the pool (no replacement)</li>
+ *   <li>That template's doors are ordered and tried one by one</li>
+ *   <li>If none fit, the template is out and we go back to step 1</li>
+ *   <li>If the pool empties, the door is marked <b>DEAD</b> → §7 plug</li>
  * </ol>
  */
 public final class RoomPlacer {
 
     /**
-     * Dönüş yanlılığının gücü — {@code generation.md} §6.4.
+     * Strength of the turn bias — {@code generation.md} §6.4.
      *
-     * <p>Kapı seçimi aşamasında uygulanıyor, <b>şablon seçimi aşamasında değil</b>.
-     * Sebebi §5.4: şablon aşamasına dokunmak {@code agirlik}'in anlamını bozar, ve
-     * ağırlığın kapı sayısından bağımsız kalması için verilen kararın altını oyar.
+     * <p>Applied at the door selection stage, <b>not</b> at template selection. The reason is
+     * §5.4: touching the template stage would corrupt the meaning of {@code weight} and
+     * undermine the decision to keep it independent of door count.
      *
-     * <p>1.0 = ceza yok. Yüksek değer düz devamı daha çok geriye iter.
+     * <p>1.0 = no penalty. Higher values push straight continuations further back.
      */
     private final double turnBias;
 
     private final RandomGenerator random;
     /**
-     * {@link Collections#shuffle} eski {@link java.util.Random} istiyor. Tek bir örnek
-     * tutuluyor: her çağrıda yenisini üretmek aynı tohumdan farklı sonuç verir ve
-     * üretimi tekrar edilemez hâle getirirdi — hata ayıklamayı imkânsızlaştırırdı.
+     * {@link Collections#shuffle} wants the legacy {@link java.util.Random}. A single instance
+     * is kept: creating a new one per call would give different results from the same seed and
+     * make generation non-reproducible — which would make it undebuggable.
      */
     private final java.util.Random shuffleRandom;
 
@@ -50,7 +51,7 @@ public final class RoomPlacer {
                 : new java.util.Random(random.nextLong());
     }
 
-    /** Bir yerleştirme denemesinin sonucu. */
+    /** The outcome of one placement attempt. */
     public record Attempt(LayoutNode placed, int childDoor, int candidatesTried, String failReason) {
 
         public boolean success() {
@@ -59,20 +60,21 @@ public final class RoomPlacer {
     }
 
     /**
-     * Verilen boş kapıya bir oda takmaya çalışır.
+     * Tries to attach a room to the given open door.
      *
-     * <p>Başarılıysa oda yerleşime eklenir ve iki kapı karşılıklı bağlanır. Başarısızsa
-     * kapı ÖLÜ işaretlenir — bir daha denenmez, tıpa 1D'de basılacak.
+     * <p>On success the room joins the layout and the two doors are linked to each other. On
+     * failure the door is marked DEAD — it is never retried, and it gets plugged in 1D.
      *
-     * @param layout yerleşim (değiştirilir)
-     * @param door   doldurulacak boş kapı
-     * @param pool   aday şablonlar — <b>bu metot listeyi değiştirmez</b>, kopyasıyla çalışır
+     * @param layout the layout (mutated)
+     * @param door   the open door to fill
+     * @param pool   candidate templates — <b>this method does not modify the list</b>, it works
+     *               on a copy
      */
     public Attempt fill(DungeonLayout layout, OpenDoor door, List<RoomTemplate> pool) {
         List<RoomTemplate> remaining = new ArrayList<>(pool);
         LayoutNode parent = layout.node(door.nodeId());
         int tried = 0;
-        String lastReason = "aday havuzu boş";
+        String lastReason = "candidate pool was empty";
 
         RoomTemplate template;
         while ((template = RoomLibrary.drawWeighted(remaining, random)) != null) {
@@ -81,7 +83,7 @@ public final class RoomPlacer {
                 PlacedRoom candidate = template.attachTo(childDoor, door.anchor(), door.outward());
                 String reason = layout.rejectReason(candidate.bounds());
                 if (reason != null) {
-                    lastReason = template.name() + " kapı#" + childDoor + ": " + reason;
+                    lastReason = template.name() + " door#" + childDoor + ": " + reason;
                     continue;
                 }
                 LayoutNode child = layout.add(candidate, parent.depth() + 1);
@@ -95,16 +97,16 @@ public final class RoomPlacer {
     }
 
     /**
-     * Şablonun kapılarını deneme sırasına dizer.
+     * Puts the template's doors into the order they will be tried.
      *
-     * <p>Karıştırma çeşitlilik için; dönüş yanlılığı ise "düz devam eden" seçenekleri geriye
-     * iter. Bir kapı seçeneği <b>düz</b> sayılıyor: o kapıdan bağlanınca odanın <i>başka</i>
-     * bir kapısı ebeveynin dışa bakan yönünü gösteriyorsa — yani zincir aynı istikamette
-     * devam edecekse.
+     * <p>The shuffle provides variety; the turn bias then pushes "straight continuation"
+     * options back. A door option counts as <b>straight</b> when, connecting through it, some
+     * <i>other</i> door of the room points along the parent's outward direction — that is, the
+     * chain would carry on in the same heading.
      *
-     * <p>Karşılıklı çift kapılı odada (koridor) iki seçenek de düz olduğu için ceza etkisiz
-     * kalır. Bu dürüst bir sonuç: o oda ne yapılırsa yapılsın düz devam ediyor. §6.4'ün asıl
-     * motoru zaten kapı ofsetleri.
+     * <p>In a room with two opposite doors (a corridor) both options are straight, so the
+     * penalty has no effect. That is an honest outcome: that room continues straight no matter
+     * what you do. The real mechanism behind §6.4 is the door offsets anyway.
      */
     private List<Integer> orderDoors(RoomTemplate template, Direction parentOutward) {
         int count = template.doorCount();
@@ -117,14 +119,15 @@ public final class RoomPlacer {
         if (turnBias <= 1.0 || count < 2) {
             return order;
         }
-        // Kararlı bölme: düz olmayanlar önde, düz olanlar arkada; her grup içinde
-        // karıştırılmış sıra korunuyor.
+        // Stable partition: turning options in front, straight ones behind; the shuffled order
+        // is preserved within each group.
         List<Integer> turning = new ArrayList<>(count);
         List<Integer> straight = new ArrayList<>(count);
         for (int index : order) {
             (continuesStraight(template, index, parentOutward) ? straight : turning).add(index);
         }
-        // Ceza mutlak değil: turnBias büyüdükçe düz seçeneğin öne geçme şansı azalıyor.
+        // The penalty is not absolute: the larger turnBias gets, the smaller the chance a
+        // straight option jumps back to the front.
         if (!turning.isEmpty() && !straight.isEmpty() && random.nextDouble() < 1.0 / turnBias) {
             turning.addAll(0, straight);
             return turning;
@@ -134,7 +137,8 @@ public final class RoomPlacer {
     }
 
     /**
-     * {@code childDoor}'dan bağlanınca odanın başka bir kapısı ebeveynin yönünü mü gösteriyor.
+     * Whether, connecting through {@code childDoor}, another of the room's doors points along
+     * the parent's direction.
      */
     private static boolean continuesStraight(RoomTemplate template, int childDoor,
                                              Direction parentOutward) {

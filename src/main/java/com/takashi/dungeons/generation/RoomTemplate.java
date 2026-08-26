@@ -3,21 +3,23 @@ package com.takashi.dungeons.generation;
 import java.util.List;
 
 /**
- * Bir oda şablonu: {@code .schem} dosyasının geometrisi + yanındaki {@code .yml}'nin metadata'sı.
+ * A room template: the geometry of a {@code .schem} file plus the metadata of the {@code .yml}
+ * beside it.
  *
- * <p><b>Boyut metadata'da yazmıyor</b> — {@link #localBox} schematic'in kendisinden okunuyor.
- * Kapı yönü gibi bu da türetilen bir değer: haritacı odayı editörde büyütüp schematic'i
- * yeniden export ettiğinde {@code .yml}'yi güncellemeyi unutabilir, ve kutu yanlışsa çakışma
- * testi sessizce yanlış çalışır. Tek kaynak schematic.
+ * <p><b>Size is not written in the metadata</b> — {@link #localBox} is read from the schematic
+ * itself. Like door facing, it is a derived value: a mapper who enlarges a room in the editor
+ * and re-exports the schematic can easily forget to update the {@code .yml}, and a wrong box
+ * makes the collision test silently wrong. The schematic is the single source.
  *
- * <p>Şablon <b>döndürülerek</b> kullanılır; kapı varyantı olarak çoğaltılmaz
- * ({@code generation.md} §7 — 40 oda × 5 şekil = 200 schematic maliyeti bu yüzden reddedildi).
+ * <p>A template is used by <b>rotating</b> it, never by duplicating it into door variants
+ * ({@code generation.md} §7 — this is why the 40 rooms × 5 shapes = 200 schematics option was
+ * rejected).
  *
- * @param name     uzantısız dosya adı ({@code .schem} ve {@code .yml} bu adı paylaşır)
- * @param type     graf içindeki rol
- * @param weight   aday seçiminde ağırlıklı rastgele — loot weight mantığı (1C/1D kullanacak)
- * @param doors    kapı anchor'ları, {@code .yml}'deki sırayla; boş olabilir (çıkmaz süs odası)
- * @param localBox odanın origin'e göre sınır kutusu, schematic'ten okunmuş
+ * @param name     file name without extension (the {@code .schem} and {@code .yml} share it)
+ * @param type     role in the graph
+ * @param weight   share in the weighted candidate draw — loot-weight semantics
+ * @param doors    door anchors, in {@code .yml} order; may be empty (a decorative dead end)
+ * @param localBox the room's bounding box relative to its origin, read from the schematic
  */
 public record RoomTemplate(String name, RoomType type, int weight,
                            List<DoorAnchor> doors, Aabb localBox) {
@@ -32,38 +34,40 @@ public record RoomTemplate(String name, RoomType type, int weight,
 
     public DoorAnchor door(int index) {
         if (index < 0 || index >= doors.size()) {
-            throw new IndexOutOfBoundsException(name + ": kapı#" + index + " yok (bu odada "
-                    + doors.size() + " kapı var, geçerli aralık 0-" + (doors.size() - 1) + ")");
+            throw new IndexOutOfBoundsException(name + ": no door#" + index + " (this room has "
+                    + doors.size() + " doors, valid range 0-" + (doors.size() - 1) + ")");
         }
         return doors.get(index);
     }
 
     /**
-     * Bu şablonu, ebeveynin boş kapısına takar — {@code generation.md} §5.2 adım 2-4.
+     * Attaches this template to an open door of a parent room — {@code generation.md} §5.2
+     * steps 2-4.
      *
-     * <p>Çakışma testi (adım 5) burada <b>yapılmıyor</b>: bu metot saf geometri, "nereye
-     * oturur" sorusunun cevabı. "Oturabilir mi" sorusu graf katmanının (1C) işi ve
-     * yerleşmiş odaların listesini gerektiriyor. İkisini ayırmak yerleştirme matematiğini
-     * dünyaya erişmeden test edilebilir tutuyor.
+     * <p>The collision test (step 5) is <b>not</b> done here. This method is pure geometry, the
+     * answer to "where does it seat". The question "may it seat" belongs to the graph layer
+     * (1C) and needs the list of already-placed rooms. Keeping them apart is what makes the
+     * placement maths testable without touching a world.
      *
-     * @param doorIndex     bu şablonun hangi kapısından bağlanacağı
-     * @param parentAnchor  ebeveyn kapısının DÜNYA koordinatı
-     * @param parentOutward ebeveyn kapısının DÜNYA çerçevesinde dışa bakan yönü
+     * @param doorIndex     which of this template's doors connects
+     * @param parentAnchor  the parent door's WORLD coordinate
+     * @param parentOutward the parent door's outward facing in the WORLD frame
      */
     public PlacedRoom attachTo(int doorIndex, Vec3i parentAnchor, Direction parentOutward) {
         DoorAnchor door = door(doorIndex);
         Rotation rotation = Rotation.align(parentOutward, door.wall());
 
-        // Sırt sırta: çocuğun kapı anchor'ı ebeveyninkinden tam bir blok dışarıda dursun.
-        // Duvarlar çakışsaydı ikinci paste birincinin duvarını ezerdi ve sonuç paste
-        // SIRASINA bağlı olurdu — sıra bağımlılığı olan üretim hata ayıklanamaz.
+        // Back to back: the child's door anchor sits exactly one block outside the parent's.
+        // If the walls overlapped, the second paste would overwrite the first one's wall and
+        // the result would depend on paste ORDER — and order-dependent generation cannot be
+        // debugged.
         Vec3i childAnchorWorld = parentAnchor.plus(parentOutward.step());
         Vec3i origin = childAnchorWorld.minus(rotation.apply(door.local()));
 
         return PlacedRoom.of(this, rotation, origin);
     }
 
-    /** Rotasyon uygulanmadan, sadece kutu boyutunu özetler — komut çıktısı için. */
+    /** Summarizes the box size without applying rotation — for command output. */
     public String describeSize() {
         return localBox.sizeX() + "×" + localBox.sizeY() + "×" + localBox.sizeZ();
     }

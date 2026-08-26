@@ -1,27 +1,29 @@
 package com.takashi.dungeons.generation;
 
 /**
- * Kapatılacak bir kapı açıklığı — {@code generation.md} §7 (tıpa).
+ * A door opening that has to be sealed — {@code generation.md} §7 (plugging).
  *
- * <p>Graf bittiğinde bazı kapılar boşluğa açılıyor olur: ya yan dal kotası dolduğu için
- * hiç denenmedi (BOŞ), ya denendi ve bütün adaylar çakıştı (ÖLÜ). İkisi de kapatılmalı —
- * yoksa oyuncu odadan void'e düşer.
+ * <p>When the graph is finished some doors will be opening into the void: either the side
+ * branch quota ran out before they were ever tried (OPEN), or they were tried and every
+ * candidate collided (DEAD). Both have to be sealed, otherwise the player walks out of a room
+ * and falls into the void.
  *
- * <p><b>Açıklığın boyutu burada yazmıyor</b> ve bilerek yazmıyor. Motor açıklığı, odanın
- * duvar düzleminde anchor'dan başlayarak hava bloklarını tarayarak kendisi buluyor
- * (bkz. {@code schematic/DoorPlugger}). Sebebi §9'un ruhu: metadata'ya yazılabilen her alan
- * yanlış yazılabilen bir alan. Haritacı 3×3 yerine 3×4 bir kapı çizerse tıpa yine tutar.
+ * <p><b>The size of the opening is deliberately not stored here.</b> The engine finds it by
+ * starting at the anchor and scanning air blocks in the room's wall plane
+ * (see {@code schematic/DoorPlugger}). This follows the spirit of §9: every field that can be
+ * written into metadata is a field that can be written wrong. If a mapper draws a 3×4 door
+ * instead of 3×3, the plug still fits.
  *
- * @param anchor      kapı anchor'ının DÜNYA koordinatı
- * @param outward     kapının dışa bakan yönü — hangi duvar düzleminde olduğunu belirler
- * @param roomBounds  odanın dünya kutusu — taramanın sınırı; olmasaydı tarama duvar
- *                    düzleminde odanın dışına, void'e sızardı
- * @param dead        {@code true} ise ÖLÜ (denendi, oturmadı), {@code false} ise BOŞ
+ * @param anchor      the door anchor's WORLD coordinate
+ * @param outward     the door's outward facing — this identifies the wall plane it lies in
+ * @param roomBounds  the room's world box, which bounds the scan; without it the scan would
+ *                    leak along the wall plane past the room and out into the void
+ * @param dead        {@code true} for DEAD (tried, nothing fit), {@code false} for OPEN
  */
 public record PlugTarget(Vec3i anchor, Direction outward, Aabb roomBounds, boolean dead) {
 
     @Override
     public String toString() {
-        return anchor + " " + outward.turkish() + (dead ? " (ölü)" : " (boş)");
+        return anchor + " " + outward.displayName() + (dead ? " (dead)" : " (open)");
     }
 }

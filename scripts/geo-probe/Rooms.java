@@ -4,11 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Probe'larin ortak test oda seti.
+ * The test room set shared by the probes.
  *
- * Degerler TestRoomFactory'nin urettikleriyle AYNI -- uretilen .yml dosyalarindan
- * dogrulanabilir. Tek kaynak olmasinin sebebi: oda seti degisince iki ayri probe'u
- * elle guncellemek unutulur ve testler sessizce gercekle alakasiz hale gelir.
+ * The values are IDENTICAL to what TestRoomFactory produces -- verifiable against the
+ * generated .yml files. Why a single source: when the room set changes, updating two separate
+ * probes by hand gets forgotten and the tests silently stop describing reality.
  */
 public final class Rooms {
 
@@ -16,16 +16,16 @@ public final class Rooms {
     }
 
     /**
-     * Giris + boss dahil butun set (8 oda), <b>ALFABETIK</b> sirada.
+     * The full set including entrance and boss (8 rooms), in <b>ALPHABETICAL</b> order.
      *
-     * Sira onemli ve tesadufi degil: sunucuda sablonlar
-     * {@code SchematicService.list()}'ten geliyor ve o metot dosya adlarini
-     * SIRALIYOR. RoomLibrary.drawWeighted kumulatif agirlik taramasi yaptigi icin
-     * ayni tohum + farkli SIRA = farkli dungeon uretiyor.
+     * The order matters and is not incidental: on the server the templates come from
+     * {@code SchematicService.list()}, and that method SORTS the file names. Because
+     * RoomLibrary.drawWeighted performs a cumulative weight scan, the same seed with a
+     * different ORDER produces a different dungeon.
      *
-     * Bu sirayi sunucuyla ayni tutmak sayesinde probe'lar sunucunun ne uretecegini
-     * ONCEDEN hesaplayabiliyor -- blok testlerinin beklenen koordinatlari boyle
-     * cikariliyor.
+     * Keeping this order identical to the server's is what lets the probes compute IN ADVANCE
+     * what the server will build -- that is how the expected coordinates of the block tests
+     * are derived.
      */
     public static List<RoomTemplate> all() {
         return List.of(
@@ -42,13 +42,13 @@ public final class Rooms {
                         new Vec3i(0, 1, -8)),
                 t("test_even", RoomType.NORMAL, 80, new Aabb(-5, 0, -8, 4, 7, 7),
                         new Vec3i(1, 1, -8), new Vec3i(-2, 1, 7), new Vec3i(4, 1, 3)),
-                t("test_giris", RoomType.GIRIS, 100, box(17, 9, 17),
+                t("test_entrance", RoomType.ENTRANCE, 100, box(17, 9, 17),
                         new Vec3i(0, 1, -8)),
                 t("test_long", RoomType.NORMAL, 80, box(9, 7, 25),
                         new Vec3i(0, 1, -12), new Vec3i(4, 1, 10)));
     }
 
-    /** Sadece 'normal' tipli odalar (6 oda), all() ile ayni sirada. */
+    /** Only the 'normal' type rooms (6 of them), in the same order as all(). */
     public static List<RoomTemplate> normalPool() {
         List<RoomTemplate> out = new ArrayList<>();
         for (RoomTemplate t : all()) {
@@ -77,13 +77,13 @@ public final class Rooms {
         return new RoomTemplate(name, type, weight, doors, box);
     }
 
-    /** Tek sayi kenarli oda icin origin merkezde: kutu -n..n. */
+    /** For an odd-sided room the origin is centred: box -n..n. */
     public static Aabb box(int sizeX, int height, int sizeZ) {
         return new Aabb(-(sizeX / 2), 0, -(sizeZ / 2),
                 sizeX - 1 - sizeX / 2, height - 1, sizeZ - 1 - sizeZ / 2);
     }
 
-    /** Slot kutusu: X/Z slot'tan, Y dunya yuksekligi gibi genis. */
+    /** The slot box: X/Z from the slot, Y as wide as a world's height range. */
     public static Aabb slotBox(int size) {
         return new Aabb(0, -64, 0, size - 1, 319, size - 1);
     }
