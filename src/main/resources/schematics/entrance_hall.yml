@@ -1,0 +1,12 @@
+# entrance_hall — dar ve uzun giris odasi (9 x 15), tek kapi kuzeyde
+#
+# origin (//copy anindaki ayak blogu):  1, 85, 373
+#   door 0:  1, 85, 366  ->  [0, 0, -7]   kuzey duvari
+#
+# Kutu (origin'e gore): X -4..4  Y -1..5  Z -7..7
+
+type: entrance
+weight: 100
+
+doors:
+  - [0, 0, -7]

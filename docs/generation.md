@@ -505,6 +505,34 @@ engine code is the same either way, and the map investment stays optional.
 Every schematic has a `.yml` of the same name beside it. **Not one central file** — the map team
 works in parallel, and a shared manifest would turn every export into a merge conflict.
 
+### The theme is the folder
+
+A dungeon is generated from **exactly one theme's** room pool. A theme is not a metadata field;
+it is the folder the room sits in:
+
+```
+plugins/TakashiDungeons/schematics/
+├── entrance_grand.schem + .yml     → theme "default" (the root is a real theme)
+├── crypt/
+│   └── hall_pillars.schem + .yml   → theme "crypt"
+└── nether/
+    └── hall_pillars.schem + .yml   → theme "nether"  (same name, no clash)
+```
+
+Two consequences, both deliberate:
+
+- **Themes are discovered, not declared.** A folder holding at least one schematic is a theme.
+  There is no theme list in the config that could fall out of sync with the disk.
+- **A room cannot be filed under the wrong theme by a typo** — moving it takes a file move. Same
+  reasoning as §9's "a field you can write is a field you can write wrong".
+
+The root counts as the theme `default`, which is why introducing themes needed no migration: a
+room that existed before themes did is a `default` room and answers to its bare name. Room keys
+are `theme/name`, and `default` rooms keep the bare `name`.
+
+Each theme is validated independently. A theme with no boss room falls back exactly as a themeless
+install did (§6.2); `/tdungeons themes` reports the composition of every theme's pool.
+
 ```yaml
 # schematics/test_cross.yml
 type: normal         # entrance | normal | boss
@@ -540,8 +568,25 @@ for each placed room:
 
 ## 9. Rules for the map team
 
-- **The origin must be at the room's horizontal center, at floor level.** It is marked in the
-  template file.
+- **The origin is the block you are standing on when you run `//copy`.** WorldEdit records the
+  player position as the clipboard origin, and every anchor in the `.yml` is a delta from it.
+
+  > **Corrected after the first hand-built rooms.** This rule used to read "the origin must be at
+  > the room's horizontal center, at floor level". That is **not hand-buildable**: for the origin
+  > to land on the floor block you would have to run `//copy` from inside the floor.
+  > `TestRoomFactory` can do it because it assembles the clipboard in code, so the test rooms use
+  > origin-at-floor with doors at `y: 1`. A mapper measures the origin at standing level, so their
+  > doors come out at `y: 0`. **Both work**, because the engine only requires the room to be
+  > internally consistent — it derives the box from the clipboard and the walls from X/Z. Measure
+  > the origin and every door the same way and the offsets take care of themselves.
+
+- **The selection must contain the floor below you and the ceiling above you.** The block you
+  stand on is the *walk level*, not the floor; the floor is the layer beneath it. A selection
+  started at standing level produces a room with no floor, and in a void dungeon world the player
+  falls straight through. Verified the hard way: the first three hand-built rooms all shipped
+  with a bottom layer that was 57–71% air. Compare against `test_cross`, whose bottom and top
+  layers are both 0% air. Running `//size` before `//copy` and checking the height against the
+  room's true floor-to-ceiling height catches this in one second.
 - **The door anchor is the base-center block of the opening.** If it is off by one block, walls
   interpenetrate or a gap is left. This is the single place where these systems break.
 - Standard door opening: **3 wide × 3 high** (this is what `TestRoomFactory` produces).
@@ -791,8 +836,10 @@ Generation is done; what is generated now has to **live**.
 
 **What phase 2 onward needs to know about generation:**
 - `DungeonGenerator.Result` carries everything that describes an instance: `seed`, `size`,
-  `bossNodeId`, `layout`. In phase 7, writing **slot index + seed + size** to the database is
-  enough to regenerate the dungeon — the full layout does not need to be stored.
+  `bossNodeId`, `layout`. In phase 7, writing **slot index + theme + size + seed** to the database
+  is enough to regenerate the dungeon — the full layout does not need to be stored. The theme
+  joined this tuple when room pools were split per folder (§8); without it the same seed draws
+  from a different pool and rebuilds a different dungeon.
 - The boss room's node id is ready for phase 3's boss spawning.
 - `LayoutNode.depth()` can drive difficulty scaling (stronger mobs further from the entrance) —
   to be evaluated in phase 3.

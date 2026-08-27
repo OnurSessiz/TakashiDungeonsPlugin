@@ -1,0 +1,21 @@
+# entrance_grand — dort yone kapili buyuk giris odasi (23 x 23)
+#
+# Ortada YUKSELTILMIS PODYUM var: origin podyumun ustunde, kapilar zemin
+# katta, bu yuzden her anchor'in y'si -1. Olcum hatasi degil, dogrulandi.
+#
+# origin (//copy anindaki ayak blogu):  210, 81, 224
+#   door 0:  210, 80, 235  ->  [  0, -1,  11]   guney
+#   door 1:  199, 80, 224  ->  [-11, -1,   0]   bati
+#   door 2:  210, 80, 213  ->  [  0, -1, -11]   kuzey
+#   door 3:  221, 80, 224  ->  [ 11, -1,   0]   dogu
+#
+# Kutu (origin'e gore): X -11..11  Y -2..6  Z -11..11
+
+type: entrance
+weight: 100
+
+doors:
+  - [0, -1, 11]
+  - [-11, -1, 0]
+  - [0, -1, -11]
+  - [11, -1, 0]

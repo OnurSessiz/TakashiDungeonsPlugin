@@ -1,0 +1,14 @@
+# entrance_small — kucuk giris odasi, iki kapi (kuzey + bati)
+#
+# origin (//copy anindaki ayak blogu):  -6, 89, 256
+#   door 0:  -6, 89, 251  ->  [ 0, 0, -5]   kuzey duvari
+#   door 1: -11, 89, 253  ->  [-5, 0, -3]   bati duvari
+#
+# Kutu (origin'e gore): X -5..6  Y -1..5  Z -5..5
+
+type: entrance
+weight: 100
+
+doors:
+  - [0, 0, -5]
+  - [-5, 0, -3]
