@@ -52,9 +52,19 @@ public final class RoomTemplateStore {
         this.async = task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task);
     }
 
-    /** Every room name in the schematic folder, with or without metadata. */
+    /** Every room key across every theme, with or without metadata. */
     public List<String> list() {
         return schematics.list();
+    }
+
+    /** One theme's room keys. A dungeon is generated from exactly one theme's list. */
+    public List<String> list(String theme) {
+        return schematics.list(theme);
+    }
+
+    /** The themes that hold at least one schematic. */
+    public List<String> themes() {
+        return schematics.themes();
     }
 
     public void invalidateCache() {
@@ -108,9 +118,10 @@ public final class RoomTemplateStore {
                 .thenApply(ignored -> futures.stream().map(CompletableFuture::join).toList());
     }
 
-    /** The template's metadata file. */
-    public File metadataFile(String name) {
-        return new File(schematics.getDirectory(), name + ".yml");
+    /** The template's metadata file — beside its schematic, inside its own theme's folder. */
+    public File metadataFile(String key) {
+        return new File(schematics.directoryFor(SchematicService.themeOf(key)),
+                SchematicService.nameOf(key) + ".yml");
     }
 
     private RoomTemplate build(String name, Clipboard clipboard) {

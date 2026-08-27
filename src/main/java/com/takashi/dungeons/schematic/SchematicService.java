@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -31,7 +32,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p><b>How it works:</b>
  * <ol>
- *   <li>A {@code .schem} file under {@code plugins/TakashiDungeons/schematics/} is read</li>
+ *   <li>A {@code .schem} file under {@code plugins/TakashiDungeons/schematics/} is read —
+ *       from the root for the {@code default} theme, from {@code <theme>/} otherwise</li>
  *   <li>Reading is <b>always async</b> (disk I/O plus NBT parsing would block the main thread)</li>
  *   <li>The resulting {@link Clipboard} is cached in memory — the same room gets pasted
  *       hundreds of times, so the file is read once</li>
@@ -55,6 +57,15 @@ public final class SchematicService {
 
     /** Supported extensions — Sponge {@code .schem} is primary, legacy {@code .schematic} tolerated. */
     private static final List<String> EXTENSIONS = List.of(".schem", ".schematic");
+
+    /**
+     * The theme a room belongs to when its files sit directly in the schematics root.
+     *
+     * <p>Keeping the root a real theme is what makes this change need no migration: every
+     * schematic that existed before themes did is now a {@code default} room, and every command
+     * that referred to it by its bare name still does.
+     */
+    public static final String DEFAULT_THEME = "default";
 
     private final Plugin plugin;
     private final File directory;
@@ -81,13 +92,99 @@ public final class SchematicService {
         return asyncPaste;
     }
 
-    /** The extension-less names of the schematic files in the folder. */
+    /**
+     * The folder a theme's rooms live in: the schematics root for {@link #DEFAULT_THEME},
+     * a subfolder of it otherwise.
+     *
+     * <p>The lookup is case-insensitive, because theme names arrive from chat and the file
+     * system is not the place to enforce spelling.
+     */
+    public File directoryFor(String theme) {
+        if (theme == null || DEFAULT_THEME.equalsIgnoreCase(theme)) {
+            return directory;
+        }
+        File exact = new File(directory, theme);
+        if (exact.isDirectory()) {
+            return exact;
+        }
+        File[] subs = directory.listFiles(File::isDirectory);
+        if (subs != null) {
+            for (File sub : subs) {
+                if (sub.getName().equalsIgnoreCase(theme)) {
+                    return sub;
+                }
+            }
+        }
+        // Doesn't exist; callers report it through the empty listing rather than throwing here.
+        return exact;
+    }
+
+    /**
+     * The themes that actually hold at least one schematic, sorted.
+     *
+     * <p><b>Themes are discovered, not declared.</b> A folder with rooms in it is a theme; there
+     * is no theme list in the config that could fall out of sync with the disk. Same reasoning
+     * as {@code generation.md} §9 on door facings: a field you can write is a field you can
+     * write wrong.
+     */
+    public List<String> themes() {
+        List<String> found = new ArrayList<>();
+        if (!listIn(directory).isEmpty()) {
+            found.add(DEFAULT_THEME);
+        }
+        File[] subs = directory.listFiles(File::isDirectory);
+        if (subs != null) {
+            Arrays.stream(subs)
+                    .filter(sub -> !listIn(sub).isEmpty())
+                    .map(File::getName)
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .forEach(found::add);
+        }
+        return List.copyOf(found);
+    }
+
+    /** Every room key across every theme. */
     public List<String> list() {
-        File[] files = directory.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
+        List<String> all = new ArrayList<>();
+        for (String theme : themes()) {
+            all.addAll(list(theme));
+        }
+        return List.copyOf(all);
+    }
+
+    /** One theme's room keys. */
+    public List<String> list(String theme) {
+        String resolved = theme == null ? DEFAULT_THEME : theme;
+        return listIn(directoryFor(resolved)).stream().map(name -> key(resolved, name)).toList();
+    }
+
+    /** The extension-less schematic names directly inside one folder. */
+    private static List<String> listIn(File folder) {
+        File[] files = folder.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
         if (files == null) {
             return List.of();
         }
         return Arrays.stream(files).map(f -> stripExtension(f.getName())).sorted().toList();
+    }
+
+    /**
+     * Builds a room key. The default theme's rooms keep their bare name, so every command that
+     * worked before themes existed still works verbatim.
+     */
+    public static String key(String theme, String name) {
+        return theme == null || DEFAULT_THEME.equalsIgnoreCase(theme) ? name : theme + "/" + name;
+    }
+
+    /** The theme part of a key; a key without a {@code /} belongs to the default theme. */
+    public static String themeOf(String key) {
+        int slash = key.indexOf('/');
+        return slash < 0 ? DEFAULT_THEME : key.substring(0, slash);
+    }
+
+    /** The file-name part of a key. */
+    public static String nameOf(String key) {
+        int slash = key.indexOf('/');
+        return slash < 0 ? key : key.substring(slash + 1);
     }
 
     /** Empties the cache — called when the files on disk have changed (reload). */
@@ -124,7 +221,8 @@ public final class SchematicService {
     private Clipboard readBlocking(String key) throws IOException {
         File file = resolve(key);
         if (file == null) {
-            throw new IOException("Schematic not found: " + key + " (" + directory.getName() + "/)");
+            throw new IOException("Schematic not found: " + key + " (theme folder: "
+                    + directoryFor(themeOf(key)).getPath() + ")");
         }
         ClipboardFormat format = ClipboardFormats.findByFile(file);
         if (format == null) {
@@ -137,17 +235,19 @@ public final class SchematicService {
     }
 
     private File resolve(String key) {
+        File folder = directoryFor(themeOf(key));
+        String name = nameOf(key);
         for (String ext : EXTENSIONS) {
-            File candidate = new File(directory, key + ext);
+            File candidate = new File(folder, name + ext);
             if (candidate.isFile()) {
                 return candidate;
             }
         }
         // case-insensitive fallback
-        File[] files = directory.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
+        File[] files = folder.listFiles(f -> f.isFile() && hasKnownExtension(f.getName()));
         if (files != null) {
             for (File f : files) {
-                if (stripExtension(f.getName()).equalsIgnoreCase(key)) {
+                if (stripExtension(f.getName()).equalsIgnoreCase(name)) {
                     return f;
                 }
             }

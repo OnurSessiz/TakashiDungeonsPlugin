@@ -51,8 +51,10 @@ import java.util.concurrent.CompletableFuture;
 public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
-            List.of("version", "status", "world", "list", "rooms", "room", "weights", "gen",
-                    "paste", "connect", "dungeon", "slots", "free");
+            List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
+                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload");
+
+    private static final List<String> SIZES = List.of("small", "medium", "large");
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
 
@@ -76,12 +78,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "status" -> status(sender);
             case "world" -> world(sender);
             case "list" -> list(sender);
+            case "themes" -> themes(sender);
             case "rooms" -> rooms(sender);
             case "room" -> room(sender, label, args);
             case "gen" -> generate(sender);
             case "paste" -> paste(sender, label, args);
             case "connect" -> connect(sender, label, args);
-            case "weights" -> weights(sender);
+            case "reload" -> reload(sender);
+            case "weights" -> weights(sender, args);
             case "dungeon" -> dungeon(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
@@ -449,19 +453,23 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      * once. This command demonstrates that what the config says and what the engine does are
      * the same thing.
      */
-    private void weights(CommandSender sender) {
+    private void weights(CommandSender sender, String[] args) {
         RoomTemplateStore store = requireTemplates(sender);
         if (store == null) {
             return;
         }
-        store.loadAll(store.list()).whenComplete((templates, error) -> {
+        String theme = resolveTheme(sender, store, args.length >= 2 ? args[1] : null);
+        if (theme == null) {
+            return;
+        }
+        store.loadAll(store.list(theme)).whenComplete((templates, error) -> {
             if (error != null) {
                 sendFailure(sender, "Şablonlar yüklenemedi", error);
                 return;
             }
             RoomLibrary library = new RoomLibrary(templates);
             sender.sendMessage(Component.text(
-                    "Aday havuzu (giris/boss hariç — onlar atanıyor, seçilmiyor):",
+                    "Aday havuzu — tema " + theme + " (giris/boss hariç: onlar atanıyor, seçilmiyor):",
                     NamedTextColor.GOLD));
             if (!library.isUsable()) {
                 sender.sendMessage(Component.text("  " + library.describeProblem(),
@@ -498,17 +506,34 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        DungeonSize size = args.length >= 2 ? DungeonSize.parse(args[1]) : DungeonSize.MEDIUM;
+        // A theme name is whatever occupies arg 1 and is not a size. That makes the pre-theme
+        // form `dungeon medium 1337` keep working on a single-theme install; the cost is that a
+        // theme literally called "small" is unreachable, which is not worth guarding against.
+        String themeArg = null;
+        int next = 1;
+        if (args.length >= 2 && DungeonSize.parse(args[1]) == null) {
+            themeArg = args[1];
+            next = 2;
+        }
+        String theme = resolveTheme(sender, store, themeArg);
+        if (theme == null) {
+            return;
+        }
+
+        DungeonSize size = args.length > next ? DungeonSize.parse(args[next]) : DungeonSize.MEDIUM;
         if (size == null) {
             sender.sendMessage(Component.text("Kullanım: /" + label
-                    + " dungeon [small|medium|large] [seed]", NamedTextColor.RED));
+                    + " dungeon <tema> [small|medium|large] [seed]", NamedTextColor.RED));
             return;
         }
         long seed;
         try {
-            seed = args.length >= 3 ? Long.parseLong(args[2]) : new Random().nextLong();
+            seed = args.length > next + 1
+                    ? Long.parseLong(args[next + 1])
+                    : new Random().nextLong();
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Seed sayı olmalı: " + args[2], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Seed sayı olmalı: " + args[next + 1],
+                    NamedTextColor.RED));
             return;
         }
 
@@ -521,10 +546,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         Vec3i center = new Vec3i(slot.originX() + slot.size() / 2, slot.originY(),
                 slot.originZ() + slot.size() / 2);
 
-        sender.sendMessage(Component.text("Üretiliyor: " + size.key() + ", seed=" + seed,
-                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Üretiliyor: tema=" + theme + ", " + size.key()
+                + ", seed=" + seed, NamedTextColor.GRAY));
 
-        store.loadAll(store.list())
+        store.loadAll(store.list(theme))
                 .thenApply(templates -> {
                     RoomLibrary library = new RoomLibrary(templates);
                     if (!library.isUsable()) {
@@ -543,8 +568,115 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         sendFailure(sender, "Üretim başarısız", error);
                         return;
                     }
-                    reportDungeon(sender, world, slot, pair.getKey(), pair.getValue());
+                    reportDungeon(sender, world, slot, theme, pair.getKey(), pair.getValue());
                 });
+    }
+
+    /**
+     * Resolves the theme to generate from.
+     *
+     * <p>With exactly one theme on disk that theme is implied, so a single-theme install never
+     * has to type it. With several, the theme is <b>required</b>: silently picking one produces
+     * the "why did I get crypt rooms" class of bug, which costs an hour to trace and looks like
+     * a generation fault rather than a wrong pool.
+     *
+     * @return the theme, or {@code null} after the reason has been reported to the sender
+     */
+    private @Nullable String resolveTheme(CommandSender sender, RoomTemplateStore store,
+                                          @Nullable String requested) {
+        List<String> themes = store.themes();
+        if (themes.isEmpty()) {
+            sender.sendMessage(Component.text("Hiç oda yok — /tdungeons gen ile test odası üret, "
+                    + "ya da schematics/ altına bir tema klasörü aç.", NamedTextColor.YELLOW));
+            return null;
+        }
+        if (requested != null) {
+            for (String theme : themes) {
+                if (theme.equalsIgnoreCase(requested)) {
+                    return theme;
+                }
+            }
+            sender.sendMessage(Component.text("Tema yok: " + requested + "   mevcut: "
+                    + String.join(", ", themes), NamedTextColor.RED));
+            return null;
+        }
+        if (themes.size() == 1) {
+            return themes.get(0);
+        }
+        sender.sendMessage(Component.text("Tema belirt — mevcut: " + String.join(", ", themes),
+                NamedTextColor.RED));
+        return null;
+    }
+
+    /** Lists the themes with their pool composition, and whether each can actually generate. */
+    private void themes(CommandSender sender) {
+        RoomTemplateStore store = requireTemplates(sender);
+        if (store == null) {
+            return;
+        }
+        List<String> themes = store.themes();
+        if (themes.isEmpty()) {
+            sender.sendMessage(Component.text("Tema yok — schematics/ boş.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Temalar (" + themes.size() + "):", NamedTextColor.GOLD));
+        for (String theme : themes) {
+            store.loadAll(store.list(theme)).whenComplete((templates, error) -> {
+                if (error != null) {
+                    sendFailure(sender, "  " + theme + " yüklenemedi", error);
+                    return;
+                }
+                RoomLibrary library = new RoomLibrary(templates);
+                sender.sendMessage(Component.text("  " + theme, NamedTextColor.WHITE)
+                        .append(Component.text("  " + templates.size() + " oda"
+                                + "  giriş=" + library.entrances().size()
+                                + "  boss=" + library.bosses().size()
+                                + "  normal=" + library.normalPool().size()
+                                + " (çok kapılı=" + library.branchingPool().size() + ")",
+                                NamedTextColor.GRAY)));
+                if (!library.isUsable()) {
+                    sender.sendMessage(Component.text("    [HATA] " + library.describeProblem(),
+                            NamedTextColor.RED));
+                    return;
+                }
+                if (library.entrances().isEmpty()) {
+                    sender.sendMessage(Component.text(
+                            "    [UYARI] giriş odası yok — normal havuzdan seçilecek",
+                            NamedTextColor.YELLOW));
+                }
+                if (library.bosses().isEmpty()) {
+                    sender.sendMessage(Component.text(
+                            "    [UYARI] boss odası yok — dungeon boss'suz üretilir",
+                            NamedTextColor.YELLOW));
+                }
+            });
+        }
+    }
+
+    /**
+     * Re-reads schematics and metadata from disk.
+     *
+     * <p>The room-building loop is: export a schematic, write its {@code .yml}, check it. Without
+     * this the check needs a server restart — and worse, the clipboard cache would keep serving
+     * the previous version of a room that was just re-exported, so the check would silently
+     * pass on stale geometry.
+     */
+    private void reload(CommandSender sender) {
+        SchematicService service = requireSchematics(sender);
+        RoomTemplateStore store = plugin.getTemplateStore();
+        if (service == null || store == null) {
+            return;
+        }
+        plugin.reloadConfig();
+        // The template cache sits ON TOP of the clipboard cache; clearing only the lower one
+        // would leave stale door metadata in memory.
+        service.invalidateCache();
+        store.invalidateCache();
+
+        List<String> themes = service.themes();
+        sender.sendMessage(Component.text("Yeniden yüklendi — " + service.list().size() + " oda, "
+                + themes.size() + " tema (" + String.join(", ", themes) + ")",
+                NamedTextColor.GREEN));
     }
 
     /** Pastes the rooms one after another — chained so the order stays deterministic. */
@@ -574,9 +706,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         return plugger.plugAll(world, result.plugTargets());
     }
 
-    private void reportDungeon(CommandSender sender, World world, GridSlot slot,
+    private void reportDungeon(CommandSender sender, World world, GridSlot slot, String theme,
                                DungeonGenerator.Result result, DoorPlugger.Report plug) {
         sender.sendMessage(Component.text("Dungeon üretildi — " + slot, NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  tema: " + theme, NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  boyut: " + result.size().key()
                 + "   oda: " + result.rooms() + "/" + result.targetRooms()
                 + "   kritik path: " + result.pathLength() + "/" + result.targetPathLength(),
@@ -586,7 +719,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 + (plug.skipped() > 0 ? "   atlanan: " + plug.skipped() : ""),
                 NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  seed: " + result.seed()
-                + "  (aynı seed aynı dungeon'ı üretir)", NamedTextColor.DARK_GRAY));
+                + "  (tema + boyut + seed aynıysa dungeon da aynı)", NamedTextColor.DARK_GRAY));
 
         if (result.warning() != null) {
             sender.sendMessage(Component.text("  uyarı: " + result.warning(),
@@ -718,9 +851,20 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (sub.equals("connect") && (args.length == 4 || args.length == 5)) {
             return DOOR_INDICES.stream().filter(d -> d.startsWith(args[args.length - 1])).toList();
         }
-        if (args.length == 2 && sub.equals("dungeon")) {
-            return List.of("small", "medium", "large").stream()
-                    .filter(n -> n.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        // dungeon: arg 2 is the theme (sizes still offered, for the single-theme shorthand),
+        // arg 3 is the size once a theme has been typed. weights takes a theme at arg 2.
+        if (args.length == 2 && (sub.equals("dungeon") || sub.equals("weights"))) {
+            SchematicService service = plugin.getSchematicService();
+            List<String> options = new ArrayList<>(
+                    service == null ? List.of() : service.themes());
+            if (sub.equals("dungeon")) {
+                options.addAll(SIZES);
+            }
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return options.stream().filter(o -> o.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+        }
+        if (args.length == 3 && sub.equals("dungeon")) {
+            return SIZES.stream().filter(n -> n.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();
