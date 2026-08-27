@@ -130,8 +130,10 @@ $RECYCLE.BIN/
 # Örnek/default config'ler repoda kalsın
 !src/main/resources/**/*.yml
  
-# Schematic'ler repoda tutulacaksa aşağıdaki satırı sil
+# Schematic'ler: SADECE plugin ile dağıtılacak odalar repoda.
+# Geçici export'lar, FAWE'nin kendi klasörü ve run/ altındakiler dışarıda kalsın.
 *.schem
+!src/main/resources/schematics/*.schem
 
 # Proje bellegi (AI Yonergeleri) repoda tutulmuyor -- yerel calisma notlari.
 # Bu klasorun public karsiligi: docs/ (bkz. docs/generation.md).
