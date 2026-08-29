@@ -11,3 +11,4 @@ mvnw.cmd text eol=crlf
 
 # Ekran goruntuleri binary
 *.png binary
+*.webp binary

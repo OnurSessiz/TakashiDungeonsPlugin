@@ -7,6 +7,8 @@
 ![License GPLv3](https://img.shields.io/badge/license-GPLv3-0d1117?style=flat-square)
 ![Status: Phase 1 complete](https://img.shields.io/badge/status-phase%201%20complete-0d1117?style=flat-square)
 
+![Takashi's Dungeons key art: the logo over a torchlit dungeon room with an open archive book and crossed swords](docs/images/key-art.webp)
+
 Most "random dungeon" plugins generate the *rooms* procedurally — cellular automata, BSP
 splits — and end up with caves or rectangles. This one doesn't generate rooms at all. Rooms
 are schematics a map team draws by hand; the engine only decides **which room, where, at what
