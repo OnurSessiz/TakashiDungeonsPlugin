@@ -14,6 +14,11 @@ angle**. That is the same socket/jigsaw approach Mojang uses for villages, basti
 cities and trial chambers, and it is the only one that lets a 9×25 corridor, a 17×17 hall and
 a 33×33 boss arena live in the same dungeon.
 
+![A generated medium dungeon seen from outside the void world: rooms of several sizes chained by corridors, with side branches and the boss arena at the far end](docs/images/dungeon-layout.png)
+
+*One `medium` dungeon, viewed from outside. Every box is a hand-built schematic; only their
+choice, position and rotation are generated.*
+
 Every dungeon lives in its own 512-block slot of a dedicated void world, so two parties never
 share geometry.
 
@@ -27,6 +32,10 @@ one command and walk through a complete, sealed, connected dungeon:
 ```
 /tdungeons dungeon medium 12345
 ```
+
+![Inside a generated dungeon: a mossy stone-brick room lit by a glowstone panel in the ceiling, opening onto a corridor that leads to the next room](docs/images/room-interior.png)
+
+*Ground level: a room, and the corridor through to the next one.*
 
 Same seed, same dungeon, every time. What it does **not** have yet: mobs, loot, parties,
 instance lifecycle, persistence. Those are phases 2 through 7 and they are not written.
