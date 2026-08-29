@@ -15,11 +15,19 @@ softdepend:
 commands:
   tdungeons:
     description: TakashiDungeons administration command
-    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|slots|free>
+    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|slots|free|hud>
     aliases: [td, takashidungeons]
     permission: takashidungeons.admin
+  hud:
+    description: Toggle the sidebar HUD for yourself
+    usage: /hud [on|off]
+    aliases: [tdhud, dhud]
+    permission: takashidungeons.hud
 
 permissions:
   takashidungeons.admin:
     description: Access to the TakashiDungeons administration commands
     default: op
+  takashidungeons.hud:
+    description: Ability to toggle your own sidebar HUD
+    default: true

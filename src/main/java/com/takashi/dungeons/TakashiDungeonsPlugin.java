@@ -1,6 +1,8 @@
 package com.takashi.dungeons;
 
 import com.takashi.dungeons.command.DungeonsCommand;
+import com.takashi.dungeons.command.HudCommand;
+import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.SchematicService;
@@ -41,6 +43,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private SchematicService schematicService;
     private RoomTemplateStore templateStore;
     private DoorPlugger doorPlugger;
+    private HudService hudService;
 
     @Override
     public void onEnable() {
@@ -56,11 +59,17 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
         setupWorld();
         setupSchematics();
+        setupHud();
         registerCommands();
     }
 
     @Override
     public void onDisable() {
+        // The sidebar is a client-side scoreboard: if it is not taken down here it survives a
+        // /reload and sticks to the player with a plugin that no longer exists behind it.
+        if (hudService != null) {
+            hudService.disable();
+        }
         getLogger().info("TakashiDungeons devre dışı bırakıldı.");
     }
 
@@ -110,6 +119,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
     }
 
+    private void setupHud() {
+        hudService = new HudService(this);
+        hudService.enable();
+    }
+
     private void registerCommands() {
         PluginCommand command = getCommand("tdungeons");
         if (command == null) {
@@ -120,6 +134,15 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         DungeonsCommand executor = new DungeonsCommand(this);
         command.setExecutor(executor);
         command.setTabCompleter(executor);
+
+        PluginCommand hudCommand = getCommand("hud");
+        if (hudCommand == null) {
+            getLogger().severe("'hud' komutu plugin.yml'de tanımlı değil — komut kaydedilemedi.");
+            return;
+        }
+        HudCommand hudExecutor = new HudCommand(this);
+        hudCommand.setExecutor(hudExecutor);
+        hudCommand.setTabCompleter(hudExecutor);
     }
 
     private void detectIntegrations() {
@@ -155,6 +178,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The room template store. {@code null} when the schematic service was not built. */
     public @Nullable RoomTemplateStore getTemplateStore() {
         return templateStore;
+    }
+
+    /** The sidebar HUD service. Always built — it has no external dependency. */
+    public HudService getHudService() {
+        return hudService;
     }
 
     /** The service that plugs open doors. {@code null} when the schematic service was not built. */

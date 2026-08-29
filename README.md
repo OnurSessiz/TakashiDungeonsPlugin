@@ -221,6 +221,8 @@ probe proves the correlation exists *before* proving the mixer removes it.
 | `generation.turn-bias` | `2.0` | Pushes back door choices that continue straight, so chains don't come out ruler-straight. `1.0` disables it. |
 | `generation.max-attempts` | `8` | Retries before falling back to the best attempt and reporting a warning. |
 | `generation.plug-open-doors` | `true` | Turn off to see exactly where the graph choked. |
+| `hud.lines` | 6 lines | The sidebar layout, as MiniMessage. Placeholders: `<player> <coin> <xp> <rank> <server> <ip>`. |
+| `hud.show-by-default` | `true` | Whether the sidebar is on when a player joins. Each player can flip it with `/hud`. |
 
 YAML first, GUI editors later. A config that only works through a GUI is a config you cannot
 diff, template, or ship a preset for.
@@ -240,6 +242,18 @@ All under `/tdungeons` (aliases `/td`, `/takashidungeons`), permission `takashid
 | `paste <name> [rot]` / `connect` | Placement primitives, for checking geometry by eye |
 | `slots` / `free <index>` | Instance slot grid |
 | `world` / `list` / `status` / `version` | Diagnostics |
+| `hud [name\|ip] <text>` | Read the sidebar settings, or write the server name / IP into `config.yml` |
+
+And one command for everyone, permission `takashidungeons.hud` (default: on):
+
+| Command | |
+|---|---|
+| `/hud [on\|off]` | Toggle your own sidebar (aliases `/tdhud`, `/dhud`) |
+
+The sidebar shows the server name, the player's name, their coin, their rank and XP, and the
+server IP. Coin, rank and XP read `-` until the economy (phase 7) and rank (phase 11) systems
+exist — a `0` there would read as a real balance. Whether a player has it open is kept for the
+session only; making it stick needs the SQL layer, and player data does not go into YAML.
 
 ---
 

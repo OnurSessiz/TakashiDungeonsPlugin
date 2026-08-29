@@ -9,6 +9,7 @@ import com.takashi.dungeons.generation.DungeonSize;
 import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
+import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
 import com.takashi.dungeons.generation.RoomTemplateStore;
@@ -31,6 +32,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -52,11 +54,13 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
-                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload");
+                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload", "hud");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
     private static final List<String> ROTATIONS = List.of("0", "90", "180", "270");
+
+    private static final List<String> HUD_SETTINGS = List.of("name", "ip");
 
     /** Door index suggestions for tab-complete; the test room with the most doors has 4. */
     private static final List<String> DOOR_INDICES = List.of("0", "1", "2", "3");
@@ -89,6 +93,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "dungeon" -> dungeon(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
+            case "hud" -> hud(sender, label, args);
             default -> sender.sendMessage(Component
                     .text("Kullanım: /" + label + " <" + String.join("|", SUB_COMMANDS) + ">",
                             NamedTextColor.RED));
@@ -662,12 +667,19 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      * pass on stale geometry.
      */
     private void reload(CommandSender sender) {
+        plugin.reloadConfig();
+        // The HUD is reloaded before the early return below: it has no WorldEdit dependency,
+        // so a server without WorldEdit must still be able to reload its sidebar.
+        if (plugin.getHudService() != null) {
+            plugin.getHudService().reload();
+            sender.sendMessage(Component.text("HUD yeniden yüklendi.", NamedTextColor.GREEN));
+        }
+
         SchematicService service = requireSchematics(sender);
         RoomTemplateStore store = plugin.getTemplateStore();
         if (service == null || store == null) {
             return;
         }
-        plugin.reloadConfig();
         // The template cache sits ON TOP of the clipboard cache; clearing only the lower one
         // would leave stale door metadata in memory.
         service.invalidateCache();
@@ -797,6 +809,60 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /**
+     * {@code /tdungeons hud [name|ip] <metin>} — the operator side of the sidebar. The name
+     * and the IP are written back into config.yml, because they are server settings that have
+     * to survive a restart, and every open sidebar is repainted right away.
+     */
+    private void hud(CommandSender sender, String label, String[] args) {
+        HudService hud = plugin.getHudService();
+        if (hud == null) {
+            sender.sendMessage(Component.text("HUD servisi kurulmadı.", NamedTextColor.RED));
+            return;
+        }
+
+        if (args.length == 1) {
+            sender.sendMessage(Component.text("HUD: ", NamedTextColor.GRAY)
+                    .append(hud.isEnabled()
+                            ? Component.text("açık", NamedTextColor.GREEN)
+                            : Component.text("kapalı (config: hud.enabled)", NamedTextColor.RED)));
+            sender.sendMessage(Component.text("  Sunucu adı: ", NamedTextColor.GRAY)
+                    .append(Component.text(hud.getServerName(), NamedTextColor.WHITE)));
+            sender.sendMessage(Component.text("  Sunucu IP: ", NamedTextColor.GRAY)
+                    .append(Component.text(hud.getServerIp(), NamedTextColor.WHITE)));
+            sender.sendMessage(Component.text("  Satır: ", NamedTextColor.GRAY)
+                    .append(Component.text(hud.lineCount() + " (config: hud.lines)",
+                            NamedTextColor.WHITE)));
+            sender.sendMessage(Component.text("Kullanım: /" + label + " hud <name|ip> <metin>",
+                    NamedTextColor.GRAY));
+            return;
+        }
+
+        String setting = args[1].toLowerCase(Locale.ROOT);
+        if (!HUD_SETTINGS.contains(setting)) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " hud <name|ip> <metin>",
+                    NamedTextColor.RED));
+            return;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Bir değer yaz: /" + label + " hud " + setting
+                    + " <metin>", NamedTextColor.RED));
+            return;
+        }
+
+        // Everything after the setting name is the value — a server name has spaces in it.
+        String value = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+        if (setting.equals("name")) {
+            hud.setServerName(value);
+            sender.sendMessage(Component.text("HUD sunucu adı: ", NamedTextColor.GREEN)
+                    .append(Component.text(value, NamedTextColor.WHITE)));
+        } else {
+            hud.setServerIp(value);
+            sender.sendMessage(Component.text("HUD sunucu IP: ", NamedTextColor.GREEN)
+                    .append(Component.text(value, NamedTextColor.WHITE)));
+        }
+    }
+
     private @Nullable Player asPlayer(CommandSender sender) {
         if (sender instanceof Player player) {
             return player;
@@ -865,6 +931,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && sub.equals("dungeon")) {
             return SIZES.stream().filter(n -> n.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2 && sub.equals("hud")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return HUD_SETTINGS.stream().filter(o -> o.startsWith(prefix)).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();

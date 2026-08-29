@@ -47,3 +47,36 @@ generation:
   # Left unsealed, a player walks out of a room and falls into the void. Only turn
   # this off while debugging: with it off you can see where the graph choked.
   plug-open-doors: true
+
+hud:
+  # Sağ taraftaki sidebar HUD'u. false ise hiçbir oyuncuya gösterilmez ve /hud da çalışmaz.
+  enabled: true
+
+  # Oyuncu sunucuya girdiğinde HUD açık mı gelsin. Her oyuncu kendi tarafında /hud ile
+  # kapatabilir; bu tercih şimdilik oturum boyunca hatırlanır (kalıcı olması SQL katmanını,
+  # yani FAZ 7'yi bekliyor — player data YAML'a yazılmaz).
+  show-by-default: true
+
+  # Kaç tick'te bir tazelenir. 20 tick = 1 saniye. Bugün satırların hepsi sabit; coin ve XP
+  # gerçek değer döndürmeye başladığında bu değer önem kazanacak. Çok düşürmenin anlamı yok.
+  refresh-ticks: 20
+
+  # Bu ikisi operatör komutuyla da değiştirilebilir ve buraya geri yazılır:
+  #   /tdungeons hud name <metin>
+  #   /tdungeons hud ip <metin>
+  # Düz metin yazılırsa başlık altın sarısı + kalın çıkar; MiniMessage etiketi yazılırsa
+  # kendi rengini korur.
+  server-name: "<gradient:#ffd45e:#ff8a3d>TAKASHI</gradient>"
+  server-ip: "play.sunucun.net"
+
+  # Satır düzeni — yukarıdan aşağı. MiniMessage biçimi.
+  # Yerine geçenler: <player> <coin> <xp> <rank> <server> <ip>
+  # Scoreboard en fazla 16 satır taşır; fazlası atılır. Satırları kısa tut, sidebar
+  # genişliği en uzun satıra göre belirlenir ve ekranın sağını gereksiz kaplar.
+  lines:
+    - "<dark_gray><strikethrough>                    "
+    - "<gray>Oyuncu <white><player>"
+    - "<gray>Coin <gold><coin>"
+    - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
+    - "<dark_gray><strikethrough>                    "
+    - "<yellow><ip>"
