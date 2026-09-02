@@ -835,7 +835,9 @@ Generation is done; what is generated now has to **live**.
 2. ~~Dungeon duration, and teleporting the player out when it expires~~ — **done (phase 2B)**.
    Instances carry a countdown, shown as a boss bar; when it runs out everyone inside is sent
    back where they came from and the dungeon is deleted.
-3. The entry object (right-click to enter) — phase 2C, the last piece
+3. ~~The entry object (right-click to enter)~~ — **done (phase 2C)**. Entrances stand in the
+   world and open an instance on right-click; a wild one is consumed by the dungeon it opens, a
+   lobby one returns at the next refresh hour.
 4. ~~Blocking `/tp` and `/tpa`~~ — **done (phase 2B)**, admins excepted via
    `takashidungeons.teleport.bypass`
 

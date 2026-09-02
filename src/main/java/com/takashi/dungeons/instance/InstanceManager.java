@@ -84,6 +84,14 @@ public final class InstanceManager {
     /** Players whose current teleport the plugin itself started — see {@link #teleportInternal}. */
     private final Set<UUID> internalTeleports = new HashSet<>();
 
+    /**
+     * Called once per instance, after it has been torn down.
+     *
+     * <p>A callback rather than a direct call into the portal layer: instances must not have to
+     * know what opened them. Phase 8's {@code DungeonCompleteEvent} hangs off the same seam.
+     */
+    private final List<java.util.function.Consumer<DungeonInstance>> closeHandlers = new ArrayList<>();
+
     public InstanceManager(TakashiDungeonsPlugin plugin) {
         this.plugin = plugin;
     }
@@ -522,9 +530,27 @@ public final class InstanceManager {
                     plugin.getSlotManager().release(instance.slot().index());
                     unregister(instance);
                     instance.advanceTo(InstanceState.CLOSED);
+                    notifyClosed(instance);
                     return new CloseReport(instance.id(), counts[0], counts[1], counts[2], chunks,
                             System.currentTimeMillis() - start);
                 }));
+    }
+
+    /** Registers a listener for "this instance is gone". */
+    public void onClosed(java.util.function.Consumer<DungeonInstance> handler) {
+        closeHandlers.add(handler);
+    }
+
+    private void notifyClosed(DungeonInstance instance) {
+        for (var handler : closeHandlers) {
+            try {
+                handler.accept(instance);
+            } catch (RuntimeException e) {
+                // One listener throwing must not abort the teardown of the others, nor leave the
+                // slot in limbo — the release above has already happened by design.
+                plugin.getLogger().warning("Instance kapanış dinleyicisi hata verdi: " + e);
+            }
+        }
     }
 
     /** Closes every live instance; the returned future settles when the last one is done. */

@@ -6,6 +6,8 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.portal.PortalListener;
+import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
@@ -51,6 +53,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private BundledRooms bundledRooms;
     private HudService hudService;
     private InstanceManager instanceManager;
+    private PortalManager portalManager;
 
     @Override
     public void onEnable() {
@@ -67,6 +70,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupWorld();
         setupSchematics();
         setupInstances();
+        setupPortals();
         setupHud();
         registerCommands();
     }
@@ -77,6 +81,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // /reload and sticks to the player with a plugin that no longer exists behind it.
         if (hudService != null) {
             hudService.disable();
+        }
+        // Portals first: they take their blocks and display entities back out of the world. Left
+        // standing they would be a block a player can click with nothing behind it.
+        if (portalManager != null) {
+            portalManager.disable();
         }
         if (instanceManager != null) {
             instanceManager.stopClock();
@@ -164,6 +173,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         instanceManager = new InstanceManager(this);
         getServer().getPluginManager().registerEvents(new InstanceListener(this), this);
         instanceManager.startClock();
+    }
+
+    /**
+     * The entrance objects. Built after the instance layer, because a portal's whole job is to
+     * open an instance and it registers a close listener on it.
+     */
+    private void setupPortals() {
+        portalManager = new PortalManager(this);
+        getServer().getPluginManager().registerEvents(new PortalListener(this), this);
+        portalManager.enable();
     }
 
     /**
@@ -272,5 +291,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The instance registry. Always built — it reports its own missing dependencies. */
     public InstanceManager getInstanceManager() {
         return instanceManager;
+    }
+
+    /** The entrance objects standing in the world. Always built. */
+    public PortalManager getPortalManager() {
+        return portalManager;
     }
 }

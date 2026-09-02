@@ -92,6 +92,68 @@ instance:
     # mavi -> %25 altında sarı -> %10 altında kırmızı.
     title: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
 
+portal:
+  # ---------------------------------------------------------------------------------------
+  # GEÇİCİ GÖRÜNÜM. Ametist blok + üstünde dönen bir ametist shard + "Dungeon" yazısı.
+  # Kalıcı görsel geldiğinde burası değişir, kod değişmez.
+  #
+  # Yazı ve shard birer Display entity: hitbox'ları, ağırlıkları, çarpışmaları yok. Tam da bu
+  # yüzden görselin üstüne ayrı bir Interaction hitbox konuyor — oyuncu havadaki shard'a nişan
+  # alıyor ve tıklanamayan bir şeye tıklamak bozuk geçit gibi görünürdü.
+  # ---------------------------------------------------------------------------------------
+  block: AMETHYST_BLOCK
+  item: AMETHYST_SHARD
+  label: "<light_purple><bold>Dungeon</bold></light_purple>"
+
+  # Sağ tıkta açılacak dungeon'ın boyutu.
+  size: medium
+
+  # Hangi temadan üretilecek. Boş bırakılırsa: tek tema varsa o kullanılır, birden fazlaysa
+  # geçit açılmaz ve sebebini söyler — sessizce yanlış havuzdan çekmek "neden crypt odaları
+  # geldi" hatası üretir.
+  theme: ""
+
+  lobby:
+    # Kullanılmış bir lobby geçidi günün hangi saatlerinde yenilenir. Süre değil SAAT:
+    # lobby ortak bir yer, "zindanlar 12'de ve gece yarısı yenilenir" duyurulabilir ve
+    # oyuncu buna göre plan yapar. Kayan bir sayaçta her geçit başka bir anda dönerdi.
+    # Liste boş bırakılırsa dungeon biter bitmez yenilenir.
+    refresh-hours: [0, 12]
+
+    # Açılışta kurulacak sabit geçitler. Geçitler restart'ı atlatmıyor (kalıcılık FAZ 7'de),
+    # bu yüzden lobby geçidinin kalıcı adresi burası.
+    #   - world: world
+    #     x: 100
+    #     y: 64
+    #     z: 100
+    #     size: medium      # opsiyonel
+    #     theme: default    # opsiyonel
+    points: []
+
+  wild:
+    # Doğada kendiliğinden doğan geçitler. Bunlar tek kullanımlık: bağlı oldukları dungeon
+    # bitince geçit de silinir. Bulunacak bir şeyin aynı yerde yeniden doğması onu
+    # bulunacak bir şey olmaktan çıkarır.
+    enabled: true
+
+    # Boş bırakılırsa her dünyada doğabilir.
+    worlds: [world]
+
+    # Kaç dakikada bir doğma denemesi yapılır. En az 1 dakikaya sıkıştırılır.
+    interval-minutes: 10
+
+    # Aynı anda doğada en fazla kaç geçit durabilir.
+    max: 3
+
+    # Geçit rastgele bir ONLINE oyuncunun etrafında doğar, spawn'ın etrafında değil: kimsenin
+    # olmadığı yerde beliren dungeon kimsenin bulmadığı dungeon'dır. Kimse online değilse
+    # hiçbir şey doğmaz.
+    min-distance: 64
+    max-distance: 256
+
+    # İki geçit arasındaki en az mesafe.
+    spacing: 128
+
 hud:
   # Sağ taraftaki sidebar HUD'u. false ise hiçbir oyuncuya gösterilmez ve /hud da çalışmaz.
   enabled: true

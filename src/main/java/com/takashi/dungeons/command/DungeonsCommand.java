@@ -11,6 +11,10 @@ import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.instance.DungeonInstance;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.portal.DungeonPortal;
+import com.takashi.dungeons.portal.PortalKind;
+import com.takashi.dungeons.portal.PortalManager;
+import com.takashi.dungeons.portal.PortalState;
 import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
@@ -57,7 +61,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "slots", "free", "reload", "hud", "extract");
+                    "portal", "slots", "free", "reload", "hud", "extract");
+
+    private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
@@ -98,6 +104,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "enter" -> enter(sender, label, args);
             case "leave" -> leave(sender);
             case "close" -> close(sender, label, args);
+            case "portal" -> portal(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -889,6 +896,144 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         });
     }
 
+    // ---------------------------------------------------------------- Phase 2C: entry object
+
+    /**
+     * {@code /tdungeons portal create|list|remove|tp} — the operator side of the entrance objects.
+     *
+     * <p>Only lobby portals are placed by hand; wild ones are the plugin's own doing
+     * ({@code portal.wild}). Placing a wild one on request would be placing a "random discovery"
+     * on purpose, which is a contradiction — and the {@code create} form is how you build a lobby.
+     */
+    private void portal(CommandSender sender, String label, String[] args) {
+        PortalManager manager = plugin.getPortalManager();
+        if (manager == null) {
+            sender.sendMessage(Component.text("Geçit servisi kurulmadı.", NamedTextColor.RED));
+            return;
+        }
+        String action = args.length < 2 ? "list" : args[1].toLowerCase(Locale.ROOT);
+
+        switch (action) {
+            case "list" -> portalList(sender, manager);
+            case "create" -> portalCreate(sender, manager, args);
+            case "remove" -> portalRemove(sender, manager, label, args);
+            case "tp" -> portalTeleport(sender, manager, label, args);
+            default -> sender.sendMessage(Component.text("Kullanım: /" + label + " portal <"
+                    + String.join("|", PORTAL_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    private void portalList(CommandSender sender, PortalManager manager) {
+        List<DungeonPortal> all = manager.all();
+        if (all.isEmpty()) {
+            sender.sendMessage(Component.text("Geçit yok. /tdungeons portal create ile lobby "
+                    + "geçidi koy.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Geçitler (" + all.size() + "):", NamedTextColor.GOLD));
+        for (DungeonPortal portal : all) {
+            Component line = Component.text("  #" + portal.id(), NamedTextColor.WHITE)
+                    .append(Component.text("  " + portal.kind().displayName()
+                            + "  " + portal.size().key()
+                            + "  " + portal.block().getWorld().getName() + " "
+                            + portal.block().getBlockX() + "," + portal.block().getBlockY() + ","
+                            + portal.block().getBlockZ(), NamedTextColor.GRAY))
+                    .append(Component.text("  " + portal.state().displayName(),
+                            portal.state() == PortalState.READY
+                                    ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
+            if (portal.boundInstanceId() != null) {
+                line = line.append(Component.text("  → instance#" + portal.boundInstanceId(),
+                        NamedTextColor.DARK_GRAY));
+            }
+            if (portal.state() == PortalState.COOLDOWN) {
+                long remaining = Math.max(0, portal.readyAt() - System.currentTimeMillis());
+                line = line.append(Component.text("  (" + InstanceManager.formatDuration(remaining)
+                        + ")", NamedTextColor.DARK_GRAY));
+            }
+            sender.sendMessage(line);
+        }
+    }
+
+    private void portalCreate(CommandSender sender, PortalManager manager, String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        // Everything after "create" is optional: [size] [theme].
+        DungeonSize size = args.length >= 3 ? DungeonSize.parse(args[2]) : manager.defaultSize();
+        if (size == null) {
+            sender.sendMessage(Component.text("Boyut small|medium|large olmalı: " + args[2],
+                    NamedTextColor.RED));
+            return;
+        }
+        String theme = args.length >= 4 ? args[3] : null;
+
+        DungeonPortal portal = manager.create(player.getLocation(), PortalKind.LOBBY, theme, size);
+        if (portal == null) {
+            sender.sendMessage(Component.text("Burada zaten bir geçit var.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Geçit kuruldu: " + portal, NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("  Kalıcı olması için config.yml → portal.lobby.points "
+                + "altına ekle; geçitler restart'ı atlatmıyor (kalıcılık FAZ 7).",
+                NamedTextColor.DARK_GRAY));
+    }
+
+    private void portalRemove(CommandSender sender, PortalManager manager, String label,
+                              String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " portal remove <id|all>",
+                    NamedTextColor.RED));
+            return;
+        }
+        if (args[2].equalsIgnoreCase("all")) {
+            int count = manager.removeAll();
+            sender.sendMessage(Component.text(count + " geçit kaldırıldı.", NamedTextColor.GREEN));
+            return;
+        }
+        DungeonPortal portal = findPortal(sender, manager, args[2]);
+        if (portal == null) {
+            return;
+        }
+        manager.remove(portal);
+        sender.sendMessage(Component.text("portal#" + portal.id() + " kaldırıldı.",
+                NamedTextColor.GREEN));
+    }
+
+    private void portalTeleport(CommandSender sender, PortalManager manager, String label,
+                                String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " portal tp <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        DungeonPortal portal = findPortal(sender, manager, args[2]);
+        if (portal == null) {
+            return;
+        }
+        plugin.getInstanceManager().teleportInternal(player, portal.center().add(0, 1, 0));
+        sender.sendMessage(Component.text("portal#" + portal.id() + " konumuna ışınlandın.",
+                NamedTextColor.GREEN));
+    }
+
+    private @Nullable DungeonPortal findPortal(CommandSender sender, PortalManager manager,
+                                               String raw) {
+        try {
+            DungeonPortal portal = manager.get(Integer.parseInt(raw));
+            if (portal == null) {
+                sender.sendMessage(Component.text("portal#" + raw + " yok.", NamedTextColor.YELLOW));
+            }
+            return portal;
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Geçersiz id: " + raw, NamedTextColor.RED));
+            return null;
+        }
+    }
+
     private void slots(CommandSender sender) {
         GridSlotManager manager = plugin.getSlotManager();
         if (manager.allocatedCount() == 0) {
@@ -1098,6 +1243,30 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && sub.equals("dungeon")) {
             return SIZES.stream().filter(n -> n.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2 && sub.equals("portal")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return PORTAL_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+        }
+        if (args.length == 3 && sub.equals("portal")) {
+            String action = args[1].toLowerCase(Locale.ROOT);
+            if (action.equals("create")) {
+                return SIZES.stream().filter(s -> s.startsWith(args[2].toLowerCase(Locale.ROOT)))
+                        .toList();
+            }
+            List<String> options = new ArrayList<>();
+            if (action.equals("remove")) {
+                options.add("all");
+            }
+            plugin.getPortalManager().all().forEach(p -> options.add(String.valueOf(p.id())));
+            return options.stream().filter(o -> o.startsWith(args[2])).toList();
+        }
+        if (args.length == 4 && sub.equals("portal")
+                && args[1].equalsIgnoreCase("create")) {
+            SchematicService service = plugin.getSchematicService();
+            String prefix = args[3].toLowerCase(Locale.ROOT);
+            return (service == null ? List.<String>of() : service.themes()).stream()
+                    .filter(t -> t.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
         }
         if (args.length == 2 && sub.equals("extract")) {
             return List.of("force").stream()

@@ -39,19 +39,23 @@ one command and walk through a complete, sealed, connected dungeon:
 
 *Ground level: a room, and the corridor through to the next one.*
 
-Same seed, same dungeon, every time. Phase 2 is most of the way there: a generated dungeon is a
+Same seed, same dungeon, every time. **Phase 2 is finished too:** a generated dungeon is a
 tracked instance with a life of its own. It counts down on a boss bar, sends everyone back where
 they came from when the time runs out, and deletes itself — blocks included. `/tp` and `/tpa`
 do not work inside one, admins excepted.
 
+Players get in by right-clicking an entrance that stands in the world — currently a placeholder
+built from an amethyst block, a slowly turning amethyst shard and a floating label. One spawns
+out in the wild and is consumed by the dungeon it opens; one placed in a lobby comes back at the
+next refresh hour.
+
 ```
+/tdungeons portal create        # place a lobby entrance where you stand
 /tdungeons instances
-/tdungeons enter <id>
 /tdungeons close <id|all>
 ```
 
-What it does **not** have yet: the entry object players use to get in without an admin command
-(phase 2C), and then mobs, loot, parties and persistence.
+What it does **not** have yet: mobs, loot, parties and persistence — phases 3 through 7.
 
 So: free, open source, and genuinely usable already — if what you want is layout generation.
 Wait for phase 2 before putting it in front of players. Issues and questions are welcome
