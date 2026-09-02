@@ -169,6 +169,16 @@ The `run/` directory is gitignored. To test on a fresh machine you supply:
 Nothing else is a hard dependency. WorldEdit/FAWE, MythicMobs and Vault are all `softdepend`;
 the plugin is required to load and behave with none of them present.
 
+The rooms shipped in the jar are unpacked into `plugins/TakashiDungeons/schematics/` on enable,
+so a fresh install is not an empty folder. A file that already exists is never overwritten —
+that folder is also where a mapper exports rooms to, and a bundled room of the same name would
+otherwise eat a newer export on every restart. `/tdungeons extract force` overwrites, when you
+mean it. Folder structure is preserved, so a bundled theme is just a subfolder under
+`src/main/resources/schematics/`.
+
+**The bundled set is still three entrance rooms.** The mechanism is done; the room library is
+not, so a clean install cannot generate a full dungeon yet.
+
 ---
 
 ## Tests that don't need a server
@@ -221,6 +231,7 @@ probe proves the correlation exists *before* proving the mixer removes it.
 | `generation.turn-bias` | `2.0` | Pushes back door choices that continue straight, so chains don't come out ruler-straight. `1.0` disables it. |
 | `generation.max-attempts` | `8` | Retries before falling back to the best attempt and reporting a warning. |
 | `generation.plug-open-doors` | `true` | Turn off to see exactly where the graph choked. |
+| `schematics.extract-bundled` | `true` | Unpack the jar's rooms into the schematics folder. Off means a clean install has no rooms at all. |
 | `hud.lines` | 6 lines | The sidebar layout, as MiniMessage. Placeholders: `<player> <coin> <xp> <rank> <server> <ip>`. |
 | `hud.show-by-default` | `true` | Whether the sidebar is on when a player joins. Each player can flip it with `/hud`. |
 
@@ -243,6 +254,7 @@ All under `/tdungeons` (aliases `/td`, `/takashidungeons`), permission `takashid
 | `slots` / `free <index>` | Instance slot grid |
 | `world` / `list` / `status` / `version` | Diagnostics |
 | `hud [name\|ip] <text>` | Read the sidebar settings, or write the server name / IP into `config.yml` |
+| `extract [force]` | Unpack the rooms bundled in the jar again; `force` overwrites what is on disk |
 
 And one command for everyone, permission `takashidungeons.hud` (default: on):
 
@@ -289,7 +301,7 @@ them:
 - **Mob spawning always carries a `statOverride` flag**, so a custom mob's own stat system is
   never silently overwritten.
 - **No breaking changes in the public API** once it exists — addons depend on it.
-- **`/tp` and `/tpa` do not work inside a dungeon.** Admins included.
+- **`/tp` and `/tpa` do not work inside a dungeon.** Admins are the exception.
 
 ---
 

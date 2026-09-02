@@ -4,6 +4,7 @@ import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.command.HudCommand;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
+import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.world.DungeonWorldManager;
@@ -43,6 +44,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private SchematicService schematicService;
     private RoomTemplateStore templateStore;
     private DoorPlugger doorPlugger;
+    private BundledRooms bundledRooms;
     private HudService hudService;
 
     @Override
@@ -98,6 +100,9 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     }
 
     private void setupSchematics() {
+        File schematicDir = new File(getDataFolder(), "schematics");
+        extractBundledRooms(schematicDir);
+
         boolean worldEdit = hasIntegration("WorldEdit") || hasIntegration("FastAsyncWorldEdit");
         if (!worldEdit) {
             getLogger().warning("WorldEdit/FAWE bulunamadı — schematic paste devre dışı. "
@@ -108,7 +113,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         boolean forceSync = getConfig().getBoolean("schematics.force-sync-paste", false);
         boolean async = hasIntegration("FastAsyncWorldEdit") && !forceSync;
 
-        schematicService = new SchematicService(this, new File(getDataFolder(), "schematics"), async);
+        schematicService = new SchematicService(this, schematicDir, async);
         // The template store sits on top of the schematic service: geometry comes from it,
         // metadata from the .yml beside each file. No service, no store.
         templateStore = new RoomTemplateStore(this, schematicService);
@@ -117,6 +122,28 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         doorPlugger = new DoorPlugger(this, async);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
+    }
+
+    /**
+     * Unpacks the rooms shipped in the jar. Deliberately runs BEFORE the WorldEdit check: the
+     * rooms have to be on disk even on a server that installs FAWE later, otherwise the first
+     * generation attempt after installing it would still find an empty folder.
+     */
+    private void extractBundledRooms(File schematicDir) {
+        bundledRooms = new BundledRooms(this, getFile());
+        if (!getConfig().getBoolean("schematics.extract-bundled", true)) {
+            getLogger().info("Gömülü odaların çıkarılması config'de kapalı "
+                    + "(schematics.extract-bundled).");
+            return;
+        }
+        BundledRooms.Result result = bundledRooms.extract(schematicDir, false);
+        if (result.written() > 0) {
+            getLogger().info("Gömülü oda dosyası çıkarıldı: " + result.written()
+                    + " (zaten mevcut: " + result.skipped() + ")");
+        }
+        if (result.failed() > 0) {
+            getLogger().warning(result.failed() + " gömülü oda dosyası çıkarılamadı.");
+        }
     }
 
     private void setupHud() {
@@ -178,6 +205,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The room template store. {@code null} when the schematic service was not built. */
     public @Nullable RoomTemplateStore getTemplateStore() {
         return templateStore;
+    }
+
+    /** The rooms shipped inside the jar. Always built — it has no external dependency. */
+    public BundledRooms getBundledRooms() {
+        return bundledRooms;
     }
 
     /** The sidebar HUD service. Always built — it has no external dependency. */

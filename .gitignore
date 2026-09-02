@@ -134,6 +134,8 @@ $RECYCLE.BIN/
 # Geçici export'lar, FAWE'nin kendi klasörü ve run/ altındakiler dışarıda kalsın.
 *.schem
 !src/main/resources/schematics/*.schem
+# Tema klasörleri de dağıtılıyor (schematics/<tema>/oda.schem)
+!src/main/resources/schematics/**/*.schem
 
 # Proje bellegi (AI Yonergeleri) repoda tutulmuyor -- yerel calisma notlari.
 # Bu klasorun public karsiligi: docs/ (bkz. docs/generation.md).

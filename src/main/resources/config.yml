@@ -19,6 +19,13 @@ dungeon-world:
   base-y: 64
 
 schematics:
+  # Jar ile gelen odaları ilk açılışta (ve sonraki açılışlarda eksik olanları)
+  # plugins/TakashiDungeons/schematics/ altına çıkarır. Kapatırsan temiz bir kurulumda
+  # SIFIR oda olur ve generation hiçbir şey üretemez — sadece kendi oda setini elle
+  # yöneten sunucular kapatmalı. Var olan dosyanın üzerine ASLA yazılmaz; elle yeniden
+  # yazdırmak için /tdungeons extract force.
+  extract-bundled: true
+
   # true: paste on the main thread even when FAWE is installed.
   # Only turn this on while diagnosing a FAWE-related problem — with it enabled,
   # generating a large dungeon costs TPS.

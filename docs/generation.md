@@ -832,7 +832,7 @@ Generation is done; what is generated now has to **live**.
    too**. `GridSlotManager.release()` currently only returns the index.
 2. Dungeon duration, and teleporting the player out when it expires
 3. The entry object (right-click to enter)
-4. Blocking `/tp` and `/tpa`, admins included
+4. Blocking `/tp` and `/tpa` — admins excepted
 
 **What phase 2 onward needs to know about generation:**
 - `DungeonGenerator.Result` carries everything that describes an instance: `seed`, `size`,

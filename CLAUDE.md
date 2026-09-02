@@ -50,7 +50,7 @@ Tam liste `anahedef.md`'de. Sessizce ihlal edilmesi en kolay olanlar:
   kendi stat sistemi ezilmesin diye.
 - Public API'de **breaking change yok** (addon'lar kırılır).
 - Sadece **instanced** dungeon. "Dünyaya kalıcı yazma" desteklenmez.
-- Dungeon içinde `/tp` ve `/tpa` çalışmaz — admin dahil.
+- Dungeon içinde `/tp` ve `/tpa` çalışmaz — **adminler hariç**.
 - Konfigürasyon önce **YAML** ile çalışır hale gelir, GUI editör **sonra**.
 
 ## Çalışma tarzı (Onur'un tercihi)

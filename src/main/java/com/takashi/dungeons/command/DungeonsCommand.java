@@ -10,6 +10,7 @@ import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
+import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
 import com.takashi.dungeons.generation.RoomTemplateStore;
@@ -31,6 +32,7 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -54,7 +56,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
-                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload", "hud");
+                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload", "hud",
+                    "extract");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
@@ -94,6 +97,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
+            case "extract" -> extract(sender, args);
             default -> sender.sendMessage(Component
                     .text("Kullanım: /" + label + " <" + String.join("|", SUB_COMMANDS) + ">",
                             NamedTextColor.RED));
@@ -863,6 +867,47 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    /**
+     * {@code /tdungeons extract [force]} — unpacks the rooms bundled in the jar again.
+     *
+     * <p>Enable already does this for what is missing; the command is for the room-building
+     * loop, where a rebuilt jar carries a new room and the test server should get it without a
+     * restart. {@code force} overwrites what is on disk, and that can eat a fresher local
+     * export — so it is never the default and it says what it did.
+     */
+    private void extract(CommandSender sender, String[] args) {
+        BundledRooms bundled = plugin.getBundledRooms();
+        if (bundled == null) {
+            sender.sendMessage(Component.text("Gömülü oda servisi kurulmadı.", NamedTextColor.RED));
+            return;
+        }
+        boolean force = args.length > 1 && args[1].equalsIgnoreCase("force");
+        BundledRooms.Result result = bundled.extract(
+                new File(plugin.getDataFolder(), "schematics"), force);
+
+        if (result.total() == 0) {
+            sender.sendMessage(Component.text("Jar'da gömülü oda yok.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Gömülü odalar: ", NamedTextColor.GRAY)
+                .append(Component.text(result.written() + " yazıldı", NamedTextColor.GREEN))
+                .append(Component.text(", " + result.skipped()
+                        + (force ? " atlandı" : " zaten vardı"), NamedTextColor.GRAY))
+                .append(result.failed() == 0
+                        ? Component.empty()
+                        : Component.text(", " + result.failed() + " başarısız", NamedTextColor.RED)));
+
+        // New files on disk mean the caches are stale — the same reason /tdungeons reload exists.
+        SchematicService service = plugin.getSchematicService();
+        RoomTemplateStore store = plugin.getTemplateStore();
+        if (result.written() > 0 && service != null && store != null) {
+            service.invalidateCache();
+            store.invalidateCache();
+            sender.sendMessage(Component.text("Cache boşaltıldı — " + service.list().size()
+                    + " oda görünüyor.", NamedTextColor.GRAY));
+        }
+    }
+
     private @Nullable Player asPlayer(CommandSender sender) {
         if (sender instanceof Player player) {
             return player;
@@ -931,6 +976,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 3 && sub.equals("dungeon")) {
             return SIZES.stream().filter(n -> n.startsWith(args[2].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2 && sub.equals("extract")) {
+            return List.of("force").stream()
+                    .filter(o -> o.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2 && sub.equals("hud")) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
