@@ -13,20 +13,28 @@ import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.world.GridSlot;
-import com.takashi.dungeons.world.GridSlotManager;
+import net.kyori.adventure.bossbar.BossBar;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.BoundingBox;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -69,6 +77,12 @@ public final class InstanceManager {
      * number would make a log line about "instance#3" ambiguous between two different dungeons.
      */
     private int nextId = 1;
+
+    /** The once-a-second tick driving expiry, warnings and the boss bar. */
+    private BukkitTask clock;
+
+    /** Players whose current teleport the plugin itself started — see {@link #teleportInternal}. */
+    private final Set<UUID> internalTeleports = new HashSet<>();
 
     public InstanceManager(TakashiDungeonsPlugin plugin) {
         this.plugin = plugin;
@@ -157,9 +171,11 @@ public final class InstanceManager {
     private synchronized DungeonInstance register(GridSlot slot, String theme,
                                                   DungeonGenerator.Result result,
                                                   DoorPlugger.Report plugReport, World world) {
+        long duration = plugin.getConfig().getLong("instance.duration-seconds", 1800) * 1000L;
         DungeonInstance instance = new DungeonInstance(nextId++, slot, theme, result, plugReport,
-                DungeonInstance.boundsOf(result, slot, world));
+                DungeonInstance.boundsOf(result, slot, world), duration);
         instance.advanceTo(InstanceState.ACTIVE);
+        instance.bossBar(createBossBar(instance));
         instances.put(instance.id(), instance);
         return instance;
     }
@@ -185,6 +201,280 @@ public final class InstanceManager {
             plugin.getServer().getScheduler().runTask(plugin,
                     () -> plugin.getSlotManager().release(slot.index()));
         });
+    }
+
+    // ------------------------------------------------------------------ the clock
+
+    /**
+     * Starts the once-a-second tick that drives expiry, warnings and the boss bar.
+     *
+     * <p>One shared task rather than a timer per instance: the work per instance is a subtraction
+     * and a bar title, and twenty scheduled tasks doing that would cost more in scheduling than
+     * in work. A second is also the finest resolution that matters — the bar shows whole seconds.
+     */
+    public void startClock() {
+        if (clock != null) {
+            return;
+        }
+        clock = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+    }
+
+    public void stopClock() {
+        if (clock != null) {
+            clock.cancel();
+            clock = null;
+        }
+    }
+
+    private void tick() {
+        long emptyTimeout = plugin.getConfig().getLong("instance.empty-timeout-seconds", 300) * 1000L;
+        for (DungeonInstance instance : all()) {
+            if (!instance.isActive()) {
+                continue;
+            }
+            if (instance.isExpired()) {
+                expire(instance, "Süre doldu");
+                continue;
+            }
+            // An instance nobody is in is holding a slot for nothing. Only armed once somebody
+            // has been inside: a dungeon an operator generated to look at has been empty since
+            // birth, and closing it on that basis would delete the rooms they are standing in.
+            if (emptyTimeout > 0 && instance.everOccupied() && instance.playerCount() == 0
+                    && instance.emptyMillis() >= emptyTimeout) {
+                expire(instance, "İçeride kimse kalmadı");
+                continue;
+            }
+            updateBossBar(instance);
+            warnIfDue(instance);
+        }
+    }
+
+    /** Sends everyone home, then tears the instance down. */
+    private void expire(DungeonInstance instance, String reason) {
+        for (UUID uuid : instance.players()) {
+            Player player = plugin.getServer().getPlayer(uuid);
+            if (player != null) {
+                player.sendMessage(Component.text(reason + " — dungeon kapanıyor.",
+                        NamedTextColor.YELLOW));
+            }
+        }
+        // Players first, and to THEIR OWN return location — close() only knows the generic way
+        // out and would drop everyone at world spawn.
+        sendEveryoneHome(instance);
+        close(instance).exceptionally(error -> {
+            plugin.getLogger().warning("instance#" + instance.id()
+                    + " süre bitiminde kapatılamadı: " + error);
+            return null;
+        });
+    }
+
+    private void sendEveryoneHome(DungeonInstance instance) {
+        for (UUID uuid : instance.players()) {
+            Player player = plugin.getServer().getPlayer(uuid);
+            if (player != null) {
+                leave(player, instance);
+            } else {
+                // Offline: nothing to teleport. Deregistering is still needed so the instance
+                // does not count them, and the join safety net will move them when they return.
+                instance.removePlayer(uuid);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ boss bar
+
+    private BossBar createBossBar(DungeonInstance instance) {
+        if (!plugin.getConfig().getBoolean("instance.boss-bar.enabled", true)) {
+            return null;
+        }
+        BossBar bar = BossBar.bossBar(barTitle(instance), 1.0f,
+                BossBar.Color.BLUE, BossBar.Overlay.PROGRESS);
+        return bar;
+    }
+
+    /**
+     * Repaints the countdown.
+     *
+     * <p>The bar drains rather than fills, and the colour follows the fraction left — blue, then
+     * yellow under a quarter, then red under a tenth. The colour is the part a player reads
+     * without looking: the number tells them how long, the colour tells them whether to care.
+     */
+    private void updateBossBar(DungeonInstance instance) {
+        BossBar bar = instance.bossBar();
+        if (bar == null) {
+            return;
+        }
+        float fraction = Math.max(0f, Math.min(1f,
+                (float) instance.remainingMillis() / instance.totalMillis()));
+        bar.progress(fraction);
+        bar.name(barTitle(instance));
+        BossBar.Color color = fraction <= 0.10f ? BossBar.Color.RED
+                : fraction <= 0.25f ? BossBar.Color.YELLOW
+                : BossBar.Color.BLUE;
+        if (bar.color() != color) {
+            bar.color(color);
+        }
+    }
+
+    private Component barTitle(DungeonInstance instance) {
+        String format = plugin.getConfig().getString("instance.boss-bar.title",
+                "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>");
+        try {
+            return MiniMessage.miniMessage().deserialize(format,
+                    Placeholder.unparsed("time", formatDuration(instance.remainingMillis())),
+                    Placeholder.unparsed("theme", instance.theme()),
+                    Placeholder.unparsed("size", instance.result().size().key()),
+                    Placeholder.unparsed("rooms", String.valueOf(instance.result().rooms())));
+        } catch (RuntimeException e) {
+            // The title is repainted every second; a broken tag must not fill the console once
+            // per second per instance. Fall back to plain text and carry on.
+            return Component.text("Dungeon | " + formatDuration(instance.remainingMillis()),
+                    NamedTextColor.GOLD);
+        }
+    }
+
+    /** {@code mm:ss}, or {@code h:mm:ss} once an hour is involved. */
+    public static String formatDuration(long millis) {
+        long total = millis / 1000L;
+        long hours = total / 3600;
+        long minutes = (total % 3600) / 60;
+        long seconds = total % 60;
+        return hours > 0
+                ? String.format("%d:%02d:%02d", hours, minutes, seconds)
+                : String.format("%02d:%02d", minutes, seconds);
+    }
+
+    /**
+     * Announces the configured thresholds, each exactly once.
+     *
+     * <p>Fires when the remaining time drops <b>below</b> the threshold rather than equals it: a
+     * one-second tick can be late, and an equality test would silently skip the warning whenever
+     * the server hitched.
+     */
+    private void warnIfDue(DungeonInstance instance) {
+        if (instance.playerCount() == 0) {
+            return;
+        }
+        long remainingSeconds = instance.remainingMillis() / 1000L;
+        for (int threshold : plugin.getConfig().getIntegerList("instance.warn-seconds")) {
+            if (remainingSeconds > threshold || !instance.markWarned(threshold)) {
+                continue;
+            }
+            broadcast(instance, Component.text("Dungeon " + formatDuration(threshold * 1000L)
+                    + " içinde kapanacak.", NamedTextColor.YELLOW));
+        }
+    }
+
+    /** Takes every countdown bar off every screen — for shutdown and reload. */
+    public void hideAllBars() {
+        for (DungeonInstance instance : all()) {
+            for (UUID uuid : instance.players()) {
+                Player player = plugin.getServer().getPlayer(uuid);
+                if (player != null) {
+                    instance.hideBar(player);
+                }
+            }
+        }
+    }
+
+    private void broadcast(DungeonInstance instance, Component message) {
+        for (UUID uuid : instance.players()) {
+            Player player = plugin.getServer().getPlayer(uuid);
+            if (player != null) {
+                player.sendMessage(message);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ entering and leaving
+
+    /**
+     * Puts a player inside: registers them, remembers where they came from, teleports them to the
+     * entrance and shows them the countdown.
+     *
+     * @return {@code false} if the instance cannot be entered
+     */
+    public boolean enter(Player player, DungeonInstance instance) {
+        if (!instance.isActive()) {
+            return false;
+        }
+        World world = plugin.getWorldManager().getWorld();
+        Location spawn = world == null ? null : instance.entranceSpawn(world);
+        if (spawn == null) {
+            return false;
+        }
+        // Leave whatever they were in first — being a member of two dungeons would send the
+        // expiry of either one after them.
+        DungeonInstance current = instanceOf(player);
+        if (current != null && current != instance) {
+            leave(player, current);
+        }
+        instance.addPlayer(player.getUniqueId(), player.getLocation().clone());
+        teleportInternal(player, spawn);
+        instance.showBar(player);
+        return true;
+    }
+
+    /** Takes a player out and sends them back where they came from. */
+    public boolean leave(Player player, DungeonInstance instance) {
+        if (!instance.removePlayer(player.getUniqueId())) {
+            return false;
+        }
+        instance.hideBar(player);
+        Location home = instance.returnLocation(player.getUniqueId());
+        teleportInternal(player, home == null ? fallbackExit() : home);
+        return true;
+    }
+
+    /** The instance a player is registered in, or {@code null}. */
+    public synchronized @Nullable DungeonInstance instanceOf(Player player) {
+        for (DungeonInstance instance : instances.values()) {
+            if (instance.contains(player.getUniqueId())) {
+                return instance;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Deregisters a player without teleporting them.
+     *
+     * <p>For the paths where the player is already elsewhere — they quit, or they walked out of
+     * the dungeon world on their own. Teleporting them "home" there would be the plugin yanking
+     * somebody who never asked.
+     */
+    public void forget(Player player) {
+        DungeonInstance instance = instanceOf(player);
+        if (instance != null) {
+            instance.removePlayer(player.getUniqueId());
+            instance.hideBar(player);
+        }
+    }
+
+    // ------------------------------------------------------------------ teleport marking
+
+    /**
+     * Teleports on the plugin's own behalf, past the teleport block.
+     *
+     * <p>The block in {@link InstanceListener} cancels {@code PLUGIN}-caused teleports in and out
+     * of the dungeon world, and our own moves have exactly that cause. Rather than let the rule
+     * guess whose teleport it is looking at, every internal move is announced here for the length
+     * of the call. A time window is not used: the event fires inside {@code teleport()}, so the
+     * mark is set and cleared around a synchronous call and cannot leak into the next tick.
+     */
+    public void teleportInternal(Player player, Location target) {
+        UUID uuid = player.getUniqueId();
+        internalTeleports.add(uuid);
+        try {
+            player.teleport(target);
+        } finally {
+            internalTeleports.remove(uuid);
+        }
+    }
+
+    /** Whether this player's in-flight teleport was started by the plugin itself. */
+    boolean isInternalTeleport(UUID uuid) {
+        return internalTeleports.contains(uuid);
     }
 
     // ------------------------------------------------------------------ teardown
@@ -215,8 +505,14 @@ public final class InstanceManager {
         }
 
         long start = System.currentTimeMillis();
-        CompletableFuture<int[]> evicted = onMainThread(() -> new int[]{
-                evictPlayers(world, instance), removeEntities(world, instance)});
+        CompletableFuture<int[]> evicted = onMainThread(() -> {
+            // Registered members go to their own return location; the positional sweep that
+            // follows is for anyone standing in the slot without being a member — an operator
+            // who walked in, or a player mid-fall.
+            int home = instance.playerCount();
+            sendEveryoneHome(instance);
+            return new int[]{home + evictPlayers(world, instance), removeEntities(world, instance)};
+        });
 
         return evicted
                 .thenCompose(counts -> cleaner.clear(world, instance.bounds())
@@ -259,7 +555,8 @@ public final class InstanceManager {
             if (!instance.slot().contains(loc.getX(), loc.getZ())) {
                 continue;
             }
-            player.teleport(exit);
+            instance.hideBar(player);
+            teleportInternal(player, exit);
             count++;
         }
         return count;

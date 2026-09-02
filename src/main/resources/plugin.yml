@@ -15,7 +15,7 @@ softdepend:
 commands:
   tdungeons:
     description: TakashiDungeons administration command
-    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|slots|free|hud>
+    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|instances|enter|leave|close|slots|free|hud>
     aliases: [td, takashidungeons]
     permission: takashidungeons.admin
   hud:
@@ -31,3 +31,8 @@ permissions:
   takashidungeons.hud:
     description: Ability to toggle your own sidebar HUD
     default: true
+  # The admin exception to "no /tp or /tpa inside a dungeon" (anahedef.md 5). Without it the
+  # rule would lock staff out of the very instances they need to reach in order to moderate.
+  takashidungeons.teleport.bypass:
+    description: Teleport into and out of dungeons freely
+    default: op

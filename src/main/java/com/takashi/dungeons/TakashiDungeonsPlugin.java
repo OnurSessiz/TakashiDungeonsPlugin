@@ -78,6 +78,12 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         if (hudService != null) {
             hudService.disable();
         }
+        if (instanceManager != null) {
+            instanceManager.stopClock();
+            // The boss bar is client-side, exactly like the sidebar: left up, it survives a
+            // /reload and counts down against a plugin that is no longer there.
+            instanceManager.hideAllBars();
+        }
         // Blocks are NOT wiped here. A shutdown is not a teardown: the world is reset on the next
         // start, so wiping now would only make the server take longer to stop. What does matter is
         // that nobody's logout position ends up inside an instance — that position outlives the
@@ -157,6 +163,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private void setupInstances() {
         instanceManager = new InstanceManager(this);
         getServer().getPluginManager().registerEvents(new InstanceListener(this), this);
+        instanceManager.startClock();
     }
 
     /**

@@ -6,7 +6,6 @@ import com.takashi.dungeons.generation.Aabb;
 import com.takashi.dungeons.generation.DoorAnchor;
 import com.takashi.dungeons.generation.DungeonGenerator;
 import com.takashi.dungeons.generation.DungeonSize;
-import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
@@ -57,8 +56,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
-                    "gen", "paste", "connect", "dungeon", "instances", "close", "slots", "free",
-                    "reload", "hud", "extract");
+                    "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
+                    "slots", "free", "reload", "hud", "extract");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
@@ -96,6 +95,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "weights" -> weights(sender, args);
             case "dungeon" -> dungeon(sender, label, args);
             case "instances" -> instances(sender);
+            case "enter" -> enter(sender, label, args);
+            case "leave" -> leave(sender);
             case "close" -> close(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
@@ -164,7 +165,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (world == null) {
             return;
         }
-        player.teleport(new Location(world, 0.5, 65, 0.5));
+        // Through the manager, so the plugin's own move is not stopped by its own teleport block.
+        plugin.getInstanceManager().teleportInternal(player, new Location(world, 0.5, 65, 0.5));
         sender.sendMessage(Component.text("Dungeon dünyasına ışınlandın.", NamedTextColor.GREEN));
     }
 
@@ -271,7 +273,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location target = slot.center(world).add(0, 1, 0);
-            player.teleport(target);
+            plugin.getInstanceManager().teleportInternal(player, target);
             player.sendMessage(Component.text("Odanın merkezine ışınlandın.", NamedTextColor.GRAY));
         });
     }
@@ -451,7 +453,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getServer().getScheduler().runTask(plugin, () ->
-                player.teleport(new Location(world, target.x() + 0.5, target.y(), target.z() + 0.5)));
+                plugin.getInstanceManager().teleportInternal(player,
+                        new Location(world, target.x() + 0.5, target.y(), target.z() + 0.5)));
     }
 
     private @Nullable RoomTemplateStore requireTemplates(CommandSender sender) {
@@ -734,10 +737,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         Aabb box = instance.bounds();
         sender.sendMessage(Component.text("  temizlenecek hacim: " + box
                 + "  (" + box.volume() + " blok)", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("  süre: "
+                + InstanceManager.formatDuration(instance.remainingMillis()),
+                NamedTextColor.DARK_GRAY));
 
-        LayoutNode root = result.layout().root();
-        if (root != null) {
-            teleportTo(sender, world, root.room().origin().plus(new Vec3i(0, 1, 0)));
+        // The generator goes IN, not merely to the coordinates. Being teleported to a slot makes
+        // you a bystander standing in one; entering makes you a member — which is what the
+        // countdown, the boss bar and the expiry teleport all run on.
+        if (sender instanceof Player player) {
+            plugin.getServer().getScheduler().runTask(plugin,
+                    () -> plugin.getInstanceManager().enter(player, instance));
         }
     }
 
@@ -759,10 +768,71 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                             + "/" + instance.result().size().key()
                             + "  " + instance.result().rooms() + " oda"
                             + "  " + instance.slot()
-                            + "  " + instance.state()
-                            + "  " + (instance.ageMillis() / 1000) + " sn", NamedTextColor.GRAY)));
+                            + "  " + instance.state(), NamedTextColor.GRAY))
+                    .append(Component.text("  kalan "
+                            + InstanceManager.formatDuration(instance.remainingMillis()),
+                            NamedTextColor.YELLOW))
+                    .append(Component.text("  oyuncu " + instance.playerCount(),
+                            NamedTextColor.GRAY)));
         }
-        sender.sendMessage(Component.text("  /tdungeons close <id|all>", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("  /tdungeons enter <id> | leave | close <id|all>",
+                NamedTextColor.DARK_GRAY));
+    }
+
+    /**
+     * {@code /tdungeons enter <id>} — the way in until the entry object exists (phase 2C).
+     *
+     * <p>Entering is what makes a player a <b>member</b>, and membership is what the countdown,
+     * the expiry teleport and the boss bar all run on. Walking into a slot by teleport does not
+     * do that — which is the point: the object will be the only door.
+     */
+    private void enter(CommandSender sender, String label, String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " enter <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        int id;
+        try {
+            id = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Geçersiz id: " + args[1], NamedTextColor.RED));
+            return;
+        }
+        InstanceManager manager = plugin.getInstanceManager();
+        DungeonInstance instance = manager.get(id);
+        if (instance == null) {
+            sender.sendMessage(Component.text("instance#" + id + " yok.", NamedTextColor.YELLOW));
+            return;
+        }
+        if (!manager.enter(player, instance)) {
+            sender.sendMessage(Component.text("instance#" + id + " girilebilir durumda değil: "
+                    + instance.state(), NamedTextColor.RED));
+            return;
+        }
+        sender.sendMessage(Component.text("instance#" + id + " içindesin — kalan "
+                + InstanceManager.formatDuration(instance.remainingMillis()), NamedTextColor.GREEN));
+    }
+
+    /** {@code /tdungeons leave} — out, and back to where you came in from. */
+    private void leave(CommandSender sender) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        InstanceManager manager = plugin.getInstanceManager();
+        DungeonInstance instance = manager.instanceOf(player);
+        if (instance == null) {
+            sender.sendMessage(Component.text("Bir dungeon içinde değilsin.", NamedTextColor.YELLOW));
+            return;
+        }
+        manager.leave(player, instance);
+        sender.sendMessage(Component.text("instance#" + instance.id() + " terk edildi.",
+                NamedTextColor.GREEN));
     }
 
     /**
@@ -1037,9 +1107,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             return HUD_SETTINGS.stream().filter(o -> o.startsWith(prefix)).toList();
         }
-        if (args.length == 2 && sub.equals("close")) {
+        if (args.length == 2 && (sub.equals("close") || sub.equals("enter"))) {
             List<String> options = new ArrayList<>();
-            options.add("all");
+            if (sub.equals("close")) {
+                options.add("all");
+            }
             plugin.getInstanceManager().all().forEach(i -> options.add(String.valueOf(i.id())));
             return options.stream().filter(o -> o.startsWith(args[1])).toList();
         }

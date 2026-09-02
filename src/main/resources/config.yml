@@ -67,6 +67,31 @@ generation:
   # this off while debugging: with it off you can see where the graph choked.
   plug-open-doors: true
 
+instance:
+  # Bir dungeon ne kadar ayakta kalır. Süre dolunca içerideki herkes girdiği yere ışınlanır
+  # ve dungeon silinir — bloklar dahil.
+  duration-seconds: 1800
+
+  # İçinde kimse kalmayınca kaç saniye sonra kapansın. 0 = kapanmasın, süresini doldursun.
+  #
+  # Sayaç ancak dungeon'a BİR KEZ girildikten sonra işlemeye başlar: operatörün üretip
+  # bakmakta olduğu, hiç girilmemiş bir dungeon bu yüzden ayağının altından silinmez.
+  empty-timeout-seconds: 300
+
+  # Kalan süre uyarıları, saniye cinsinden. Her eşik bir kez duyurulur ve sadece içeride
+  # oyuncu varken. Boş bırakılırsa uyarı çıkmaz.
+  warn-seconds: [300, 60, 10]
+
+  boss-bar:
+    # Ekranın üstünde kalan süreyi gösteren çubuk. Kapatılırsa süre sistemi aynen çalışır,
+    # sadece görünmez olur.
+    enabled: true
+
+    # MiniMessage. Yerine geçenler: <time> <theme> <size> <rooms> — hepsi unparsed.
+    # Çubuk dolmuyor, BOŞALIYOR; rengi kalan orana göre kendisi değişiyor:
+    # mavi -> %25 altında sarı -> %10 altında kırmızı.
+    title: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
+
 hud:
   # Sağ taraftaki sidebar HUD'u. false ise hiçbir oyuncuya gösterilmez ve /hud da çalışmaz.
   enabled: true

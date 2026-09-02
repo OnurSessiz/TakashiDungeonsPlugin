@@ -6,9 +6,19 @@ import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.Vec3i;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.world.GridSlot;
+import net.kyori.adventure.bossbar.BossBar;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Player;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * One live dungeon: the slot it occupies, what was generated into it, and how far through its
@@ -43,11 +53,46 @@ public final class DungeonInstance {
     private final DoorPlugger.Report plugReport;
     private final Aabb bounds;
     private final long createdAt;
+    private final long expiresAt;
+
+    /**
+     * Who is inside, in the order they entered.
+     *
+     * <p>Membership is <b>declared</b>, not derived from position: a player who logged out inside
+     * is still a member, and one who fell through a hole into the void below the rooms has not
+     * left. Position answers a different question — {@code instanceAt} — and the two are used for
+     * different things: this set decides who sees the boss bar and who gets teleported home,
+     * position decides who gets swept out of a slot about to be wiped.
+     */
+    private final Set<UUID> players = new LinkedHashSet<>();
+
+    /**
+     * Where each player came from.
+     *
+     * <p>Kept per player, not per instance: a party can gather from anywhere, and sending
+     * everybody to whoever entered first came from would be a teleport exploit rather than a
+     * courtesy. In phase 2C this is the entry object's location.
+     */
+    private final Map<UUID, Location> returnLocations = new LinkedHashMap<>();
 
     private volatile InstanceState state;
+    private BossBar bossBar;
+
+    /**
+     * When the instance last became empty, or {@code -1}.
+     *
+     * <p>Only armed once somebody has actually been inside. A dungeon an operator generated and
+     * never entered has been empty since birth, and killing it on that basis would delete rooms
+     * out from under whoever is inspecting them.
+     */
+    private long emptySince = -1;
+    private boolean everOccupied;
+
+    /** Warning thresholds already announced, so each one fires once. */
+    private final Set<Integer> warningsSent = new LinkedHashSet<>();
 
     DungeonInstance(int id, GridSlot slot, String theme, DungeonGenerator.Result result,
-                    DoorPlugger.Report plugReport, Aabb bounds) {
+                    DoorPlugger.Report plugReport, Aabb bounds, long durationMillis) {
         this.id = id;
         this.slot = slot;
         this.theme = theme;
@@ -55,6 +100,7 @@ public final class DungeonInstance {
         this.plugReport = plugReport;
         this.bounds = bounds;
         this.createdAt = System.currentTimeMillis();
+        this.expiresAt = createdAt + durationMillis;
         this.state = InstanceState.BUILDING;
     }
 
@@ -113,6 +159,115 @@ public final class DungeonInstance {
     /** Milliseconds since the dungeon was generated. */
     public long ageMillis() {
         return System.currentTimeMillis() - createdAt;
+    }
+
+    public long expiresAt() {
+        return expiresAt;
+    }
+
+    /** Milliseconds left before the dungeon expires; never negative. */
+    public long remainingMillis() {
+        return Math.max(0, expiresAt - System.currentTimeMillis());
+    }
+
+    public long totalMillis() {
+        return Math.max(1, expiresAt - createdAt);
+    }
+
+    public boolean isExpired() {
+        return System.currentTimeMillis() >= expiresAt;
+    }
+
+    // ------------------------------------------------------------------ occupancy
+
+    /** Everyone registered as inside, in entry order. */
+    public List<UUID> players() {
+        return new ArrayList<>(players);
+    }
+
+    public int playerCount() {
+        return players.size();
+    }
+
+    public boolean contains(UUID uuid) {
+        return players.contains(uuid);
+    }
+
+    /**
+     * Registers a player as inside and remembers where they came from.
+     *
+     * @return {@code false} if they were already a member
+     */
+    boolean addPlayer(UUID uuid, Location returnLocation) {
+        if (!players.add(uuid)) {
+            return false;
+        }
+        // Never overwrite an existing return location. A player who re-enters after a reconnect
+        // must still be sent to the place they originally came from, not to the dungeon door
+        // they happened to be standing at the second time.
+        returnLocations.putIfAbsent(uuid, returnLocation);
+        everOccupied = true;
+        emptySince = -1;
+        return true;
+    }
+
+    /** Deregisters a player; the return location is kept until the instance dies. */
+    boolean removePlayer(UUID uuid) {
+        if (!players.remove(uuid)) {
+            return false;
+        }
+        if (players.isEmpty() && everOccupied) {
+            emptySince = System.currentTimeMillis();
+        }
+        return true;
+    }
+
+    /** Where this player should be sent when they leave or the dungeon expires. */
+    public @Nullable Location returnLocation(UUID uuid) {
+        return returnLocations.get(uuid);
+    }
+
+    /**
+     * How long the instance has stood empty, or {@code -1} while somebody is inside or nobody
+     * ever was.
+     */
+    public long emptyMillis() {
+        return emptySince < 0 ? -1 : System.currentTimeMillis() - emptySince;
+    }
+
+    /** Whether a player has ever been inside. */
+    public boolean everOccupied() {
+        return everOccupied;
+    }
+
+    /** @return {@code true} the first time this threshold is reached, {@code false} after */
+    boolean markWarned(int seconds) {
+        return warningsSent.add(seconds);
+    }
+
+    // ------------------------------------------------------------------ boss bar
+
+    /** The countdown bar shown to everyone inside; {@code null} until one is attached. */
+    public @Nullable BossBar bossBar() {
+        return bossBar;
+    }
+
+    void bossBar(BossBar bar) {
+        this.bossBar = bar;
+    }
+
+    /** Shows the bar to a player, if this instance has one. */
+    void showBar(Player player) {
+        if (bossBar != null) {
+            player.showBossBar(bossBar);
+        }
+    }
+
+    /** Hides the bar from a player, if this instance has one. */
+    void hideBar(Player player) {
+        if (bossBar != null) {
+            player.hideBossBar(bossBar);
+        }
     }
 
     public InstanceState state() {
