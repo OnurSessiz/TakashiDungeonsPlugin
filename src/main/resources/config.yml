@@ -18,6 +18,18 @@ dungeon-world:
   # The base height rooms are seated at.
   base-y: 64
 
+  # Wipe the world's chunk files every time the server starts.
+  #
+  # This world holds NOTHING but dungeon instances, and no instance survives a shutdown — they
+  # live in memory only. So every block left on disk is the debris of a dungeon that is already
+  # gone. Without the wipe the slot counter restarts at 0 while the old blocks stay put, and the
+  # next dungeon is pasted straight on top of the previous one.
+  #
+  # Turn it off only if you deliberately build something permanent in this world — and know that
+  # dead instances then accumulate on disk. level.dat is never touched; the world's own settings
+  # and spawn point survive either way.
+  reset-on-start: true
+
 schematics:
   # Jar ile gelen odaları ilk açılışta (ve sonraki açılışlarda eksik olanları)
   # plugins/TakashiDungeons/schematics/ altına çıkarır. Kapatırsan temiz bir kurulumda

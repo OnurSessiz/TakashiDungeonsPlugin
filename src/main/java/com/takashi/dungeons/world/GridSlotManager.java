@@ -19,9 +19,10 @@ import java.util.TreeSet;
  * {@code z = (index / columns) * size}. Released indices are pooled and reused smallest
  * first, so the world does not grow forever.
  *
- * <p><b>Caution:</b> {@code release} only returns the index; it does NOT clear the blocks.
- * Block cleanup belongs to phase 2 (instance lifecycle); until then, a second paste into the
- * same slot leaves the old structure underneath.
+ * <p><b>Caution:</b> {@code release} only returns the index; it does NOT clear the blocks. This
+ * class is bookkeeping, not world editing — clearing belongs to {@code InstanceManager.close},
+ * which wipes and then releases. Releasing an index whose blocks still stand hands the next
+ * party a square with the previous dungeon in it.
  */
 public final class GridSlotManager {
 

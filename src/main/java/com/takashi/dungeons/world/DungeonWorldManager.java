@@ -6,6 +6,9 @@ import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
 import org.bukkit.plugin.Plugin;
 
+import java.io.File;
+import java.util.List;
+
 /**
  * Creation of, and access to, the void world the dungeon instances live in.
  *
@@ -25,14 +28,24 @@ import org.bukkit.plugin.Plugin;
  */
 public final class DungeonWorldManager {
 
+    /**
+     * The subfolders holding generated terrain. {@code level.dat} is deliberately not in the
+     * list: it carries the world's own settings and spawn point, which are worth keeping across
+     * a reset.
+     */
+    private static final List<String> CHUNK_FOLDERS = List.of("region", "entities", "poi");
+
     private final Plugin plugin;
     private final String worldName;
+    private final boolean resetOnStart;
 
     private World world;
+    private int resetFiles;
 
-    public DungeonWorldManager(Plugin plugin, String worldName) {
+    public DungeonWorldManager(Plugin plugin, String worldName, boolean resetOnStart) {
         this.plugin = plugin;
         this.worldName = worldName;
+        this.resetOnStart = resetOnStart;
     }
 
     /**
@@ -46,6 +59,10 @@ public final class DungeonWorldManager {
             this.world = existing;
             applyRules(existing);
             return true;
+        }
+
+        if (resetOnStart) {
+            reset();
         }
 
         WorldCreator creator = new WorldCreator(worldName)
@@ -64,6 +81,61 @@ public final class DungeonWorldManager {
         applyRules(created);
         plugin.getLogger().info("Dungeon dünyası hazır: " + worldName);
         return true;
+    }
+
+    /**
+     * Deletes the world's generated chunks before it is loaded.
+     *
+     * <p><b>Why this is safe, and why it is right:</b> the dungeon world holds nothing but
+     * instances, and no instance survives a shutdown — they live in memory only. So every block
+     * left on disk is, by definition, the debris of a dungeon that no longer exists. Without this
+     * the slot counter restarts at 0 while the old blocks stay put, and the next dungeon is
+     * pasted on top of the previous one: the trap already documented in {@code CLAUDE.md} for
+     * manual testing, which would hit real servers exactly the same way.
+     *
+     * <p>It is nevertheless config-gated ({@code dungeon-world.reset-on-start}), because an
+     * operator who decides to build something permanent in that world should be able to keep it —
+     * having been told that instances then accumulate.
+     *
+     * <p>Runs <b>before</b> the world is created or loaded. Deleting region files under a loaded
+     * world would corrupt what the server has in memory.
+     */
+    private void reset() {
+        File folder = new File(plugin.getServer().getWorldContainer(), worldName);
+        if (!folder.isDirectory()) {
+            return;   // first start; nothing to clean
+        }
+        resetFiles = 0;
+        for (String name : CHUNK_FOLDERS) {
+            resetFiles += deleteRecursively(new File(folder, name));
+        }
+        if (resetFiles > 0) {
+            plugin.getLogger().info("Dungeon dünyası sıfırlandı: " + resetFiles
+                    + " chunk dosyası silindi (dungeon-world.reset-on-start).");
+        }
+    }
+
+    /** @return how many files were removed */
+    private int deleteRecursively(File file) {
+        if (!file.exists()) {
+            return 0;
+        }
+        int removed = 0;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    removed += deleteRecursively(child);
+                }
+            }
+            file.delete();
+            return removed;
+        }
+        if (file.delete()) {
+            return 1;
+        }
+        plugin.getLogger().warning("Silinemedi: " + file.getPath());
+        return 0;
     }
 
     private void applyRules(World w) {
@@ -95,5 +167,15 @@ public final class DungeonWorldManager {
 
     public boolean isReady() {
         return world != null;
+    }
+
+    /** Whether the world's chunks are wiped at startup. */
+    public boolean isResetOnStart() {
+        return resetOnStart;
+    }
+
+    /** How many chunk files the last startup reset removed. */
+    public int getResetFiles() {
+        return resetFiles;
     }
 }

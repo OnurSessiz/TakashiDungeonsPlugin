@@ -10,6 +10,8 @@ import com.takashi.dungeons.generation.LayoutNode;
 import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
+import com.takashi.dungeons.instance.DungeonInstance;
+import com.takashi.dungeons.instance.InstanceManager;
 import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
@@ -37,7 +39,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
@@ -56,8 +57,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
-                    "gen", "paste", "connect", "dungeon", "slots", "free", "reload", "hud",
-                    "extract");
+                    "gen", "paste", "connect", "dungeon", "instances", "close", "slots", "free",
+                    "reload", "hud", "extract");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
@@ -94,6 +95,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "reload" -> reload(sender);
             case "weights" -> weights(sender, args);
             case "dungeon" -> dungeon(sender, label, args);
+            case "instances" -> instances(sender);
+            case "close" -> close(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -122,11 +125,26 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         : Component.text(world.getName() + " (" + world.getLoadedChunks().length
                                 + " chunk yüklü)", NamedTextColor.GREEN)));
 
+        if (plugin.getWorldManager() != null) {
+            sender.sendMessage(Component.text("  açılışta sıfırlama: ", NamedTextColor.GRAY)
+                    .append(plugin.getWorldManager().isResetOnStart()
+                            ? Component.text("açık (" + plugin.getWorldManager().getResetFiles()
+                                    + " dosya silindi)", NamedTextColor.GREEN)
+                            : Component.text("kapalı — eski dungeon'lar diskte birikir",
+                                    NamedTextColor.YELLOW)));
+        }
+
         GridSlotManager slots = plugin.getSlotManager();
         if (slots != null) {
             sender.sendMessage(Component.text("Slot: ", NamedTextColor.GRAY)
                     .append(Component.text(slots.allocatedCount() + " ayrılmış, kenar "
                             + slots.slotSize() + " blok", NamedTextColor.WHITE)));
+        }
+
+        InstanceManager instances = plugin.getInstanceManager();
+        if (instances != null) {
+            sender.sendMessage(Component.text("Instance: ", NamedTextColor.GRAY)
+                    .append(Component.text(instances.count() + " açık", NamedTextColor.WHITE)));
         }
 
         SchematicService service = plugin.getSchematicService();
@@ -505,7 +523,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     /**
      * Generates a full dungeon: critical path → boss → side branches → paste → plugs.
      *
-     * <p>The phase 1D milestone — {@code generation.md} §6 and §7.
+     * <p>The phase 1D milestone — {@code generation.md} §6 and §7. Since phase 2A the result is
+     * a registered {@link DungeonInstance} rather than loose blocks: it has an id, it can be
+     * listed, and closing it takes its blocks with it.
      */
     private void dungeon(CommandSender sender, String label, String[] args) {
         RoomTemplateStore store = requireTemplates(sender);
@@ -546,38 +566,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        double turnBias = plugin.getConfig().getDouble("generation.turn-bias", 2.0);
-        int maxAttempts = plugin.getConfig().getInt("generation.max-attempts", 8);
-        boolean doPlug = plugin.getConfig().getBoolean("generation.plug-open-doors", true);
-
-        GridSlot slot = plugin.getSlotManager().allocate();
-        Aabb slotBounds = slotBounds(slot, world);
-        Vec3i center = new Vec3i(slot.originX() + slot.size() / 2, slot.originY(),
-                slot.originZ() + slot.size() / 2);
-
         sender.sendMessage(Component.text("Üretiliyor: tema=" + theme + ", " + size.key()
                 + ", seed=" + seed, NamedTextColor.GRAY));
 
-        store.loadAll(store.list(theme))
-                .thenApply(templates -> {
-                    RoomLibrary library = new RoomLibrary(templates);
-                    if (!library.isUsable()) {
-                        throw new IllegalStateException(library.describeProblem());
-                    }
-                    return new DungeonGenerator(library, turnBias, maxAttempts)
-                            .generate(slotBounds, center, size, seed);
-                })
-                .thenCompose(result -> pasteDungeon(service, world, result)
-                        .thenApply(ignored -> result))
-                .thenCompose(result -> plugDoors(world, result, doPlug)
-                        .thenApply(report -> Map.entry(result, report)))
-                .whenComplete((pair, error) -> {
+        plugin.getInstanceManager().create(theme, size, seed)
+                .whenComplete((instance, error) -> {
                     if (error != null) {
-                        plugin.getSlotManager().release(slot.index());
                         sendFailure(sender, "Üretim başarısız", error);
                         return;
                     }
-                    reportDungeon(sender, world, slot, theme, pair.getKey(), pair.getValue());
+                    reportDungeon(sender, world, instance);
                 });
     }
 
@@ -695,37 +693,13 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 NamedTextColor.GREEN));
     }
 
-    /** Pastes the rooms one after another — chained so the order stays deterministic. */
-    private CompletableFuture<Long> pasteDungeon(SchematicService service, World world,
-                                                 DungeonGenerator.Result result) {
-        CompletableFuture<Long> chain = CompletableFuture.completedFuture(0L);
-        for (LayoutNode node : result.layout().nodes()) {
-            PlacedRoom room = node.room();
-            chain = chain.thenCompose(ignored -> service.load(room.template().name())
-                    .thenCompose(clip -> pasteAt(service, world, clip, room)));
-        }
-        return chain;
-    }
+    private void reportDungeon(CommandSender sender, World world, DungeonInstance instance) {
+        DungeonGenerator.Result result = instance.result();
+        DoorPlugger.Report plug = instance.plugReport();
 
-    /**
-     * Plugging — only AFTER the pastes are done. Done earlier, the next room's paste would
-     * overwrite the plug; and whether a door is left open is only known once the graph is
-     * complete.
-     */
-    private CompletableFuture<DoorPlugger.Report> plugDoors(World world,
-                                                            DungeonGenerator.Result result,
-                                                            boolean enabled) {
-        DoorPlugger plugger = plugin.getDoorPlugger();
-        if (!enabled || plugger == null || result.layout().isEmpty()) {
-            return CompletableFuture.completedFuture(new DoorPlugger.Report(0, 0, 0, List.of()));
-        }
-        return plugger.plugAll(world, result.plugTargets());
-    }
-
-    private void reportDungeon(CommandSender sender, World world, GridSlot slot, String theme,
-                               DungeonGenerator.Result result, DoorPlugger.Report plug) {
-        sender.sendMessage(Component.text("Dungeon üretildi — " + slot, NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("  tema: " + theme, NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Dungeon üretildi — instance#" + instance.id()
+                + " @ " + instance.slot(), NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  tema: " + instance.theme(), NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  boyut: " + result.size().key()
                 + "   oda: " + result.rooms() + "/" + result.targetRooms()
                 + "   kritik path: " + result.pathLength() + "/" + result.targetPathLength(),
@@ -757,23 +731,92 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     Component.text("  [HATA] " + pr, NamedTextColor.RED)));
         }
 
+        Aabb box = instance.bounds();
+        sender.sendMessage(Component.text("  temizlenecek hacim: " + box
+                + "  (" + box.volume() + " blok)", NamedTextColor.DARK_GRAY));
+
         LayoutNode root = result.layout().root();
         if (root != null) {
             teleportTo(sender, world, root.room().origin().plus(new Vec3i(0, 1, 0)));
         }
     }
 
+    // ------------------------------------------------------- Phase 2A: instance lifecycle
+
+    /** Lists the live instances: what stands, where, and for how long. */
+    private void instances(CommandSender sender) {
+        InstanceManager manager = plugin.getInstanceManager();
+        List<DungeonInstance> live = manager.all();
+        if (live.isEmpty()) {
+            sender.sendMessage(Component.text("Açık instance yok.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Açık instance (" + live.size() + "):",
+                NamedTextColor.GOLD));
+        for (DungeonInstance instance : live) {
+            sender.sendMessage(Component.text("  #" + instance.id(), NamedTextColor.WHITE)
+                    .append(Component.text("  " + instance.theme()
+                            + "/" + instance.result().size().key()
+                            + "  " + instance.result().rooms() + " oda"
+                            + "  " + instance.slot()
+                            + "  " + instance.state()
+                            + "  " + (instance.ageMillis() / 1000) + " sn", NamedTextColor.GRAY)));
+        }
+        sender.sendMessage(Component.text("  /tdungeons close <id|all>", NamedTextColor.DARK_GRAY));
+    }
+
     /**
-     * The slot's 3D bounds. X/Z come from the slot, Y from the world's height limits.
+     * {@code /tdungeons close <id|all>} — the teardown that phase 1 lacked.
      *
-     * <p>The X/Z bound is a hard requirement: a room that overflows reaches into a neighbouring
-     * instance's blocks. There is no slot concept on Y, so the world limits suffice.
+     * <p>This is what {@code free} was never able to do: {@code free} hands the slot index back
+     * while the blocks stay, so the next dungeon is pasted on top of the previous one. Closing
+     * evicts, wipes, unloads and only then releases.
      */
-    private static Aabb slotBounds(GridSlot slot, World world) {
-        return new Aabb(
-                slot.originX(), world.getMinHeight(), slot.originZ(),
-                slot.originX() + slot.size() - 1, world.getMaxHeight() - 1,
-                slot.originZ() + slot.size() - 1);
+    private void close(CommandSender sender, String label, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " close <id|all>",
+                    NamedTextColor.RED));
+            return;
+        }
+        InstanceManager manager = plugin.getInstanceManager();
+
+        if (args[1].equalsIgnoreCase("all")) {
+            int count = manager.count();
+            if (count == 0) {
+                sender.sendMessage(Component.text("Açık instance yok.", NamedTextColor.YELLOW));
+                return;
+            }
+            sender.sendMessage(Component.text(count + " instance kapatılıyor…", NamedTextColor.GRAY));
+            manager.closeAll().whenComplete((ignored, error) -> sender.sendMessage(error == null
+                    ? Component.text(count + " instance kapatıldı.", NamedTextColor.GREEN)
+                    : Component.text("Kapatma sırasında hata — konsola bak.", NamedTextColor.RED)));
+            return;
+        }
+
+        int id;
+        try {
+            id = Integer.parseInt(args[1]);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("Geçersiz id: " + args[1], NamedTextColor.RED));
+            return;
+        }
+        DungeonInstance instance = manager.get(id);
+        if (instance == null) {
+            sender.sendMessage(Component.text("instance#" + id + " yok.", NamedTextColor.YELLOW));
+            return;
+        }
+        manager.close(instance).whenComplete((report, error) -> {
+            if (error != null) {
+                sendFailure(sender, "Kapatılamadı", error);
+                return;
+            }
+            sender.sendMessage(Component.text("instance#" + report.id() + " kapatıldı — "
+                    + report.blocksCleared() + " blok silindi, "
+                    + report.chunksUnloaded() + " chunk boşaltıldı, "
+                    + report.entitiesRemoved() + " entity kaldırıldı, "
+                    + report.playersEvicted() + " oyuncu çıkarıldı  ("
+                    + report.millis() + " ms)", NamedTextColor.GREEN));
+        });
     }
 
     private void slots(CommandSender sender) {
@@ -788,6 +831,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(Component.text("  " + s, NamedTextColor.WHITE)));
     }
 
+    /**
+     * {@code /tdungeons free <index|all>} — returns a raw slot index without touching its blocks.
+     *
+     * <p>Kept for the slots {@code paste} and {@code connect} take by hand, which have no
+     * instance behind them. For anything generated by {@code dungeon}, {@code close} is the right
+     * command: {@code free} here would leave the dungeon standing while the slot is handed out
+     * again, and the next paste would land on top of it.
+     */
     private void free(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
             sender.sendMessage(Component.text("Kullanım: /" + label + " free <index|all>", NamedTextColor.RED));
@@ -798,15 +849,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             int count = manager.allocatedCount();
             manager.releaseAll();
             sender.sendMessage(Component.text(count + " slot serbest bırakıldı. "
-                    + "(Bloklar silinmez — temizlik FAZ 2'de.)", NamedTextColor.GREEN));
+                    + "(Bloklar silinmez — instance için /tdungeons close kullan.)",
+                    NamedTextColor.GREEN));
             return;
         }
         try {
             int index = Integer.parseInt(args[1]);
             boolean released = manager.release(index);
             sender.sendMessage(released
-                    ? Component.text("slot#" + index + " serbest bırakıldı. (Bloklar silinmez.)",
-                            NamedTextColor.GREEN)
+                    ? Component.text("slot#" + index + " serbest bırakıldı. (Bloklar silinmez — "
+                            + "instance için /tdungeons close kullan.)", NamedTextColor.GREEN)
                     : Component.text("slot#" + index + " zaten ayrılmış değil.", NamedTextColor.YELLOW));
         } catch (NumberFormatException e) {
             sender.sendMessage(Component.text("Geçersiz index: " + args[1], NamedTextColor.RED));
@@ -984,6 +1036,12 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && sub.equals("hud")) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             return HUD_SETTINGS.stream().filter(o -> o.startsWith(prefix)).toList();
+        }
+        if (args.length == 2 && sub.equals("close")) {
+            List<String> options = new ArrayList<>();
+            options.add("all");
+            plugin.getInstanceManager().all().forEach(i -> options.add(String.valueOf(i.id())));
+            return options.stream().filter(o -> o.startsWith(args[1])).toList();
         }
         if (args.length == 2 && sub.equals("free")) {
             List<String> options = new ArrayList<>();

@@ -39,8 +39,16 @@ one command and walk through a complete, sealed, connected dungeon:
 
 *Ground level: a room, and the corridor through to the next one.*
 
-Same seed, same dungeon, every time. What it does **not** have yet: mobs, loot, parties,
-instance lifecycle, persistence. Those are phases 2 through 7 and they are not written.
+Same seed, same dungeon, every time. Phase 2 has started: a generated dungeon is now a tracked
+instance that can be closed, and closing it takes its blocks with it —
+
+```
+/tdungeons instances
+/tdungeons close <id|all>
+```
+
+What it does **not** have yet: mobs, loot, parties, a duration, an entry object, persistence.
+Those are the rest of phase 2 through phase 7, and they are not written.
 
 So: free, open source, and genuinely usable already — if what you want is layout generation.
 Wait for phase 2 before putting it in front of players. Issues and questions are welcome

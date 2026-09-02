@@ -85,6 +85,44 @@ public record Aabb(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
                 maxX - amount, maxY - amount, maxZ - amount);
     }
 
+    /** Grows the box by {@code amount} on every side. */
+    public Aabb grow(int amount) {
+        return new Aabb(minX - amount, minY - amount, minZ - amount,
+                maxX + amount, maxY + amount, maxZ + amount);
+    }
+
+    /**
+     * The smallest box holding both.
+     *
+     * <p>Phase 2 clears an instance with this: the union of the placed rooms is the exact volume
+     * the generator wrote to. Clearing the whole 512-block slot instead would be some two orders
+     * of magnitude more blocks for the same result.
+     */
+    public Aabb union(Aabb other) {
+        return new Aabb(
+                Math.min(minX, other.minX), Math.min(minY, other.minY), Math.min(minZ, other.minZ),
+                Math.max(maxX, other.maxX), Math.max(maxY, other.maxY), Math.max(maxZ, other.maxZ));
+    }
+
+    /** This box cut down to {@code limit} — {@code null} when the two do not overlap at all. */
+    public Aabb clampTo(Aabb limit) {
+        int nMinX = Math.max(minX, limit.minX);
+        int nMinY = Math.max(minY, limit.minY);
+        int nMinZ = Math.max(minZ, limit.minZ);
+        int nMaxX = Math.min(maxX, limit.maxX);
+        int nMaxY = Math.min(maxY, limit.maxY);
+        int nMaxZ = Math.min(maxZ, limit.maxZ);
+        if (nMinX > nMaxX || nMinY > nMaxY || nMinZ > nMaxZ) {
+            return null;
+        }
+        return new Aabb(nMinX, nMinY, nMinZ, nMaxX, nMaxY, nMaxZ);
+    }
+
+    /** Block count — {@code long} because a slot-sized box overflows {@code int}. */
+    public long volume() {
+        return (long) sizeX() * sizeY() * sizeZ();
+    }
+
     @Override
     public String toString() {
         return "[" + minX + "," + minY + "," + minZ + " → " + maxX + "," + maxY + "," + maxZ

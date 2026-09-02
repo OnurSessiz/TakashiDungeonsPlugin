@@ -828,8 +828,10 @@ broken dungeon" would be impossible.
 
 Generation is done; what is generated now has to **live**.
 
-1. Instance registration and cleanup — when a slot is released, **the blocks have to be removed
-   too**. `GridSlotManager.release()` currently only returns the index.
+1. ~~Instance registration and cleanup~~ — **done (phase 2A)**. A generated dungeon is now a
+   registered `DungeonInstance`; closing it evicts players, removes entities, wipes the blocks
+   and only then releases the slot. The wiped volume is the **union of the placed rooms**, not
+   the whole 512-block slot — two orders of magnitude fewer blocks for the same result.
 2. Dungeon duration, and teleporting the player out when it expires
 3. The entry object (right-click to enter)
 4. Blocking `/tp` and `/tpa` — admins excepted

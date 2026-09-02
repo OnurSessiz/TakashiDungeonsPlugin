@@ -4,8 +4,11 @@ import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.command.HudCommand;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
+import com.takashi.dungeons.instance.InstanceListener;
+import com.takashi.dungeons.instance.InstanceManager;
 import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
+import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
 import com.takashi.dungeons.world.DungeonWorldManager;
 import com.takashi.dungeons.world.GridSlotManager;
@@ -44,8 +47,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private SchematicService schematicService;
     private RoomTemplateStore templateStore;
     private DoorPlugger doorPlugger;
+    private RegionCleaner regionCleaner;
     private BundledRooms bundledRooms;
     private HudService hudService;
+    private InstanceManager instanceManager;
 
     @Override
     public void onEnable() {
@@ -61,6 +66,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
         setupWorld();
         setupSchematics();
+        setupInstances();
         setupHud();
         registerCommands();
     }
@@ -72,7 +78,21 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         if (hudService != null) {
             hudService.disable();
         }
+        // Blocks are NOT wiped here. A shutdown is not a teardown: the world is reset on the next
+        // start, so wiping now would only make the server take longer to stop. What does matter is
+        // that nobody's logout position ends up inside an instance — that position outlives the
+        // instance and would drop them into the void on their next join.
+        evacuateDungeonWorld();
         getLogger().info("TakashiDungeons devre dışı bırakıldı.");
+    }
+
+    /** Everyone standing in the dungeon world goes back out before the plugin stops. */
+    private void evacuateDungeonWorld() {
+        if (worldManager == null || worldManager.getWorld() == null || instanceManager == null) {
+            return;
+        }
+        var exit = instanceManager.fallbackExit();
+        worldManager.getWorld().getPlayers().forEach(player -> player.teleport(exit));
     }
 
     /**
@@ -92,8 +112,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         int columns = config.getInt("dungeon-world.columns", 32);
         int baseY = config.getInt("dungeon-world.base-y", 64);
 
+        boolean resetOnStart = config.getBoolean("dungeon-world.reset-on-start", true);
+
         slotManager = new GridSlotManager(slotSize, columns, baseY);
-        worldManager = new DungeonWorldManager(this, worldName);
+        worldManager = new DungeonWorldManager(this, worldName, resetOnStart);
         if (!worldManager.load()) {
             getLogger().severe("Dungeon dünyası yüklenemedi — generation komutları çalışmayacak.");
         }
@@ -120,8 +142,21 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // Plugging writes blocks too, so it obeys the same threading rule as paste (async
         // only with FAWE).
         doorPlugger = new DoorPlugger(this, async);
+        // Same rule again for the cleaner: a sync paste racing an async wipe of the same slot is
+        // exactly the corruption the threading decision exists to prevent.
+        regionCleaner = new RegionCleaner(this, async);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
+    }
+
+    /**
+     * The instance layer. Always built, even without WorldEdit: {@code create} then refuses with
+     * a clear reason, and the join safety net — which has no WorldEdit dependency — keeps working
+     * on a server that lost FAWE between restarts.
+     */
+    private void setupInstances() {
+        instanceManager = new InstanceManager(this);
+        getServer().getPluginManager().registerEvents(new InstanceListener(this), this);
     }
 
     /**
@@ -220,5 +255,15 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The service that plugs open doors. {@code null} when the schematic service was not built. */
     public @Nullable DoorPlugger getDoorPlugger() {
         return doorPlugger;
+    }
+
+    /** Clears a region back to air. {@code null} without WorldEdit/FAWE — callers must check. */
+    public @Nullable RegionCleaner getRegionCleaner() {
+        return regionCleaner;
+    }
+
+    /** The instance registry. Always built — it reports its own missing dependencies. */
+    public InstanceManager getInstanceManager() {
+        return instanceManager;
     }
 }
