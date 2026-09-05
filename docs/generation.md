@@ -594,6 +594,11 @@ for each placed room:
   world and `doDaylightCycle` is off.
 - **Do not embed entities in a schematic.** Mobs are spawned by the engine in phase 3; embedded
   entities multiply on every paste and sit outside the stat system (`copyEntities(false)`).
+- **Do not measure spawn points either.** Phase 3B finds them at runtime — a ring search outward
+  from the room's centre for a seed, then a flood fill over the floor that is actually there. The
+  fill only reaches what can be walked to, so a sealed alcove never gets a mob, and an L-shaped
+  hall is filled around the corner rather than through the wall. Nothing about mob placement
+  belongs in the room's `.yml`; build the room, and the engine reads it.
 
 ### The odd-side-length rule — REMOVED
 Under the old cell-grid design, room sides had to be odd (17, 33): with an even side there is no
