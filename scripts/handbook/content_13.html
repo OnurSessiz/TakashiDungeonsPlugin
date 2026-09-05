@@ -1,0 +1,389 @@
+<h1><span class="chapnum">Chapter 30</span>How many, which class: SpawnRules</h1>
+
+<p class="lead">
+Two independent questions, answered by two independent inputs. How many mobs a room gets comes
+from its <em>floor area</em>; which class they are drawn from comes from its <em>relative
+depth</em>. Keeping them separate is what makes both of them tunable.
+</p>
+
+<h2>30.1 &nbsp;Count comes from walkable columns, not from depth</h2>
+
+@@CODE java|SpawnRules — the record and the reasoning behind each half.@@
+/**
+ * COUNT COMES FROM FLOOR AREA, NOT FROM DEPTH
+ * The number of mobs is the room's walkable column count divided by density. Room size is the
+ * thing the player can see: a great hall standing nearly empty and a corridor packed shoulder
+ * to shoulder both read as bugs, and neither is fixed by knowing how deep the room is. Depth
+ * changes WHAT is in the room, not how many.
+ *
+ * Walkable columns, not bounding-box area: a cross-shaped room's box is mostly wall, and
+ * sizing by the box would put a hall's worth of mobs in the four arms of a cross.
+ *
+ * CLASS COMES FROM RELATIVE DEPTH
+ * depth / maxDepth, not the raw depth. On absolute thresholds a four-room small dungeon would
+ * be weak mobs from end to end — "small" means short, not harmless. Relative bands give every
+ * size the same shape of difficulty curve over its own length.
+ */
+public record SpawnRules(int density, int minPerRoom, int maxPerRoom, boolean entranceMobs,
+                         List<Band> bands) { }
+@@END@@
+
+@@CODE java|countFor — clamped at both ends, with one asymmetry.@@
+/**
+ * How many mobs a room with this much walkable floor gets.
+ *
+ * Clamped at both ends, and the floor only applies to a room that has SOMEWHERE to put a mob:
+ * a sealed or floorless room gets nothing rather than one mob wedged into it.
+ */
+public int countFor(int walkableColumns) {
+    if (walkableColumns <= 0) {
+        return 0;
+    }
+    return Math.clamp(walkableColumns / density, minPerRoom, maxPerRoom);
+}
+@@END@@
+
+<p>
+The early return is the asymmetry worth noticing. <code>min-per-room</code> means "a room that has
+floor gets at least this many", not "every room gets at least this many". A room the search could
+not find anywhere to stand in gets zero.
+</p>
+
+<h2>30.2 &nbsp;The depth bands</h2>
+
+@@CODE yaml|!The spawn: block of mobs.yml, with defaults.@@
+spawn:
+  # How many walkable blocks per mob. Raising it thins the rooms out.
+  density: 45
+
+  # Per-room floor and ceiling.
+  min-per-room: 1
+  max-per-room: 8
+
+  # Whether the entrance room is populated. Default OFF: the player is teleported in and
+  # should not land in the middle of a fight, and a party gathers there.
+  entrance: false
+
+  # Depth bands. until = upper bound of depth/maxDepth (inclusive);
+  # classes = the class mix drawn inside that band.
+  bands:
+    - until: 0.25
+      classes: { weak: 70, normal: 30 }
+    - until: 0.55
+      classes: { weak: 25, normal: 60, strong: 15 }
+    - until: 0.80
+      classes: { normal: 45, strong: 45, super_strong: 10 }
+    - until: 1.00
+      classes: { normal: 20, strong: 55, super_strong: 25 }
+@@END@@
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <!-- axes -->
+  <line x1="70" y1="200" x2="620" y2="200" stroke="#6d675f" stroke-width="1.2"/>
+  <line x1="70" y1="30" x2="70" y2="200" stroke="#6d675f" stroke-width="1.2"/>
+  <text x="345" y="228" text-anchor="middle" font-size="9.4" fill="#3d3a36">relative depth  =  depth / maxDepth</text>
+  <text x="26" y="118" font-size="9.4" fill="#3d3a36" transform="rotate(-90 26 118)">share</text>
+  <g font-size="8.4" fill="#6d675f">
+    <text x="70" y="214" text-anchor="middle">0.00</text>
+    <text x="207" y="214" text-anchor="middle">0.25</text>
+    <text x="345" y="214" text-anchor="middle">0.55</text>
+    <text x="482" y="214" text-anchor="middle">0.80</text>
+    <text x="620" y="214" text-anchor="middle">1.00</text>
+  </g>
+
+  <!-- band 1: 70/30 -->
+  <rect x="70" y="149" width="137" height="51" fill="#9fc2a8"/>
+  <rect x="70" y="128" width="137" height="21" fill="#7fa8d0"/>
+  <!-- band 2: 25/60/15 -->
+  <rect x="207" y="182" width="138" height="18" fill="#9fc2a8"/>
+  <rect x="207" y="140" width="138" height="42" fill="#7fa8d0"/>
+  <rect x="207" y="129" width="138" height="11" fill="#e0a86a"/>
+  <!-- band 3: 45/45/10 -->
+  <rect x="345" y="169" width="137" height="31" fill="#7fa8d0"/>
+  <rect x="345" y="138" width="137" height="31" fill="#e0a86a"/>
+  <rect x="345" y="131" width="137" height="7" fill="#c08fd0"/>
+  <!-- band 4: 20/55/25 -->
+  <rect x="482" y="186" width="138" height="14" fill="#7fa8d0"/>
+  <rect x="482" y="147" width="138" height="39" fill="#e0a86a"/>
+  <rect x="482" y="130" width="138" height="17" fill="#c08fd0"/>
+
+  <!-- legend -->
+  <g font-size="9">
+    <rect x="70" y="42" width="12" height="10" fill="#9fc2a8"/><text x="88" y="51" fill="#3d3a36">weak</text>
+    <rect x="140" y="42" width="12" height="10" fill="#7fa8d0"/><text x="158" y="51" fill="#3d3a36">normal</text>
+    <rect x="218" y="42" width="12" height="10" fill="#e0a86a"/><text x="236" y="51" fill="#3d3a36">strong</text>
+    <rect x="292" y="42" width="12" height="10" fill="#c08fd0"/><text x="310" y="51" fill="#3d3a36">super_strong</text>
+  </g>
+  <text x="400" y="51" font-size="9" fill="#b8791f">boss is not in any band — it is 3C's, and only in the boss room</text>
+  <text x="70" y="80" font-size="9.4" fill="#6d675f">Because the axis is RELATIVE, a 4-room dungeon and a 20-room dungeon</text>
+  <text x="70" y="94" font-size="9.4" fill="#6d675f">have the same curve shape over their own lengths.</text>
+</svg>
+</div>
+<figcaption>The difficulty curve. Weak mobs disappear by the middle; super_strong only appears in
+the last 45% of the way in.</figcaption>
+</figure>
+
+<p>
+Band weights use the same convention as everything else in the project: 70/30 means 70 to 30.
+</p>
+
+<h2>30.3 &nbsp;Two levels of graceful degradation</h2>
+
+@@CODE java|Parsing: a bad band is skipped, not fatal.@@
+/**
+ * Reads the spawn: block. A malformed band is skipped with a message rather than taking the
+ * whole file down — the rest of the mob set is still usable.
+ */
+public static SpawnRules parse(ConfigurationSection section) {
+    if (section == null) {
+        return DEFAULT;
+    }
+    ...
+    bands.sort((a, b) -> Double.compare(a.until(), b.until()));
+    return new SpawnRules(
+            section.getInt("density", DEFAULT.density()),
+            ...
+            bands.isEmpty() ? DEFAULT.bands() : bands);
+}
+@@END@@
+
+<p>
+Note that the bands are <strong>sorted</strong> after parsing. <code>bandFor</code> returns the
+first band whose <code>until</code> covers the ratio, so an operator who writes them out of order
+still gets the behaviour they meant.
+</p>
+
+<div class="note">
+  <span class="tag">The upgrade case, and a gotcha worth knowing</span>
+  <p>
+    <code>SpawnRules.DEFAULT</code> exists for servers that upgrade the plugin while keeping a
+    <code>mobs.yml</code> from Phase 3A, which has no <code>spawn:</code> block at all. The values
+    are <em>identical</em> to the ones in the bundled file, so behaviour is correct — but the
+    operator cannot edit a section that is not in their file. The plugin never overwrites an
+    existing <code>mobs.yml</code>. The fix is to delete the file and run
+    <code>/tdungeons reload</code>.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Count = walkable columns / density, clamped; a room with no floor gets nothing.</li>
+    <li>Walkable columns rather than box area, because a cross-shaped room's box is mostly wall.</li>
+    <li>Class comes from <em>relative</em> depth so every dungeon size has the same curve shape.</li>
+    <li>A malformed band is skipped; bands are sorted after parsing; a missing
+        <code>spawn:</code> block falls back to identical defaults.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 31</span>MobPopulator, and what 3C still has to do</h1>
+
+<p class="lead">
+The class that puts everything in this part together: for each room, survey the floor, size the
+group, draw a class, draw a mob, spawn it. Plus the three operational details that make it work in
+a live server, and an honest account of what is not finished.
+</p>
+
+<h2>31.1 &nbsp;What decides what</h2>
+
+<table>
+  <thead><tr><th style="width:22%">Question</th><th style="width:34%">Input</th><th>Mechanism</th></tr></thead>
+  <tbody>
+    <tr><td><b>How many</b></td><td>the room's walkable floor</td><td><code>survey().size() / density</code>, clamped</td></tr>
+    <tr><td><b>Which class</b></td><td>the room's relative depth</td><td><code>bandFor(depth/maxDepth)</code>, then a weighted pick inside the band</td></tr>
+    <tr><td><b>Which mob</b></td><td>the class</td><td>weighted draw within that class's pool</td></tr>
+    <tr><td><b>How hard</b></td><td>the instance's difficulty</td><td><code>MobService</code> applies the three multipliers and the armour</td></tr>
+    <tr><td><b>Where</b></td><td>the room's geometry</td><td><code>spread()</code> over the surveyed surface</td></tr>
+  </tbody>
+</table>
+
+<h2>31.2 &nbsp;The per-room loop</h2>
+
+@@CODE java|MobPopulator — survey once, use the result twice.@@
+RandomGenerator random = Seeds.derive(result.seed(), node.id());
+List<Vec3i> surface = finder.survey(box, random);
+int wanted = rules.countFor(surface.size());
+List<Vec3i> points = finder.spread(surface, wanted);
+if (points.size() < wanted) {
+    shortOfSpace++;
+}
+
+double ratio = maxDepth == 0 ? 1.0 : (double) node.depth() / maxDepth;
+SpawnRules.Band band = rules.bandFor(ratio);
+...
+for (Vec3i point : points) {
+    MobClass mobClass = band.pick(random);
+    MobDefinition definition = mobClass == null ? null : registry.pick(mobClass, random);
+    if (definition == null) {
+        // An empty class pool is a configuration gap, not an error: the operator may
+        // simply have no super_strong mobs yet. The room ends up lighter, and the
+        // report says so.
+        refused++;
+        continue;
+    }
+    Location where = new Location(world, point.x() + 0.5, point.y() + 1, point.z() + 0.5);
+    LivingEntity entity = service.spawn(definition, where, difficulty, random);
+    ...
+}
+@@END@@
+
+<p>
+Two details in the coordinate: <code>+0.5</code> on X and Z centres the mob in its block, and
+<code>+1</code> on Y puts it <em>on top of</em> the floor block the search returned — the search
+returns floor blocks, not standing positions.
+</p>
+
+<h2>31.3 &nbsp;Two rooms are skipped</h2>
+
+@@CODE java|isSkipped — and a case that is easy to miss.@@
+/**
+ * The entrance and the boss room are left alone; so is a room whose type says entrance even
+ * when the graph did not make it the root, because a mapper marked it as a place players
+ * arrive.
+ */
+private boolean isSkipped(LayoutNode node, DungeonGenerator.Result result, SpawnRules rules) {
+    if (node.id() == result.bossNodeId()) {
+        return true;
+    }
+    boolean entrance = node.id() == 0 || node.template().type() == RoomType.ENTRANCE;
+    return entrance && !rules.entranceMobs();
+}
+@@END@@
+
+<dl>
+  <dt>The entrance</dt>
+  <dd>The player is teleported into it and should not arrive in the middle of a fight; a party also
+  gathers there. Configurable via <code>spawn.entrance</code>.</dd>
+  <dt>The boss room</dt>
+  <dd>Phase 3C's job. A boss drawn by the ordinary room spawner would be a boss standing among four
+  zombies — which is not a boss encounter, it is a room with a big zombie in it.</dd>
+</dl>
+
+<h2>31.4 &nbsp;Reproducibility per room</h2>
+
+@@CODE java|Each room draws from its own derived stream.@@
+RandomGenerator random = Seeds.derive(result.seed(), node.id());
+@@END@@
+
+<p>
+The same seed therefore gives the same dungeon <em>and</em> the same mobs. More subtly: a room's
+contents do not shift because a different room happened to be populated first. This is exactly the
+property Chapter 13 built <code>derive</code> for.
+</p>
+
+<h2>31.5 &nbsp;The FAWE chunk trap, for the fourth time</h2>
+
+@@CODE java|loadChunks — synchronous, and the alternative is worse.@@
+/**
+ * Loads every chunk the room's box touches.
+ *
+ * Synchronous on purpose. The alternative — populating asynchronously as chunks arrive — would
+ * spawn mobs into a dungeon a player may already be walking through, and a room that fills up
+ * behind you is worse than a two-tick pause before the door opens. The dungeon world is
+ * void-generated, so a chunk that is not already resident costs almost nothing to make.
+ */
+@@END@@
+
+<div class="trap">
+  <span class="tag">Without this, every room comes back empty</span>
+  <p>
+    A block read in an unloaded chunk answers <em>air</em>. The floor survey would find no floor
+    anywhere, <code>countFor(0)</code> would return 0, and the dungeon would be silently empty —
+    with no error and no warning. The same fact appears in Chapter 2 (console verification),
+    Chapter 16 (pasting), and Chapter 21 (the entity sweep).
+  </p>
+</div>
+
+<h2>31.6 &nbsp;The report, and what each number tells you</h2>
+
+@@CODE java|The Report record and the log line it produces.@@
+public record Report(int roomsPopulated, int roomsSkipped, int spawned, int refused,
+                     int roomsShortOfSpace) { }
+
+// Mob yerleştirildi: instance#4 — 23 mob, 8 oda, 2 reddedildi, 1 odada yer yetmedi
+@@END@@
+
+<table class="small">
+  <thead><tr><th style="width:28%">Number</th><th>What it means when it is not what you expected</th></tr></thead>
+  <tbody>
+    <tr><td><code>refused</code></td><td>A class pool was empty, or a provider declined. Configuration gap, not an error.</td></tr>
+    <tr><td><code>roomsShortOfSpace</code></td><td>The density asked for more points than the room's floor could hold apart. This is the number that explains a thin dungeon.</td></tr>
+    <tr><td><code>roomsSkipped</code></td><td>Entrance and boss, plus any room where nothing could be placed at all.</td></tr>
+  </tbody>
+</table>
+
+<h2>31.7 &nbsp;Performance, and where to look if it ever matters</h2>
+
+<p>
+<code>survey()</code> walks the whole room with no early exit. A 23&times;23 room is roughly 500
+columns; a twelve-room dungeon is a few milliseconds, once, at creation. The class comment names
+this as the place to measure if room counts ever rise substantially — which is the right way to
+leave a known-cheap linear scan in place.
+</p>
+
+<h2>31.8 &nbsp;What 3C still has to do</h2>
+
+<table>
+  <thead><tr><th style="width:38%">Item</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Boss room spawn logic</td><td>The boss node id is already carried in
+      <code>DungeonGenerator.Result</code> and the boss class pool already exists. What is missing
+      is the encounter: one boss, placed deliberately, not drawn by the room spawner.</td></tr>
+    <tr><td>Instance ownership via PDC tag</td><td>Every spawned mob should carry its instance id
+      in persistent data, so teardown can clean up precisely rather than by bounding box — and so
+      that a mob which somehow escapes the box is still identifiable.</td></tr>
+    <tr><td>A kill signal</td><td>The seam Phase 4's loot and Phase 8's <code>MobKillEvent</code>
+      both hang off.</td></tr>
+  </tbody>
+</table>
+
+<h2>31.9 &nbsp;Verified</h2>
+
+<p>
+In-game on 5 September 2026: dungeon generation, room occupancy, and the depth curve. Headlessly:
+<code>SpawnProbe</code>'s 22 assertions. Phase 3A was verified in game the same day — the enable
+log read <code>17 mob (weak=3, normal=5, strong=4, super_strong=2, boss=3)</code> with no disabled
+entries, and real spawns applied stats, armour and <code>statOverride</code> correctly.
+</p>
+
+<div class="note">
+  <span class="tag">The one untested path</span>
+  <p>
+    <strong>The MythicMobs provider has never run.</strong> The test server does not have
+    MythicMobs installed, so that branch will be exercised for the first time on a server that
+    does. This is recorded rather than glossed over — it is the single largest known gap in
+    Phase 3.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Survey once; the size sizes the group and the list supplies the positions.</li>
+    <li>Entrance and boss rooms are skipped; the entrance check also honours a mapper's
+        <code>type: entrance</code> on a non-root room.</li>
+    <li>Each room draws from <code>Seeds.derive(dungeonSeed, nodeId)</code>, so contents are stable
+        under reordering.</li>
+    <li>Chunks must be loaded first or every room comes back empty, silently.</li>
+    <li>3C remains: boss encounter, PDC ownership tags, and the kill signal.</li>
+  </ul>
+</div>
+
+<!-- =========================================================== PART IV -->
+<section class="part">
+  <div class="pnum">Part Four<span class="pgmark">[[PARTPAGE]]</span></div>
+  <h1 class="nolist">Patterns and reference</h1>
+  <p class="pdesc">
+    The principles that recur across all three phases, the traps that have actually cost time, and
+    the command and configuration reference.
+  </p>
+  <div class="plist">
+    <b>32</b> &nbsp;Nine recurring design principles<br>
+    <b>33</b> &nbsp;The trap catalogue<br>
+    <b>34</b> &nbsp;Command reference<br>
+    <b>35</b> &nbsp;Configuration reference<br>
+    <b>36</b> &nbsp;Glossary, and what comes next
+  </div>
+</section>

@@ -1,0 +1,388 @@
+<h1><span class="chapnum">Chapter 22</span>The clock, the boss bar and the warnings</h1>
+
+<p class="lead">
+One repeating task drives every live dungeon. This chapter covers why it is one task and not
+twenty, why the boss bar drains rather than fills, and why threshold warnings compare with
+<code>&lt;</code> rather than <code>==</code>.
+</p>
+
+<h2>22.1 &nbsp;One shared task, once a second</h2>
+
+@@CODE java|InstanceManager.startClock.@@
+/**
+ * Starts the once-a-second tick that drives expiry, warnings and the boss bar.
+ *
+ * One shared task rather than a timer per instance: the work per instance is a subtraction
+ * and a bar title, and twenty scheduled tasks doing that would cost more in scheduling than
+ * in work. A second is also the finest resolution that matters — the bar shows whole seconds.
+ */
+public void startClock() {
+    if (clock != null) {
+        return;
+    }
+    clock = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+}
+@@END@@
+
+@@CODE java|!The tick body — three decisions per instance.@@
+private void tick() {
+    long emptyTimeout = plugin.getConfig().getLong("instance.empty-timeout-seconds", 300) * 1000L;
+    for (DungeonInstance instance : all()) {
+        if (!instance.isActive()) {
+            continue;
+        }
+        if (instance.isExpired()) {
+            expire(instance, "Süre doldu");
+            continue;
+        }
+        // An instance nobody is in is holding a slot for nothing. Only armed once somebody
+        // has been inside: a dungeon an operator generated to look at has been empty since
+        // birth, and closing it on that basis would delete the rooms they are standing in.
+        if (emptyTimeout > 0 && instance.everOccupied() && instance.playerCount() == 0
+                && instance.emptyMillis() >= emptyTimeout) {
+            expire(instance, "İçeride kimse kalmadı");
+            continue;
+        }
+        updateBossBar(instance);
+        warnIfDue(instance);
+    }
+}
+@@END@@
+
+<h2>22.2 &nbsp;Expiry sends people home first</h2>
+
+@@CODE java|expire — note the comment on why sendEveryoneHome is called before close.@@
+private void expire(DungeonInstance instance, String reason) {
+    for (UUID uuid : instance.players()) {
+        Player player = plugin.getServer().getPlayer(uuid);
+        if (player != null) {
+            player.sendMessage(Component.text(reason + " — dungeon kapanıyor.",
+                    NamedTextColor.YELLOW));
+        }
+    }
+    // Players first, and to THEIR OWN return location — close() only knows the generic way
+    // out and would drop everyone at world spawn.
+    sendEveryoneHome(instance);
+    close(instance).exceptionally(error -> { ... });
+}
+@@END@@
+
+<p>
+A member who is offline when the dungeon expires is simply deregistered — there is nothing to
+teleport. The join safety net (Chapter 21) picks them up when they return.
+</p>
+
+<h2>22.3 &nbsp;The boss bar drains, and its colour is information</h2>
+
+<p>
+The bar empties rather than fills, and it changes colour on its own as the fraction falls:
+<strong>blue &rarr; yellow below 25% &rarr; red below 10%</strong>.
+</p>
+
+<div class="why">
+  <span class="tag">Colour is what a player reads without looking</span>
+  <p>
+    The number tells you how much time is left. The colour tells you whether you need to care.
+    Those are two different questions and the second one gets answered peripherally, while the
+    player is fighting something.
+  </p>
+</div>
+
+<p>
+The title comes from <code>instance.boss-bar.title</code> as MiniMessage, with
+<code>&lt;time&gt; &lt;theme&gt; &lt;size&gt; &lt;rooms&gt;</code> substituted
+<strong>unparsed</strong>.
+</p>
+
+<div class="trap">
+  <span class="tag">A broken tag must not flood the console</span>
+  <p>
+    The title is re-rendered once a second per instance. A malformed MiniMessage tag would
+    therefore throw once a second, forever, in a loop nobody is watching. The render is wrapped in
+    a <code>catch</code> that falls back to plain text.
+  </p>
+  <p>
+    Compare with the HUD, where the same class of problem is solved the other way: there,
+    MiniMessage is validated at <em>load</em> time, the bad line is skipped, and the operator is
+    told which one. The rule is the same in both — <strong>never let a formatting error live
+    inside a timer</strong> — and the implementation differs because the HUD has a load step to
+    validate in and the bar does not.
+  </p>
+</div>
+
+<h2>22.4 &nbsp;Warnings fire below the threshold, never on equality</h2>
+
+@@CODE java|warnIfDue — the comparison, and the once-only guard.@@
+private void warnIfDue(DungeonInstance instance) {
+    if (instance.playerCount() == 0) {
+        return;
+    }
+    long remainingSeconds = instance.remainingMillis() / 1000L;
+    for (int threshold : plugin.getConfig().getIntegerList("instance.warn-seconds")) {
+        if (remainingSeconds > threshold || !instance.markWarned(threshold)) {
+            continue;
+        }
+        // ... announce
+    }
+}
+@@END@@
+
+<div class="warn">
+  <span class="tag">Why not <code>remainingSeconds == threshold</code>?</span>
+  <p>
+    Because a per-second tick can be late. On a server that stutters — which is every server, some
+    of the time — an equality test would <strong>silently skip the warning</strong> exactly when
+    the server was struggling. Comparing with <code>&lt;=</code> and guarding with
+    <code>markWarned</code> makes each threshold fire once, late if necessary, but never not at
+    all.
+  </p>
+</div>
+
+<p>
+Warnings only fire while somebody is inside. A dungeon counting down with nobody in it has nobody
+to warn.
+</p>
+
+<h2>22.5 &nbsp;What is fixed at creation and what is read live</h2>
+
+<table>
+  <thead><tr><th style="width:38%">Setting</th><th>When it takes effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>instance.duration-seconds</code></td><td>Fixed at <code>register</code>. Changing
+      the config does <b>not</b> affect open instances — a dungeon's clock must not move under the
+      people inside it.</td></tr>
+    <tr><td><code>instance.empty-timeout-seconds</code></td><td>Read every tick.</td></tr>
+    <tr><td><code>instance.warn-seconds</code></td><td>Read every tick, so <code>reload</code>
+      applies immediately.</td></tr>
+    <tr><td><code>instance.boss-bar.title</code></td><td>Read every tick.</td></tr>
+  </tbody>
+</table>
+
+<div class="trap">
+  <span class="tag">onDisable must remove the bars</span>
+  <p>
+    A boss bar lives on the client, exactly like the sidebar scoreboard. If it is not removed, then
+    after a <code>/reload</code> the player is left with a counter ticking down with no plugin
+    behind it. The same rule applies to the HUD.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>One shared per-second task; per-instance work is a subtraction and a bar title.</li>
+    <li>The empty timeout only arms after someone has been inside.</li>
+    <li>The bar drains; colour answers "should I care", the number answers "how long".</li>
+    <li>Warnings compare below the threshold and are guarded once-only, because ticks can be
+        late.</li>
+    <li>Duration is frozen at creation; everything else is read live.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 23</span>Membership is declared, not derived from position</h1>
+
+<p class="lead">
+This is a small chapter about one distinction, because that distinction quietly determines the
+correct behaviour of five different features.
+</p>
+
+<h2>23.1 &nbsp;Two questions that look like one</h2>
+
+<table>
+  <thead><tr><th style="width:30%">Question</th><th style="width:26%">Answered by</th><th>Used for</th></tr></thead>
+  <tbody>
+    <tr><td><b>Who is a member?</b></td><td><code>instance.players()</code></td>
+      <td>Who sees the boss bar; who gets teleported home when time runs out; when the idle
+      counter starts.</td></tr>
+    <tr><td><b>Who is standing there?</b></td><td><code>instanceAt(location)</code></td>
+      <td>Who gets swept out of a slot that is about to be wiped.</td></tr>
+  </tbody>
+</table>
+
+<p>
+They diverge in both directions, and both divergences are intentional:
+</p>
+
+<ul>
+  <li>A player who <strong>logged out inside</strong> is still a member and is not standing there.
+      Logging out is not leaving.</li>
+  <li>A player who <strong>fell through a hole</strong> into the void below the rooms is still
+      standing there — because <code>GridSlot.contains</code> ignores Y (Chapter 15) — and is
+      still a member.</li>
+  <li>An <strong>operator who walked in</strong> with <code>/tdungeons world</code> is standing
+      there and is <em>not</em> a member. They get swept out at teardown; they never see the boss
+      bar.</li>
+</ul>
+
+<h2>23.2 &nbsp;Entering makes you a member; teleporting does not</h2>
+
+<div class="quote">
+  <span class="tag">A behaviour change that was made deliberately</span>
+  <p>
+    <code>/tdungeons dungeon</code> used to teleport the operator to the slot's coordinates. It now
+    <strong>puts them inside</strong>. Teleporting to a slot makes you someone standing there;
+    entering makes you a <em>member</em> — and the counter, the bar and the end-of-time teleport
+    all work through membership.
+  </p>
+</div>
+
+<h2>23.3 &nbsp;Quit and world change deregister; they never teleport</h2>
+
+<dl>
+  <dt>On quit</dt>
+  <dd>Deregister only. Teleporting during quit means racing the write of the player's position to
+  disk. The join safety net closes the same case without racing anything.</dd>
+  <dt>On world change</dt>
+  <dd>Deregister only. The player is already outside; dragging them "home" would be the plugin
+  taking over a movement the player made.</dd>
+  <dt>On join, still a member, dungeon still up</dt>
+  <dd>Leave them exactly where they are and give the boss bar back.</dd>
+</dl>
+
+<h2>23.4 &nbsp;The exit that does not exist yet</h2>
+
+<div class="note">
+  <span class="tag">A deliberate gap in phase 2B</span>
+  <p>
+    An ordinary player has <strong>no way to leave voluntarily</strong>.
+    <code>/tdungeons leave</code> requires admin permission and teleporting is blocked. What gets
+    you out is the timer, or dying. The real door is the portal (Chapter 25) — and that was 2C's
+    job. This is recorded in the project's own notes as a known, intentional gap rather than an
+    oversight.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Membership is declared; position is measured. They are used for different things.</li>
+    <li>Logged out inside = still a member. Fell into the void = still both.</li>
+    <li>Entering makes you a member; teleporting to the coordinates does not.</li>
+    <li>Quit and world change deregister without teleporting, to avoid racing player-data writes.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 24</span>Blocking teleports without blocking the plugin</h1>
+
+<p class="lead">
+"<code>/tp</code> and <code>/tpa</code> do not work inside a dungeon, admins excepted" is one line
+in the design charter and about forty lines of code, most of which exist to solve one problem:
+the plugin's own teleports look exactly like the ones being blocked.
+</p>
+
+<h2>24.1 &nbsp;Why the rule exists at all</h2>
+
+<p>
+Without it the whole instancing design leaks. A player teleports a friend past the boss, or
+teleports out with the loot and back in on a fresh timer. At that point the instance stops being
+an instance.
+</p>
+
+<h2>24.2 &nbsp;Both ends are tested</h2>
+
+@@CODE java|InstanceListener.onTeleport.@@
+/**
+ * Both ends are tested. Blocking only the destination would still let a player teleport out of
+ * a dungeon with the loot; blocking only the origin would let a friend drop in past the boss.
+ * Teleports between two slots are blocked by the same test, which is right — that is one party
+ * walking into another's instance.
+ */
+@EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+public void onTeleport(PlayerTeleportEvent event) {
+    if (!BLOCKED_CAUSES.contains(event.getCause())) {
+        return;
+    }
+    if (!isDungeonWorld(event.getFrom()) && !isDungeonWorld(event.getTo())) {
+        return;
+    }
+    Player player = event.getPlayer();
+    if (player.hasPermission(BYPASS_PERMISSION)) {
+        return;
+    }
+    InstanceManager instances = plugin.getInstanceManager();
+    // Our own moves have cause PLUGIN too. Rather than let the rule guess whose teleport it
+    // is looking at, the manager announces its own for the length of the call.
+    if (instances != null && instances.isInternalTeleport(player.getUniqueId())) {
+        return;
+    }
+    event.setCancelled(true);
+    player.sendMessage(Component.text("Dungeon içinde ışınlanma kapalı.", NamedTextColor.RED));
+}
+@@END@@
+
+<h2>24.3 &nbsp;Which causes, and which are deliberately allowed</h2>
+
+@@CODE java|BLOCKED_CAUSES — three entries, and a documented omission.@@
+/**
+ * The teleport causes that count as "being teleported" rather than playing.
+ *
+ * Ender pearls and chorus fruit are deliberately absent: they are items with a cost, used
+ * inside the room the player is standing in, and blocking them would be a nerf to gameplay
+ * rather than a closing of the exploit. COMMAND is vanilla /tp; PLUGIN covers every /tpa,
+ * /home and /warp plugin there is.
+ */
+private static final List<PlayerTeleportEvent.TeleportCause> BLOCKED_CAUSES = List.of(
+        PlayerTeleportEvent.TeleportCause.COMMAND,
+        PlayerTeleportEvent.TeleportCause.PLUGIN,
+        PlayerTeleportEvent.TeleportCause.SPECTATE);
+@@END@@
+
+<p>
+The distinction being drawn is not "magic versus commands". It is <strong>whether the movement has
+a cost and stays local</strong>. An ender pearl is thrown across the room you are in. A
+<code>/home</code> is not.
+</p>
+
+<h2>24.4 &nbsp;The plugin marks its own teleports</h2>
+
+<p>
+Every teleport the plugin performs has cause <code>PLUGIN</code> — the same cause the rule blocks.
+Rather than have the rule try to guess whose teleport it is looking at,
+<code>InstanceManager.teleportInternal</code> marks the player for the duration of the call:
+</p>
+
+@@CODE text|The flow, and why no time window is needed.@@
+teleportInternal(player, destination):
+        mark player as "internal"
+        player.teleport(destination)          <- the event fires SYNCHRONOUSLY, inside here
+        unmark player
+
+  no timer, no window: the event cannot leak into a later tick
+@@END@@
+
+<div class="why">
+  <span class="tag">A time window would have been the obvious implementation and the wrong one</span>
+  <p>
+    "Mark the player for 500 ms" is easy to write and creates a real hole: for half a second, that
+    player's <em>own</em> <code>/tp</code> would also pass. Because Bukkit fires the teleport event
+    synchronously inside <code>teleport()</code>, the mark can be exactly as wide as the call and
+    no wider.
+  </p>
+  <p>
+    The corollary is a rule for the rest of the codebase: <strong>every teleport the plugin
+    performs must go through <code>teleportInternal</code></strong>. One that does not will be
+    blocked by the plugin's own rule.
+  </p>
+</div>
+
+<h2>24.5 &nbsp;The admin exception</h2>
+
+<p>
+<code>takashidungeons.teleport.bypass</code>, default <code>op</code>. The charter originally said
+"admins included"; that was revised on 2 September 2026. The reason is in
+<code>plugin.yml</code>'s own comment: without it, the rule would lock staff out of the very
+instances they need to reach in order to moderate.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Both origin and destination are tested; slot-to-slot teleports are blocked by the same
+        test.</li>
+    <li><code>COMMAND</code>, <code>PLUGIN</code> and <code>SPECTATE</code> are blocked; ender
+        pearls and chorus fruit are deliberately not.</li>
+    <li>The plugin marks its own teleports for exactly the length of the synchronous call — no
+        time window, therefore no hole.</li>
+    <li>Every plugin teleport must go through <code>teleportInternal</code>.</li>
+  </ul>
+</div>

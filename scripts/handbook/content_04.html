@@ -1,0 +1,417 @@
+<h1><span class="chapnum">Chapter 8</span>The placement formula: back to back</h1>
+
+<p class="lead">
+Everything in the last two chapters exists to serve five lines of arithmetic. Given a parent
+room's open door, this chapter computes exactly where a candidate room sits and at what angle —
+and explains the one-block gap that is the difference between debuggable output and output that
+depends on paste order.
+</p>
+
+<h2>8.1 &nbsp;Inputs</h2>
+
+@@CODE text|Two values, both already in world coordinates.@@
+A_p  =  the parent door's anchor, WORLD coordinate
+d_p  =  that door's outward facing, in the WORLD frame
+        (the parent's own rotation has already been applied)
+@@END@@
+
+<h2>8.2 &nbsp;The four steps</h2>
+
+<h3>Step 1 — choose a candidate</h3>
+
+<p>
+A candidate is a <strong>pair</strong>: <code>(room template &times; one of its doors)</code>.
+The rotation turns on the pair, not on the template alone. A room with three doors can be seated
+three different ways against the same parent door, and which door it arrives through determines
+where its <em>other</em> doors will point. That is where layout variety comes from.
+</p>
+
+<h3>Step 2 — compute the rotation</h3>
+
+@@CODE text|Not searched. One expression.@@
+v_c  =  the child door's LOCAL anchor
+d_c  =  wall(v_c)                       // Chapter 7
+R    =  (d_p + 2 - d_c) mod 4
+@@END@@
+
+<h3>Step 3 — compute the position</h3>
+
+@@CODE text|The back-to-back convention.@@
+O_c  =  A_p + step(d_p) - rotate(v_c, R)
+@@END@@
+
+<p>
+After placement the child's door anchor sits at <code>A_p + step(d_p)</code>: exactly one block
+outside the parent's anchor. The two walls end up back to back, both have a hole in them, and the
+passage is open.
+</p>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs><marker id="ar4" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#b8791f"/></marker></defs>
+
+  <!-- parent -->
+  <rect x="60" y="70" width="200" height="160" fill="#faf7f1" stroke="#171512" stroke-width="1.6"/>
+  <text x="160" y="60" text-anchor="middle" font-size="10.5" font-weight="700" fill="#171512">parent room</text>
+  <rect x="256" y="126" width="8" height="48" fill="#fff" stroke="#b8791f" stroke-dasharray="2 2"/>
+  <circle cx="260" cy="168" r="4" fill="#b8791f"/>
+  <text x="200" y="188" font-size="9" fill="#8a5a11">A_p</text>
+  <path d="M266,168 L296,168" stroke="#b8791f" stroke-width="1.6" marker-end="url(#ar4)"/>
+  <text x="282" y="160" text-anchor="middle" font-size="9" fill="#8a5a11">d_p = EAST</text>
+
+  <!-- gap -->
+  <rect x="264" y="126" width="12" height="48" fill="#f4b13c" opacity=".28"/>
+  <text x="270" y="252" text-anchor="middle" font-size="8.6" fill="#8a5a11">one block</text>
+  <text x="270" y="264" text-anchor="middle" font-size="8.6" fill="#8a5a11">of clearance</text>
+
+  <!-- child -->
+  <rect x="276" y="46" width="180" height="208" fill="#faf7f1" stroke="#171512" stroke-width="1.6"/>
+  <text x="366" y="36" text-anchor="middle" font-size="10.5" font-weight="700" fill="#171512">child room, rotated by R</text>
+  <rect x="272" y="126" width="8" height="48" fill="#fff" stroke="#b8791f" stroke-dasharray="2 2"/>
+  <circle cx="276" cy="168" r="4" fill="#b8791f"/>
+  <text x="292" y="188" font-size="9" fill="#8a5a11">A_p + step(d_p)</text>
+  <circle cx="366" cy="150" r="3.5" fill="#171512"/>
+  <text x="374" y="146" font-size="9" fill="#171512">O_c</text>
+  <path d="M366,150 L280,168" stroke="#171512" stroke-dasharray="3 2" stroke-width="1"/>
+  <text x="316" y="132" font-size="8.6" fill="#6d675f">− rotate(v_c, R)</text>
+
+  <!-- caption block -->
+  <g>
+    <rect x="486" y="70" width="200" height="160" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <text x="500" y="92" font-size="10" font-weight="700" fill="#171512">Why not overlap the walls?</text>
+    <text x="500" y="112" font-size="9.2" fill="#3d3a36">If the two walls occupied the</text>
+    <text x="500" y="126" font-size="9.2" fill="#3d3a36">same blocks, the second paste</text>
+    <text x="500" y="140" font-size="9.2" fill="#3d3a36">would overwrite the first one's</text>
+    <text x="500" y="154" font-size="9.2" fill="#3d3a36">wall — and the result would</text>
+    <text x="500" y="168" font-size="9.2" fill="#3d3a36">depend on paste ORDER.</text>
+    <text x="500" y="190" font-size="9.2" font-weight="700" fill="#b8791f">Order-dependent generation</text>
+    <text x="500" y="204" font-size="9.2" font-weight="700" fill="#b8791f">cannot be debugged.</text>
+    <text x="500" y="222" font-size="8.8" fill="#6d675f">Side benefit: a 2-block passage reads</text>
+  </g>
+  <text x="500" y="234" font-size="8.8" fill="#6d675f">as a thick door frame.</text>
+</svg>
+</div>
+<figcaption>The back-to-back convention. No room ever writes a block belonging to another room.</figcaption>
+</figure>
+
+<h3>Step 4 — Y aligns itself</h3>
+
+<p>
+Because rotation preserves Y, <code>O_c.y = A_p.y − v_c.y</code> falls out of the same
+expression. The child's floor lands wherever it must for its door's Y to coincide with the
+parent's door's Y. A room entered from below and continued above needs no extra code at all — the
+anchor's Y does the work.
+</p>
+
+<h2>8.3 &nbsp;The code</h2>
+
+@@CODE java|!RoomTemplate.attachTo — steps 2 through 4 in one method.@@
+public PlacedRoom attachTo(int doorIndex, Vec3i parentAnchor, Direction parentOutward) {
+    DoorAnchor door = door(doorIndex);
+    Rotation rotation = Rotation.align(parentOutward, door.wall());
+
+    // Back to back: the child's door anchor sits exactly one block outside the parent's.
+    // If the walls overlapped, the second paste would overwrite the first one's wall and
+    // the result would depend on paste ORDER — and order-dependent generation cannot be
+    // debugged.
+    Vec3i childAnchorWorld = parentAnchor.plus(parentOutward.step());
+    Vec3i origin = childAnchorWorld.minus(rotation.apply(door.local()));
+
+    return PlacedRoom.of(this, rotation, origin);
+}
+@@END@@
+
+<p>
+Note what this method does <em>not</em> do: it never asks whether the room fits. It answers
+"where does it seat", not "may it seat". The separation is what keeps the placement mathematics
+testable without a world and without a list of already-placed rooms.
+</p>
+
+<h2>8.4 &nbsp;PlacedRoom: geometry, and only geometry</h2>
+
+<p>
+The result is a <code>PlacedRoom</code> — template, rotation, world origin, and the world-space
+bounding box. It is immutable and it deliberately carries no graph state:
+</p>
+
+@@CODE java|PlacedRoom. The world box is computed by rotating the local box and then translating.@@
+public record PlacedRoom(RoomTemplate template, Rotation rotation, Vec3i origin, Aabb bounds) {
+
+    public static PlacedRoom of(RoomTemplate template, Rotation rotation, Vec3i origin) {
+        Aabb bounds = template.localBox().rotate(rotation).translate(origin);
+        return new PlacedRoom(template, rotation, origin, bounds);
+    }
+
+    /** The door anchor's WORLD coordinate. */
+    public Vec3i doorAnchor(int index) {
+        return origin.plus(rotation.apply(template.door(index).local()));
+    }
+
+    /** The door's outward facing in the WORLD frame — d' = (d + R) mod 4. */
+    public Direction doorOutward(int index) {
+        return rotation.apply(template.door(index).wall());
+    }
+
+    /** Where the anchor of the child door attaching here will land. */
+    public Vec3i doorMate(int index) {
+        return doorAnchor(index).plus(doorOutward(index).step());
+    }
+}
+@@END@@
+
+<div class="why">
+  <span class="tag">Why door state is not in PlacedRoom</span>
+  <p>
+    Geometry is computed <em>before</em> a placement is accepted — the collision test needs the
+    box. Whether a door is connected, open or dead only comes into existence <em>after</em>
+    acceptance, and changes over time. Merging them would create a "half-built room" state in
+    which a rejected candidate nevertheless has door states. <code>LayoutNode</code> (Chapter 9)
+    is where that state lives.
+  </p>
+</div>
+
+<h2>8.5 &nbsp;How this was verified</h2>
+
+<p>
+Headlessly: 53 assertions in <code>GeoProbe</code>, including rotation round-trips, all 16
+combinations of <code>align</code>, wall derivation on square, rectangular and asymmetric rooms,
+and 5 rooms &times; every door &times; every direction = 48 placements.
+</p>
+
+<p>
+On a server: 23 block checks with <code>execute if block</code> across two connection scenarios,
+confirming that the passage is open, the walls stand back to back, the space outside the door
+stays solid, and rotation moves the room's <em>other</em> doors to the computed positions. The
+values the plugin reported for R, origin and box matched values hand-computed from the
+specification exactly — for instance <code>rot=270</code> giving origin <code>(273,64,256)</code>,
+and <code>rot=90</code> giving origin <code>(771,64,243)</code> with a 10&times;8&times;16 box
+becoming 16&times;8&times;10.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>A candidate is a <code>(template &times; door)</code> pair, which is where variety comes from.</li>
+    <li><code>R = (d_p + 2 − d_c) mod 4</code>, then <code>O_c = A_p + step(d_p) − rotate(v_c, R)</code>.</li>
+    <li>One block of clearance: no room ever writes another room's blocks, so output does not
+        depend on paste order.</li>
+    <li>Y alignment is free because rotation preserves Y.</li>
+    <li><code>attachTo</code> answers "where", never "whether" — that split is what keeps the
+        maths testable.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 9</span>Collision, bounds and self-validation</h1>
+
+<p class="lead">
+This is the price of free placement, paid in full. A cell grid made overlap impossible; anchor
+placement makes it likely. <code>DungeonLayout</code> is the class that says no — and, separately,
+the class that can be asked to prove the finished layout is sound.
+</p>
+
+<h2>9.1 &nbsp;Two rejection reasons, both needed</h2>
+
+@@CODE java|DungeonLayout.rejectReason — returns null when the candidate fits.@@
+public String rejectReason(Aabb candidate) {
+    if (!contains(bounds, candidate)) {
+        return "exceeds the slot bounds";
+    }
+    for (LayoutNode node : nodes) {
+        if (node.bounds().intersects(candidate)) {
+            return "collides with room#" + node.id() + " (" + node.template().name() + ")";
+        }
+    }
+    return null;
+}
+@@END@@
+
+<dl>
+  <dt>Exceeding the slot bounds</dt>
+  <dd>The room would reach into a neighbouring instance's blocks. Since slots are handed out to
+  different parties, that is a correctness failure, not an aesthetic one.</dd>
+  <dt>Intersecting a placed room</dt>
+  <dd>The dungeon would break against itself — two rooms writing the same blocks, with the
+  result depending on which pasted last.</dd>
+</dl>
+
+<p>
+Returning a <em>reason</em> rather than a boolean matters more than it looks. When a door ends up
+DEAD, the last rejection reason is what gets reported, so the operator learns whether the dungeon
+ran out of space or ran into itself. <code>fits()</code> exists as a thin boolean wrapper for
+call sites that do not care.
+</p>
+
+<h2>9.2 &nbsp;Brute force is the right algorithm here</h2>
+
+<p>
+The collision test is a linear scan over the placed rooms. The largest dungeon is twenty rooms,
+so a new candidate costs at most twenty box comparisons. A spatial hash or an octree would be
+pointless complexity — the hash computation alone would cost more than the scan it replaces. The
+class comment says this outright so that a future reader does not "optimise" it.
+</p>
+
+<h2>9.3 &nbsp;LayoutNode: door state, and why transitions throw</h2>
+
+<p>
+A node is a <code>PlacedRoom</code> plus per-door graph state. Three states, and the transitions
+are strictly one-way.
+</p>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 150" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs><marker id="ar5" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#8a8278"/></marker></defs>
+  <rect x="60" y="52" width="130" height="48" rx="6" fill="#fff" stroke="#171512" stroke-width="1.6"/>
+  <text x="125" y="74" text-anchor="middle" font-size="12" font-weight="700" fill="#171512">OPEN</text>
+  <text x="125" y="90" text-anchor="middle" font-size="8.6" fill="#6d675f">not tried yet</text>
+
+  <rect x="330" y="12" width="150" height="48" rx="6" fill="#f3f7f4" stroke="#4e8c63" stroke-width="1.6"/>
+  <text x="405" y="34" text-anchor="middle" font-size="12" font-weight="700" fill="#33684a">CONNECTED</text>
+  <text x="405" y="50" text-anchor="middle" font-size="8.6" fill="#33684a">passage is open</text>
+
+  <rect x="330" y="92" width="150" height="48" rx="6" fill="#fdf3ef" stroke="#d4633a" stroke-width="1.6"/>
+  <text x="405" y="114" text-anchor="middle" font-size="12" font-weight="700" fill="#a8431f">DEAD</text>
+  <text x="405" y="130" text-anchor="middle" font-size="8.6" fill="#a8431f">tried, nothing fit → plug</text>
+
+  <path d="M192,66 L326,42" stroke="#8a8278" stroke-width="1.5" marker-end="url(#ar5)" fill="none"/>
+  <path d="M192,86 L326,110" stroke="#8a8278" stroke-width="1.5" marker-end="url(#ar5)" fill="none"/>
+
+  <rect x="512" y="40" width="176" height="72" rx="6" fill="#faf7f1" stroke="#c9c2b6"/>
+  <text x="524" y="60" font-size="9.4" font-weight="700" fill="#171512">No way back.</text>
+  <text x="524" y="76" font-size="9" fill="#3d3a36">An illegal transition throws.</text>
+  <text x="524" y="90" font-size="9" fill="#3d3a36">Attaching two rooms to one door</text>
+  <text x="524" y="104" font-size="9" fill="#3d3a36">would silently lose the second.</text>
+</svg>
+</div>
+<figcaption>Door state transitions. Both OPEN doors that were never tried and DEAD doors that
+were tried and failed get plugged in Chapter 14 — the graph does not distinguish them at plug
+time, only in the report.</figcaption>
+</figure>
+
+@@CODE java|LayoutNode: the guard that turns a silent bug into a stack trace.@@
+/**
+ * State transitions are one-way: OPEN → CONNECTED or OPEN → DEAD. There is no way back.
+ * Attaching two rooms to the same door would silently lose the second one, so we throw.
+ */
+private void require(int index, DoorState expected) {
+    if (doorStates[index] != expected) {
+        throw new IllegalStateException("room#" + id + " door#" + index + " is "
+                + doorStates[index] + ", expected " + expected
+                + " (" + template().name() + ")");
+    }
+}
+@@END@@
+
+<p>
+<code>LayoutNode</code> also carries <code>depth</code> — how many rooms away from the entrance
+it is. Phase 1C does not use it. It is stored so that 1D can guarantee critical-path length
+(Chapter 12) and, later, so that Phase 3B can scale mob difficulty by relative depth
+(Chapter 31). A field added one phase early, on purpose, because computing it retroactively
+would mean walking the graph.
+</p>
+
+<h2>9.4 &nbsp;Links are always recorded in both directions</h2>
+
+@@CODE java|DungeonLayout.link. A one-sided link would make the graph traversal lie.@@
+/** Links two doors to each other — a link is always recorded in both directions. */
+public void link(int nodeA, int doorA, int nodeB, int doorB) {
+    nodes.get(nodeA).link(doorA, nodeB, doorB);
+    nodes.get(nodeB).link(doorB, nodeA, doorA);
+}
+@@END@@
+
+<h2>9.5 &nbsp;addRoot throws rather than returning false</h2>
+
+<p>
+Placing the entrance room is the one placement where failure cannot be tolerated quietly: if it
+does not fit, there is no dungeon at all. So <code>addRoot</code> throws, with a message that
+names the room, its size and the slot size — because the realistic cause is a configuration
+mistake (a boss-sized entrance room, or a <code>slot-size</code> that was lowered).
+</p>
+
+@@CODE java|The error message is written for the operator, not for the developer.@@
+throw new IllegalStateException("Entrance room '" + template.name()
+        + "' does not fit the slot: " + reason + ". Room is " + template.describeSize()
+        + ", slot is " + bounds.sizeX() + "×" + bounds.sizeZ() + ".");
+@@END@@
+
+<h2>9.6 &nbsp;validate(): the invariant checker that never runs in production</h2>
+
+<p>
+<code>DungeonLayout.validate()</code> is <strong>not called on the generation path</strong>. It
+exists to answer a different question: when something is wrong, <em>which</em> invariant broke?
+It returns a list of problems; an empty list means the layout is consistent. Four classes of
+problem are checked.
+</p>
+
+<table>
+  <thead><tr><th style="width:30%">Invariant</th><th>How it is checked</th></tr></thead>
+  <tbody>
+    <tr><td>No room leaves the slot</td><td>Each node's box against the layout bounds</td></tr>
+    <tr><td>No two rooms intersect</td><td>Every pair, once (the <code>j = i+1</code> loop)</td></tr>
+    <tr><td>Every connected passage is aligned</td><td>For each CONNECTED door, the far room must
+      have a door linking back <em>and</em> sitting exactly at
+      <code>anchor + step(outward)</code></td></tr>
+    <tr><td>The graph is connected</td><td>Breadth-first from node 0 following door links; the
+      reached count must equal the node count</td></tr>
+  </tbody>
+</table>
+
+@@CODE java|The passage alignment check. This is the one that catches a broken rotation sign.@@
+// Back to back: the two anchors must be exactly one block apart and face EACH OTHER.
+LayoutNode other = nodes.get(otherId);
+Vec3i mine = a.room().doorAnchor(d);
+Vec3i expected = mine.plus(a.room().doorOutward(d).step());
+boolean matched = false;
+for (int e = 0; e < other.doorCount(); e++) {
+    if (other.linkedNode(e) == a.id() && other.room().doorAnchor(e).equals(expected)) {
+        matched = true;
+        break;
+    }
+}
+if (!matched) {
+    problems.add("the passage between room#" + a.id() + " door#" + d
+            + " and room#" + otherId + " is misaligned (expected " + expected + ")");
+}
+@@END@@
+
+<div class="why">
+  <span class="tag">The principle behind having this at all</span>
+  <p>
+    <strong>In procedural generation the most expensive failure is broken output being accepted
+    silently.</strong> A dungeon with one misaligned passage still generates, still pastes, and
+    still looks fine from outside. A player walks into a wall where a door should be, reports it
+    as "the dungeon was broken", and there is nothing to go on. <code>validate()</code> converts
+    that into a sentence naming two rooms and a coordinate.
+  </p>
+</div>
+
+<h2>9.7 &nbsp;What 1C verified</h2>
+
+<ul>
+  <li><strong>29 headless assertions</strong> (<code>GenProbe</code>): weight distribution over
+      200,000 draws with deviation under 0.3%, the pool filter, drawing without replacement, 500
+      seeds with zero inconsistency, zero overflow in a deliberately narrow slot, DEAD marking,
+      and reproducibility.</li>
+  <li><strong>13 block checks on a server</strong>: passages open in a generated dungeon, walls
+      back to back, a rotated room's ceiling light in the right place, and — importantly — a DEAD
+      door's opening still standing, because plugging was 1D's job.</li>
+  <li>The server's <code>weights</code> output matched <code>GenProbe</code>'s measured
+      distribution exactly.</li>
+  <li>Three seeds &times; 12 rooms generated on a server; all three came back with a clean
+      <code>validate()</code>.</li>
+</ul>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Two rejection reasons — outside the slot, or intersecting a placed room — and the reason
+        text is carried through to the operator.</li>
+    <li>Linear scan is correct at twenty rooms; the comment says so to prevent future
+        "optimisation".</li>
+    <li>Door states are one-way and illegal transitions throw.</li>
+    <li><code>validate()</code> never runs in production; it exists so that a failure names the
+        broken invariant instead of being a player complaint.</li>
+  </ul>
+</div>

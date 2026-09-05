@@ -1,0 +1,313 @@
+<h1><span class="chapnum">Chapter 32</span>Nine recurring design principles</h1>
+
+<p class="lead">
+Reading the three phases together, the same nine ideas keep reappearing in different clothes. If
+you are extending this codebase, these are the rules that will make your addition look like it
+belongs — and, more importantly, behave like the rest of it under failure.
+</p>
+
+<h2>32.1 &nbsp;Derive rather than declare</h2>
+
+<div class="quote">
+  <span class="tag">The one-line version</span>
+  <p><strong>Every field that can be written is a field that can be written wrong.</strong></p>
+</div>
+
+<table class="small">
+  <thead><tr><th style="width:32%">Value</th><th>Derived from</th></tr></thead>
+  <tbody>
+    <tr><td>A door's facing</td><td>the anchor vector, normalized against half-extents</td></tr>
+    <tr><td>A room's bounding box</td><td>the schematic itself</td></tr>
+    <tr><td>The size of a door opening</td><td>a bounded flood fill in the wall plane</td></tr>
+    <tr><td>The plug material</td><td>sampling the wall at the opening's edge</td></tr>
+    <tr><td>Mob spawn positions</td><td>a ring search plus a flood fill at runtime</td></tr>
+    <tr><td>A room's theme</td><td>the folder it sits in</td></tr>
+    <tr><td>The required rotation</td><td><code>(d_p + 2 − d_c) mod 4</code></td></tr>
+    <tr><td>A slot's position</td><td>its index</td></tr>
+  </tbody>
+  <caption>The map team's remaining job is three fields per room: type, weight, and one line per
+  door. Forty rooms &times; five spawn points would have been two hundred numbers that could each
+  be quietly wrong.</caption>
+</table>
+
+<h2>32.2 &nbsp;Measure before you commit, especially when the failure would be silent</h2>
+
+<p>
+The rotation sign was measured on a bare JVM <em>before</em> the placement code existed, because a
+wrong sign would have broken every door in every dungeon without throwing anything. The
+<code>Random</code> seed correlation was measured because it would have collapsed a range to a
+point without producing an error. The weight-ownership question was settled by computing both
+distributions on the actual room set rather than by argument. The boss ordering was settled by
+running 2,000 generations twice.
+</p>
+
+<div class="why">
+  <span class="tag">The pattern to copy</span>
+  <p>
+    When a decision has a plausible-sounding wrong answer <em>and</em> a failure mode that produces
+    no exception, spend the twenty minutes to measure it. That is the only class of bug that
+    survives to production in a system with this much self-checking.
+  </p>
+</div>
+
+<h2>32.3 &nbsp;A number the operator writes must be the number that happens</h2>
+
+<p>
+Room <code>weight</code> belongs to the template, not the <code>(template &times; door)</code> pair,
+because door count is not visible in the configuration file. <code>MobClass</code> is a pool tag,
+not a multiplier, because an operator who writes <code>health: [40, 50]</code> must not see 120.
+Difficulty is the one real multiplier in the mob system, and it is global, named, and in the same
+file.
+</p>
+
+<p>
+The corollary: when you <em>do</em> want a factor, give it its own explicit, switchable knob.
+<code>generation.turn-bias</code> is that pattern — a separate coefficient in candidate ordering
+rather than something folded into the weight.
+</p>
+
+<h2>32.4 &nbsp;One-way state, enforced by throwing</h2>
+
+<table class="small">
+  <thead><tr><th style="width:30%">State</th><th>Transitions</th><th>What an illegal one would have caused</th></tr></thead>
+  <tbody>
+    <tr><td><code>DoorState</code></td><td>OPEN → CONNECTED / DEAD</td><td>Two rooms attached to one door; the second silently lost</td></tr>
+    <tr><td><code>InstanceState</code></td><td>BUILDING → ACTIVE → CLOSING → CLOSED</td><td>A double close, releasing the slot twice and handing one square to two parties</td></tr>
+  </tbody>
+  <caption><code>PortalState</code> is the deliberate exception — a lobby portal must cycle. What it
+  guards instead is that two dungeons never hang off one portal.</caption>
+</table>
+
+<h2>32.5 &nbsp;Ordering is design, not implementation detail</h2>
+
+<p>
+Four places where the sequence <em>is</em> the correctness argument:
+</p>
+
+<ul>
+  <li><strong>Plug after every paste</strong> — earlier, the next room overwrites it; and whether a
+      door is open is a whole-graph question.</li>
+  <li><strong>Side branches before the boss</strong> — measured; the other order produced 3-room
+      small dungeons that never appeared and bossless mediums.</li>
+  <li><strong>Populate before the future completes</strong> — otherwise the player watches mobs
+      appear around them.</li>
+  <li><strong>Slot released last in teardown</strong> — otherwise an allocation races the wipe.</li>
+</ul>
+
+<h2>32.6 &nbsp;Keep a pure core behind a two-method interface</h2>
+
+<p>
+<code>generation</code> knows nothing of Bukkit or WorldEdit. <code>RoomSpawnFinder</code> sees the
+world only through <code>ColumnProbe.isFloor</code> and <code>isClear</code>.
+<code>DungeonLayout</code> receives its slot bounds as an <code>Aabb</code> rather than asking a
+<code>World</code>. In all three cases the payoff is the same: the logic that is <em>wrong in ways
+a server test cannot see</em> becomes testable in under a second.
+</p>
+
+<h2>32.7 &nbsp;Degrade with a stated reason; never fall back silently</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Situation</th><th>Response</th></tr></thead>
+  <tbody>
+    <tr><td>No WorldEdit installed</td><td>Plugin enables; generation reports itself disabled by name</td></tr>
+    <tr><td>No boss template</td><td>Dungeon generates, with a warning attached to the result</td></tr>
+    <tr><td>Path cannot reach its target</td><td>Best attempt used, warning reported — a short dungeon is never handed over silently</td></tr>
+    <tr><td>MythicMobs absent</td><td>That entry is disabled <em>with its reason</em>; no vanilla substitution</td></tr>
+    <tr><td>Reflection failure</td><td>Provider disabled entirely, logged once, never inside the spawn loop</td></tr>
+    <tr><td>Empty mob class pool</td><td>That spawn point is skipped and counted as <code>refused</code></td></tr>
+    <tr><td>Malformed depth band</td><td>Skipped with a message; the rest of the file still loads</td></tr>
+    <tr><td>Broken MiniMessage</td><td>Caught at load (HUD) or fallen back to plain text (boss bar) — never thrown in a timer</td></tr>
+  </tbody>
+</table>
+
+<h2>32.8 &nbsp;Protect the person operating the server from your own rules</h2>
+
+<p>
+The idle timeout only arms after someone has actually been inside, so an operator inspecting a
+freshly generated dungeon does not have the rooms deleted underneath them. A forceloaded chunk is
+skipped during unload, because forceloading is what an operator does while diagnosing something.
+Bundled rooms never overwrite an existing file, because the same folder is the mapper's workspace.
+The admin teleport bypass exists so the "no teleporting" rule does not lock staff out of the
+instances they need to moderate.
+</p>
+
+<h2>32.9 &nbsp;Reproducibility is a debugging feature, not a nicety</h2>
+
+<div class="quote">
+  <p>"Procedural generation that cannot be debugged, will not be debugged. Without a seed, bringing
+  back <em>that broken dungeon</em> is impossible."</p>
+</div>
+
+<p>
+Which is why the retry uses a <em>derived</em> seed rather than a fresh random one, why the shuffle
+source is a single instance, why each room draws from <code>derive(seed, nodeId)</code> so contents
+are stable under reordering, and why <code>DungeonGenerator.Result</code> carries the seed it was
+built from.
+</p>
+
+<h2>32.10 &nbsp;Say what broke, not that something broke</h2>
+
+<p>
+<code>DungeonLayout.validate()</code> never runs on the generation path; it exists so that a failure
+can name the invariant and the two rooms involved. <code>rejectReason</code> returns a sentence
+rather than a boolean, so a DEAD door can explain whether the dungeon ran out of space or ran into
+itself. <code>addRoot</code>'s exception names the room, its size and the slot size, because the
+realistic cause is a configuration mistake. <code>describeProblem()</code> tells a fresh installation
+exactly which pool is empty and why.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Derive rather than declare; measure when failure would be silent; keep configured numbers
+        honest.</li>
+    <li>One-way state that throws; ordering as an explicit correctness argument.</li>
+    <li>A pure core behind a tiny interface; degrade loudly with a reason; never a silent
+        fallback.</li>
+    <li>Protect the operator from your own rules; make everything reproducible; make errors name
+        the invariant.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 33</span>The trap catalogue</h1>
+
+<p class="lead">
+Everything in this chapter has actually cost time on this project. They are collected here because
+they share one property: <strong>none of them throws an exception.</strong> Each produces a wrong
+answer that looks like a right answer.
+</p>
+
+<h2>33.1 &nbsp;FAWE does not leave pasted chunks loaded</h2>
+
+<p>
+This is the most-repeated trap in the codebase, appearing in four systems. A block read in an
+unloaded chunk answers <em>air</em>.
+</p>
+
+<table class="small">
+  <thead><tr><th style="width:32%">Where</th><th>Symptom if you forget</th></tr></thead>
+  <tbody>
+    <tr><td>Console verification</td><td><code>execute if block</code> returns nothing; a test "passes" having checked nothing</td></tr>
+    <tr><td>Teardown entity sweep</td><td>0 entities removed; the mobs wake up in the next party's dungeon</td></tr>
+    <tr><td>Mob population</td><td>No floor found anywhere; every room is silently empty</td></tr>
+    <tr><td>Anything else reading blocks after a paste</td><td>Air</td></tr>
+  </tbody>
+</table>
+
+<h2>33.2 &nbsp;<code>new Random(seed)</code> on consecutive seeds</h2>
+
+<p>
+Over 4,000 consecutive seeds, <code>nextInt(4)</code> returned only two of the four possible
+values. Phase 7 will naturally want to seed from an incrementing id or a timestamp. Use
+<code>Seeds.from</code> / <code>Seeds.derive</code>.
+</p>
+
+<h2>33.3 &nbsp;Max health is not current health</h2>
+
+<p>
+Set <code>MAX_HEALTH</code> to 200 and the mob still has 20. Heal it afterwards. This is described
+in the code as "the single most common way a stat system looks broken".
+</p>
+
+<h2>33.4 &nbsp;The naive wall rule is correct in square rooms</h2>
+
+<p>
+<code>|dx| &gt; |dz|</code> works in every test room until the first rectangular room arrives —
+possibly months later, built by somebody else. <code>test_long</code> exists to fail loudly the
+moment the formula regresses.
+</p>
+
+<h2>33.5 &nbsp;Off-hand fires a second interact event</h2>
+
+<p>
+Without an <code>EquipmentSlot.HAND</code> check, one right-click opens two dungeons and consumes
+two slots.
+</p>
+
+<h2>33.6 &nbsp;Client-side UI must be removed in <code>onDisable</code></h2>
+
+<p>
+Boss bars and sidebar scoreboards live on the client. After a <code>/reload</code>, an unremoved
+bar keeps counting down with no plugin behind it.
+</p>
+
+<h2>33.7 &nbsp;Formatting errors must never live inside a timer</h2>
+
+<p>
+A malformed MiniMessage tag in a per-second boss bar title would throw once a second, per instance,
+forever. Validate at load (the HUD's approach) or catch and fall back to plain text (the bar's).
+</p>
+
+<h2>33.8 &nbsp;<code>unloadChunk</code>'s boolean is a ticket answer</h2>
+
+<p>
+Paper's chunk system is ticket-based. <code>false</code> means "somebody still holds a ticket", not
+"it failed". Counting only <code>true</code> returns reported a flat zero on every close while the
+chunks genuinely came out of memory.
+</p>
+
+<h2>33.9 &nbsp;Template order changes generation</h2>
+
+<p>
+The cumulative weight scan means the same seed with a different template order builds a different
+dungeon. Order comes from a sorted file listing, so it is stable — but adding a room changes every
+seed's output. This is the answer to "why did the same seed give me a different dungeon".
+</p>
+
+<h2>33.10 &nbsp;<code>ClipboardFormats.findByFile</code> on the write path</h2>
+
+<p>
+It opens the file to detect the format, so it throws <code>NoSuchFileException</code> on a file
+that does not exist yet. Resolve by alias when writing.
+</p>
+
+<h2>33.11 &nbsp;Two caches, one reload</h2>
+
+<p>
+<code>RoomTemplateStore</code>'s cache sits above <code>SchematicService</code>'s. Clearing only the
+lower one leaves stale door metadata in memory and verification proceeds on geometry that no longer
+exists on disk.
+</p>
+
+<h2>33.12 &nbsp;A time window where a synchronous marker would do</h2>
+
+<p>
+Marking the player as "internally teleporting" for 500 ms would open a 500 ms hole in the teleport
+block. Bukkit fires the teleport event synchronously inside <code>teleport()</code>, so the marker
+can be exactly as wide as the call.
+</p>
+
+<h2>33.13 &nbsp;Two .gitignore negations, not one</h2>
+
+<p>
+<code>!path/*.schem</code> does not cover <code>path/sub/*.schem</code>. Theme subfolder rooms were
+silently not committed until <code>!path/**/*.schem</code> was added. And Maven resource filtering
+must stay restricted to <code>plugin.yml</code> — applied to all resources it corrupts every
+<code>.schem</code> binary.
+</p>
+
+<h2>33.14 &nbsp;Console-driving traps</h2>
+
+<p>
+The old <code>latest.log</code> still contains <code>Done (</code>, so a readiness check fires
+early. PowerShell 5.1 writes a UTF-8 BOM on the first stdin write and corrupts the first command.
+The test world must be deleted between runs or the slot index restarts at zero over stale blocks.
+</p>
+
+<h2>33.15 &nbsp;Environment facts that shape the mob set</h2>
+
+<p>
+The dungeon world is <code>Environment.NORMAL</code>, so <strong>piglins zombify</strong>. Rooms are
+sealed with the daylight cycle off, so undead do not burn — unless a room schematic has an open
+ceiling. <code>mobGriefing</code> is off, which is the only reason creepers are usable.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>All fifteen produce wrong answers rather than exceptions.</li>
+    <li>The FAWE chunk trap alone appears in four separate systems.</li>
+    <li>Most of them were found by a number being <em>zero</em> when it should not have been —
+        which is why the reports print counts.</li>
+  </ul>
+</div>

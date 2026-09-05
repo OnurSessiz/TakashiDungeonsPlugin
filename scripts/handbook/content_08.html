@@ -1,0 +1,374 @@
+<h1><span class="chapnum">Chapter 17</span>Templates, metadata, themes and bundled rooms</h1>
+
+<p class="lead">
+This chapter is the map team's interface, from four directions: what a <code>.yml</code> contains,
+how a theme is declared (it is not declared), how rooms travel inside the jar, and the seven rules
+a mapper has to follow.
+</p>
+
+<h2>17.1 &nbsp;The metadata file</h2>
+
+<p>
+Every schematic has a <code>.yml</code> beside it with the same name. It is deliberately
+<strong>not</strong> one central file: the map team works in parallel and a central file is a
+merge conflict generator.
+</p>
+
+@@CODE yaml|!schematics/test_cross.yml — the entire schema.@@
+type: normal         # entrance | normal | boss
+
+weight: 100          # the TEMPLATE's share in the candidate draw (loot-weight semantics).
+                     # INDEPENDENT of door count — a 4-door room and a 1-door room each
+                     # count their weight once.
+
+# Door anchors: LOCAL coordinates relative to the origin (the room's reference point).
+# [x, y, z] — the base-centre block of the door opening.
+# FACING IS NOT WRITTEN HERE. It is derived from the anchor.
+doors:
+  - [ 0, 1, -8]      # north wall
+  - [ 8, 1,  0]      # east wall
+  - [ 0, 1,  8]      # south wall
+  - [-8, 1,  0]      # west wall
+@@END@@
+
+<p>
+Four fields, and two of them are the same field repeated. Everything else about the room —
+its size, its bounding box, which wall each door is in, how big the opening is, what the wall is
+made of, where mobs can stand — is <strong>derived</strong>.
+</p>
+
+<dl>
+  <dt>Why <code>y: 1</code>?</dt>
+  <dd>The opening's base block sits one above the room's floor. In a two-storey room the upper door
+  is <code>[0, 9, -8]</code> and nothing about the system changes.</dd>
+  <dt>Where are <code>door1 / door2 / door3</code>?</dt>
+  <dd>The list order <em>is</em> the name. It is an address, not a fill order: which door gets
+  filled is decided by geometry, not by the order they were typed. The index is how the engine
+  tracks which door was connected and which one needs plugging.</dd>
+</dl>
+
+<h2>17.2 &nbsp;The template is a schematic plus a metadata file</h2>
+
+@@CODE java|RoomTemplate. Note that localBox comes from the schematic, not from the yml.@@
+/**
+ * SIZE IS NOT WRITTEN IN THE METADATA — localBox is read from the schematic itself. Like
+ * door facing, it is a derived value: a mapper who enlarges a room in the editor and
+ * re-exports the schematic can easily forget to update the .yml, and a wrong box makes the
+ * collision test silently wrong. The schematic is the single source.
+ */
+public record RoomTemplate(String name, RoomType type, int weight,
+                           List<DoorAnchor> doors, Aabb localBox) { }
+@@END@@
+
+<p>
+<code>RoomTemplateStore</code> joins the two, asynchronously, and caches the result. Its cache
+sits <em>above</em> <code>SchematicService</code>'s clipboard cache, which produces a small trap:
+</p>
+
+<div class="trap">
+  <span class="tag">Two caches, and both must be cleared</span>
+  <p>
+    Clearing only the lower one leaves stale door metadata in memory. <code>/tdungeons reload</code>
+    clears both. This matters most during the room-building loop, where a mapper re-exports a room
+    and expects the server to see the new version — otherwise verification passes on stale geometry
+    and says nothing.
+  </p>
+</div>
+
+<h2>17.3 &nbsp;A theme is a folder</h2>
+
+<p>
+A dungeon is built from one theme's room pool. A theme is not a metadata field — it is the
+directory the room sits in.
+</p>
+
+@@CODE text|The layout on disk. Two rooms may share a name across themes.@@
+plugins/TakashiDungeons/schematics/
+├── entrance_grand.schem + .yml     -> theme "default"  (the root is a real theme)
+├── crypt/
+│   └── hall_pillars.schem + .yml   -> theme "crypt"
+└── nether/
+    └── hall_pillars.schem + .yml   -> theme "nether"   (same name, no collision)
+@@END@@
+
+<dl>
+  <dt>Themes are discovered, not declared.</dt>
+  <dd>Any folder containing at least one schematic is a theme. There is no theme list in
+  <code>config.yml</code>, and therefore nothing that can fall out of sync.</dd>
+  <dt>A room cannot land in the wrong theme through a typo.</dt>
+  <dd>Moving it requires moving a file. This is Chapter 7's principle applied at the filesystem
+  level.</dd>
+  <dt>The root counts as <code>default</code>.</dt>
+  <dd>Which is why the theme layer needed no migration: every room that existed before themes is
+  now a <code>default</code> room, and every old command still works. Room keys are
+  <code>theme/name</code>, with <code>default</code> rooms keeping their bare name.</dd>
+</dl>
+
+<p>
+The generator itself was <strong>not modified</strong> to support themes. It already took a
+prepared <code>RoomLibrary</code>; the theme layer builds one library per theme. This is entirely
+a loading-layer concern.
+</p>
+
+<div class="note">
+  <span class="tag">The reproduction tuple is now four values</span>
+  <p>
+    <strong>slot + theme + size + seed.</strong> Without the theme, the same seed draws from a
+    different pool and builds a different dungeon. Phase 7 stores four columns.
+  </p>
+</div>
+
+<p>
+Two commands make themes visible. <code>/tdungeons themes</code> reports each theme's pool
+composition — room count, entrance/boss/normal split, how many multi-door rooms — and warns if an
+entrance or boss is missing. <code>/tdungeons dungeon &lt;theme&gt; [size] [seed]</code> requires
+the theme when more than one exists; picking one silently would produce the confused bug report
+"why did I get crypt rooms".
+</p>
+
+<h2>17.4 &nbsp;Bundled rooms: the out-of-the-box guarantee</h2>
+
+<p>
+Rooms under <code>src/main/resources/schematics/</code> travel inside the jar and are extracted to
+the plugin folder on enable. The intent is that downloading the jar and installing FAWE is enough;
+a user should not have to hunt for a room pack.
+</p>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Decision</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td>The file list is read from the <code>JarFile</code>, but the <em>content</em> through
+      <code>plugin.getResource()</code></td>
+      <td>Paper hands the plugin a remapped copy of its own jar. The resources are identical in
+      both, but taking content through the classloader guarantees what the running plugin actually
+      sees.</td></tr>
+    <tr><td>The path inside the jar is preserved verbatim</td>
+      <td><code>schematics/crypt/hall.schem</code> lands directly in the <code>crypt</code> theme.
+      Bundling a new theme requires no code change — just a folder.</td></tr>
+    <tr><td>Extraction runs <em>before</em> the WorldEdit check</td>
+      <td>A server that installs FAWE later must still find the rooms already in place.</td></tr>
+    <tr><td><b>An existing file is never overwritten</b></td>
+      <td>The schematics folder is also the mapper's workspace — rooms are exported into it from
+      the world. A bundled room with the same name could silently eat a newer export on every
+      restart. Only missing files are written, which also means a new version's new rooms arrive
+      by themselves.</td></tr>
+  </tbody>
+</table>
+
+<p>
+<code>/tdungeons extract [force]</code> repeats what enable does, by hand, for the room-building
+loop: rebuild the jar and get the new room onto the test server without a restart.
+<code>force</code> overwrites — and can therefore eat a newer local export, which is exactly why
+it is never the default. If any file was written, both caches are cleared.
+</p>
+
+<div class="trap">
+  <span class="tag">Two .gitignore lines, not one</span>
+  <p>
+    <code>*.schem</code> is ignored globally. Re-enabling it needs
+    <code>!src/main/resources/schematics/*.schem</code> <strong>and</strong>
+    <code>!src/main/resources/schematics/**/*.schem</code>. Without the second line, rooms in theme
+    subfolders were silently not committed.
+  </p>
+  <p>
+    Related: Maven resource filtering is applied to <code>plugin.yml</code> only. If filtering is
+    ever opened up to all resources, it will corrupt every <code>.schem</code> binary.
+  </p>
+</div>
+
+<div class="note">
+  <span class="tag">Current state of the bundled set</span>
+  <p>
+    The mechanism works and was verified byte-for-byte: with the schematics folder moved aside,
+    enable extracted 6 files, <code>extract</code> reported "6 already present", <code>extract
+    force</code> rewrote all 6, and the results were byte-identical to the sources. But the jar
+    currently contains <strong>three entrance rooms and no normal or boss rooms</strong>, so a
+    clean installation still cannot generate a dungeon. What is missing is rooms, not code —
+    Phase 10.
+  </p>
+</div>
+
+<h2>17.5 &nbsp;The map team's rules</h2>
+
+<p>
+Seven rules, and the notes on each are the accumulated scar tissue of the first hand-built rooms.
+</p>
+
+<h3>1. The origin is the block you are standing on when you type <code>//copy</code></h3>
+
+<p>
+WorldEdit writes the player's position as the clipboard origin, and every anchor in the
+<code>.yml</code> is the difference vector from it.
+</p>
+
+<div class="why">
+  <span class="tag">This rule was corrected after the first hand-built rooms</span>
+  <p>
+    It used to say "the origin must be at the room's horizontal centre, at floor level". That is
+    <strong>not producible by hand</strong>: for the origin to be the floor block you would have to
+    stand <em>inside</em> the floor and type <code>//copy</code>. <code>TestRoomFactory</code> can
+    do it because it builds the clipboard in code — its rooms have origin-at-floor and doors at
+    <code>y: 1</code>. A human measures at foot level and their doors come out at <code>y: 0</code>.
+    <strong>Both work</strong>, because the engine only requires the room to be internally
+    consistent: the box comes from the clipboard and the wall from X/Z. Measure the origin and
+    every door the same way and the offsets take care of themselves.
+  </p>
+</div>
+
+<h3>2. The selection must include the floor below and the ceiling above</h3>
+
+<div class="warn">
+  <span class="tag">Learned the hard way</span>
+  <p>
+    The block you stand on is the <em>walking level</em>, not the floor — the floor is the layer
+    below it. A selection starting at the level you are standing on produces a room with no floor,
+    and in a void world the player falls straight through. The first three hand-built rooms came
+    out with bottom layers that were <strong>57&ndash;71% air</strong>. For reference,
+    <code>test_cross</code> has 0% air in both its bottom and top layers. Running <code>//size</code>
+    before <code>//copy</code> and comparing the height against the room's real floor-to-ceiling
+    height catches this in one second.
+  </p>
+</div>
+
+<h3>3. The anchor is the base-centre block of the opening</h3>
+
+<p>
+One block off and the walls interpenetrate or leave a gap. This is the single point where these
+systems break.
+</p>
+
+<h3>4. Door openings are 3 wide &times; 3 high</h3>
+<p>The standard <code>TestRoomFactory</code> produces. The plugger measures anyway, so a
+non-standard opening still seals — but the standard keeps connections looking uniform.</p>
+
+<h3>5. Lighting comes from the room's own light sources</h3>
+<p>There is no sun in the dungeon world and the daylight cycle is off.</p>
+
+<h3>6. Do not embed entities</h3>
+<p>Mobs are spawned by the engine in Phase 3. An embedded entity multiplies on every paste and sits
+outside the stat system. <code>copyEntities(false)</code> enforces it.</p>
+
+<h3>7. Do not measure spawn points either</h3>
+<p>
+Phase 3B finds them at runtime: a ring search outward from the room's centre finds a seed, then a
+flood fill spreads across floor that actually exists. Because the fill only reaches walkable
+space, a sealed alcove receives no mobs and an L-shaped hall fills around the corner rather than
+through the wall. <strong>Nothing about mob placement goes into the room's <code>.yml</code>.</strong>
+</p>
+
+<div class="quote">
+  <span class="tag">The rule that was deleted</span>
+  <p>
+    <strong>Side lengths no longer have to be odd.</strong> Under the old cell grid they did:
+    on an even side there is no true centre block, so the rotation centre shifts by half a block.
+    Anchor placement removed the need, and <code>test_even</code> proved it. The binding rule is
+    not the side length — it is putting the anchor on the right block.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>A <code>.yml</code> has three things: type, weight, and a list of door anchors. Everything
+        else is derived.</li>
+    <li>Metadata is per-room so that parallel map work does not conflict.</li>
+    <li>A theme is a folder; themes are discovered, and the root is <code>default</code>.</li>
+    <li>Bundled rooms never overwrite existing files, because the same folder is the mapper's
+        workspace.</li>
+    <li>Seven map rules; the two that have actually bitten are the floor layer and the anchor
+        block.</li>
+  </ul>
+</div>
+
+<!-- =========================================================== PART II -->
+<section class="part">
+  <div class="pnum">Part Two<span class="pgmark">[[PARTPAGE]]</span></div>
+  <h1 class="nolist">The instance lifecycle</h1>
+  <p class="pdesc">
+    Phase 2. Phase 1 could paste a dungeon into a slot, and nothing owned the result. This part is
+    about ownership: a dungeon that knows who is inside it, counts down, sends everybody home, and
+    deletes itself in an order that is itself the design.
+  </p>
+  <div class="plist">
+    <b>18</b> &nbsp;Why a generated dungeon needs an owner<br>
+    <b>19</b> &nbsp;What an instance is, and what is deliberately not stored<br>
+    <b>20</b> &nbsp;Creation: the order of paste, plug, register, populate<br>
+    <b>21</b> &nbsp;Teardown: five steps, and why each one is where it is<br>
+    <b>22</b> &nbsp;The clock, the boss bar and the warnings<br>
+    <b>23</b> &nbsp;Membership is declared, not derived from position<br>
+    <b>24</b> &nbsp;Blocking teleports without blocking the plugin<br>
+    <b>25</b> &nbsp;The entrance portal: four pieces and two deaths
+  </div>
+</section>
+
+<h1><span class="chapnum">Chapter 18</span>Why a generated dungeon needs an owner</h1>
+
+<p class="lead">
+At the end of Phase 1 the plugin could produce a complete, sealed, walkable dungeon. It was also
+completely unable to get rid of one. This chapter is the short statement of the problem Phase 2
+exists to solve, because the shape of the solution follows directly from it.
+</p>
+
+<h2>18.1 &nbsp;The bug that defined the phase</h2>
+
+<p>
+<code>GridSlotManager.release(index)</code> returns an index to the pool. It does not touch blocks
+— it is bookkeeping. So at the end of Phase 1:
+</p>
+
+<ol>
+  <li>Party A generates a dungeon into slot #3.</li>
+  <li>Something releases slot #3.</li>
+  <li>Party B is allocated slot #3.</li>
+  <li><strong>Party B walks into party A's dungeon.</strong></li>
+</ol>
+
+<p>
+Nothing in Phase 1 was wrong. There was simply no object whose job it was to say "this dungeon
+exists, these blocks belong to it, and when it ends, this is what happens". That object is
+<code>DungeonInstance</code>, and the process is <code>InstanceManager.close</code>.
+</p>
+
+<h2>18.2 &nbsp;The three questions Phase 2 answers</h2>
+
+<dl>
+  <dt>What exists?</dt>
+  <dd>A registry of live instances, each with a state that moves in one direction only. An
+  instance enters the registry <em>only once it stands</em> — publishing a half-pasted dungeon
+  would let a player be sent into rooms that do not exist yet.</dd>
+
+  <dt>Who is inside?</dt>
+  <dd>A declared membership set, deliberately distinct from "who is standing in that slot right
+  now". Chapter 23 is entirely about why those are two different questions.</dd>
+
+  <dt>When does it end, and what happens then?</dt>
+  <dd>A shared once-a-second clock drives expiry, threshold warnings and the boss bar. Teardown
+  runs in a fixed five-step order, and every step is placed where it is because putting it
+  elsewhere breaks something specific.</dd>
+</dl>
+
+<h2>18.3 &nbsp;Nothing survives a restart, on purpose</h2>
+
+<p>
+Instances live in memory only. Portals live in memory only. The dungeon world is wiped on start.
+This is not an unfinished feature — it is a coherent position: the dungeon world is
+<strong>derived data</strong>, and the four values needed to rebuild any dungeon
+(slot, theme, size, seed) are small enough that Phase 7 will store those rather than a world.
+</p>
+
+<p>
+The one thing that <em>does</em> need to survive is a player who logged out inside a dungeon.
+That is handled by a rescue on join (Chapter 21), not by persistence.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Releasing a slot never cleared its blocks, so slot reuse handed the next party the previous
+        dungeon.</li>
+    <li>Phase 2 adds an owner: one object per live dungeon, plus a fixed teardown order.</li>
+    <li>An instance is registered only once it stands.</li>
+    <li>Nothing persists across a restart, deliberately; the rescue-on-join net covers the one
+        case that matters.</li>
+  </ul>
+</div>

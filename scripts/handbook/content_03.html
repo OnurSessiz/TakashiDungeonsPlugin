@@ -1,0 +1,461 @@
+<h1><span class="chapnum">Chapter 6</span>Coordinates and the rotation algebra</h1>
+
+<p class="lead">
+Four files — <code>Vec3i</code>, <code>Direction</code>, <code>Rotation</code>,
+<code>Aabb</code> — carry the whole coordinate system. They are small, they are pure, and one of
+them contains a sign that was <em>measured</em> before a single line of the placement code was
+written. This chapter explains why that measurement came first.
+</p>
+
+<h2>6.1 &nbsp;Minecraft's axes and the direction index</h2>
+
+@@CODE text|The conventions everything else assumes.@@
+Minecraft:  +X = East    +Z = South    North = -Z
+
+Direction index:   N=0   E=1   S=2   W=3        (clockwise, viewed from above)
+
+opposite(d)  = (d + 2) mod 4
+step(d)      = N:(0,0,-1)   E:(1,0,0)   S:(0,0,1)   W:(-1,0,0)
+@@END@@
+
+<p>
+The enum order is <strong>clockwise</strong>, and that is not cosmetic. It reduces the rotation
+formula <code>d' = (d + R) mod 4</code> to plain <code>ordinal()</code> arithmetic — which also
+means that reordering the enum silently breaks every rotation in the engine. The class comment
+says so explicitly, because "silently" is the operative word.
+</p>
+
+@@CODE java|Direction — the enum body. The clockwise order IS the rotation maths.@@
+public enum Direction {
+
+    NORTH(0, 0, -1, "kuzey"),
+    EAST(1, 0, 0, "doğu"),
+    SOUTH(0, 0, 1, "güney"),
+    WEST(-1, 0, 0, "batı");
+
+    /** {@code opposite(d) = (d + 2) mod 4}. */
+    public Direction opposite() {
+        return VALUES[(ordinal() + 2) & 3];
+    }
+
+    public static Direction byIndex(int index) {
+        return VALUES[Math.floorMod(index, 4)];
+    }
+}
+@@END@@
+
+<h2>6.2 &nbsp;Rotation: four steps, and the sign that had to be measured</h2>
+
+<p>
+<code>R ∈ {0,1,2,3}</code> counts 90&deg; clockwise steps. Applying a rotation to a
+<em>direction</em> is index arithmetic; applying it to a <em>point</em> is a coordinate swap:
+</p>
+
+@@CODE text|Point rotation. Y is untouched — that is what makes multi-storey rooms free.@@
+Direction:   d' = (d + R) mod 4
+
+Point:       R=0  ->  ( x, y,  z)
+             R=1  ->  (-z, y,  x)
+             R=2  ->  (-x, y, -z)
+             R=3  ->  ( z, y, -x)
+@@END@@
+
+<p>
+Sanity check: the north unit vector is <code>(0,-1)</code> in X-Z. Apply <code>R=1</code>:
+<code>(-(-1), 0) = (1, 0)</code>, which is East. In the direction index, <code>0 + 1 = 1</code>,
+which is also East. Consistent.
+</p>
+
+<div class="why">
+  <span class="tag">Why the sign was measured before any code was written</span>
+  <p>
+    <code>SchematicService</code> pastes with
+    <code>new AffineTransform().rotateY(-degrees)</code> — <em>negative</em> degrees, so that the
+    engine's rotation direction matches what WorldEdit's own <code>//rotate</code> command does.
+    A mapper who rotates a room in the editor and a dungeon the engine generates must turn the
+    same way.
+  </p>
+  <p>
+    Had this sign been backwards, <strong>every generated dungeon's doors would have failed to
+    line up, and the failure would have been silent</strong>: rooms still paste, the passage just
+    comes out sealed. So the actual call was executed directly on a bare JVM — no server needed,
+    the transform is pure mathematics — and the results were tabulated.
+  </p>
+</div>
+
+<table class="small">
+  <thead><tr><th class="num" style="width:8%">R</th><th style="width:24%">Point</th><th>Direction mapping</th></tr></thead>
+  <tbody>
+    <tr><td class="num">0</td><td><code>( x, y,  z)</code></td><td>N&rarr;N &nbsp; E&rarr;E &nbsp; S&rarr;S &nbsp; W&rarr;W</td></tr>
+    <tr><td class="num">1</td><td><code>(-z, y,  x)</code></td><td><b>N&rarr;E &nbsp; E&rarr;S &nbsp; S&rarr;W &nbsp; W&rarr;N</b></td></tr>
+    <tr><td class="num">2</td><td><code>(-x, y, -z)</code></td><td>N&rarr;S &nbsp; E&rarr;W &nbsp; S&rarr;N &nbsp; W&rarr;E</td></tr>
+    <tr><td class="num">3</td><td><code>( z, y, -x)</code></td><td>N&rarr;W &nbsp; E&rarr;N &nbsp; S&rarr;E &nbsp; W&rarr;S</td></tr>
+  </tbody>
+  <caption>Measured 25 August 2026. All four steps matched the point formulas exactly. The
+  competing hypothesis <code>d' = (d - R) mod 4</code> was eliminated at R=1 and R=3. The
+  two-door test room <code>test_corner</code> (N+E) rotated 90&deg; comes out <b>E+S</b> — the
+  expected result.</caption>
+</table>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 210" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <g font-size="10">
+  <!-- compass -->
+  <circle cx="96" cy="105" r="62" fill="#fff" stroke="#c9c2b6"/>
+  <text x="96" y="52" text-anchor="middle" font-size="11" font-weight="700" fill="#171512">N 0</text>
+  <text x="160" y="109" text-anchor="middle" font-size="11" font-weight="700" fill="#171512">E 1</text>
+  <text x="96" y="168" text-anchor="middle" font-size="11" font-weight="700" fill="#171512">S 2</text>
+  <text x="32" y="109" text-anchor="middle" font-size="11" font-weight="700" fill="#171512">W 3</text>
+  <path d="M96,105 L96,66" stroke="#6d675f" stroke-width="1.2"/>
+  <path d="M96,105 L135,105" stroke="#6d675f" stroke-width="1.2"/>
+  <path d="M126,74 A44,44 0 0 1 134,94" stroke="#b8791f" stroke-width="2.2" fill="none" marker-end="url(#ar3)"/>
+  <defs><marker id="ar3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#b8791f"/></marker></defs>
+  <text x="96" y="192" text-anchor="middle" font-size="9" fill="#b8791f">R = +1 is clockwise</text>
+
+  <!-- rotation of a room -->
+  <g>
+    <text x="230" y="30" font-size="10.5" font-weight="700" fill="#171512">test_corner, R=0</text>
+    <rect x="230" y="42" width="96" height="96" fill="#faf7f1" stroke="#171512"/>
+    <rect x="270" y="38" width="16" height="8" fill="#b8791f"/>
+    <rect x="322" y="82" width="8" height="16" fill="#b8791f"/>
+    <text x="278" y="32" text-anchor="middle" font-size="8.6" fill="#8a5a11">N</text>
+    <text x="340" y="94" font-size="8.6" fill="#8a5a11">E</text>
+    <text x="278" y="158" text-anchor="middle" font-size="9" fill="#6d675f">doors {N, E}</text>
+  </g>
+  <path d="M348,90 L392,90" stroke="#8a8278" stroke-width="1.6" marker-end="url(#ar3)"/>
+  <text x="370" y="82" text-anchor="middle" font-size="9" fill="#6d675f">R=1</text>
+  <g>
+    <text x="410" y="30" font-size="10.5" font-weight="700" fill="#171512">the same room, R=1</text>
+    <rect x="410" y="42" width="96" height="96" fill="#faf7f1" stroke="#171512"/>
+    <rect x="502" y="70" width="8" height="16" fill="#b8791f"/>
+    <rect x="450" y="134" width="16" height="8" fill="#b8791f"/>
+    <text x="520" y="82" font-size="8.6" fill="#8a5a11">E</text>
+    <text x="458" y="154" text-anchor="middle" font-size="8.6" fill="#8a5a11">S</text>
+    <text x="458" y="172" text-anchor="middle" font-size="9" fill="#6d675f">doors {E, S}</text>
+  </g>
+  <g>
+    <rect x="546" y="42" width="140" height="126" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <text x="616" y="62" text-anchor="middle" font-size="10" font-weight="700" fill="#171512">Y is preserved</text>
+    <text x="616" y="80" text-anchor="middle" font-size="9" fill="#3d3a36">rotateY turns only X-Z</text>
+    <text x="616" y="96" text-anchor="middle" font-size="9" fill="#3d3a36">so a door at y=9 stays</text>
+    <text x="616" y="112" text-anchor="middle" font-size="9" fill="#3d3a36">at y=9 after rotation</text>
+    <text x="616" y="136" text-anchor="middle" font-size="9" fill="#b8791f">multi-storey rooms cost</text>
+    <text x="616" y="150" text-anchor="middle" font-size="9" fill="#b8791f">zero extra code</text>
+  </g>
+  </g>
+</svg>
+</div>
+<figcaption>Clockwise <code>R</code>, and what it does to a two-door room.</figcaption>
+</figure>
+
+<h2>6.3 &nbsp;The alignment formula</h2>
+
+<p>
+Here is the payoff of all this bookkeeping. When attaching a child room to a parent's door, the
+required rotation is <strong>not searched for</strong>. It is one expression:
+</p>
+
+@@CODE java|!Rotation.align — the single most consequential line in the generation package.@@
+/**
+ * The rotation that brings a child room's door back to back with the parent's door —
+ * R = (d_p + 2 - d_c) mod 4.
+ *
+ * This value is COMPUTED, not searched for. The child's door wall ends up facing the
+ * opposite of the parent door's outward direction, so the two walls face each other.
+ * That is why the candidate pool never has to be narrowed to "rooms with a door facing
+ * this way": every room is a candidate for every connection, and rotation closes the gap.
+ */
+public static Rotation align(Direction parentOutward, Direction childWall) {
+    return ofSteps(parentOutward.index() + 2 - childWall.index());
+}
+@@END@@
+
+<p>
+Read it as: turn the child until its door wall points at <code>opposite(d_p)</code>. An
+equivalent implementation is a loop that adds 90&deg; up to four times until the condition holds;
+the closed form is the same answer without the loop.
+</p>
+
+<div class="note">
+  <span class="tag">Why this is the load-bearing decision</span>
+  <p>
+    Because rotation is computed rather than searched, <strong>every template is a candidate for
+    every connection</strong>. Under the abandoned cell design, the pool was filtered down to
+    rooms that happened to have a door facing the right way, which both reduced variety and made
+    the available variety depend on what the map team happened to draw. Here, a room with a
+    single north door can serve a connection facing any of the four directions.
+  </p>
+</div>
+
+<h2>6.4 &nbsp;Aabb: inclusive on both ends, and three-dimensional</h2>
+
+<p>
+<code>Aabb</code> is an axis-aligned box with <strong>both ends inclusive</strong> — it describes
+blocks, not a half-open range. That choice drives the comparison operator in the intersection
+test:
+</p>
+
+@@CODE java|Aabb.intersects. The <= is a consequence of inclusive ends.@@
+/**
+ * Because the ends are inclusive the comparison is {@code <=}: a box with maxX=10 and one
+ * with minX=10 SHARE the x=10 column, so they intersect. This is why rooms connected back
+ * to back do not collide — there is exactly one block of clearance between them.
+ */
+public boolean intersects(Aabb other) {
+    return minX <= other.maxX && maxX >= other.minX
+            && minY <= other.maxY && maxY >= other.minY
+            && minZ <= other.maxZ && maxZ >= other.minZ;
+}
+@@END@@
+
+<p>
+The box is three-dimensional and that is deliberate. A 2D footprint test would be cheaper and
+would be <em>wrong</em>: in a multi-storey dungeon, two rooms can overlap in footprint while
+their volumes do not — an upper room passing over a lower one. A footprint test would reject
+precisely the arrangement the architecture was designed to permit.
+</p>
+
+<p>Three helper operations matter later:</p>
+
+<dl>
+  <dt><code>rotate(Rotation)</code></dt>
+  <dd>Rotates the two corners and retakes min/max. That is why an asymmetric room rotates
+  correctly: the asymmetry lands in the box, and the box is computed <em>after</em> rotation.</dd>
+  <dt><code>union(Aabb)</code></dt>
+  <dd>The smallest box containing both. Phase 2 clears an instance using the union of its placed
+  rooms — the exact volume the generator wrote to. Clearing the whole slot instead would be
+  roughly two orders of magnitude more blocks for the same result.</dd>
+  <dt><code>clampTo(Aabb)</code></dt>
+  <dd>Intersection, or <code>null</code> if they do not overlap. Used as a second lock on the
+  cleanup volume so that a room which somehow overran its slot cannot cause the wipe to overrun
+  it too.</dd>
+</dl>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li><code>Direction</code>'s clockwise enum order is part of the arithmetic; reordering it
+        breaks rotation silently.</li>
+    <li><code>R=+1</code> is clockwise. Measured against WorldEdit's own transform before the
+        placement code existed, because the failure mode would have been silent.</li>
+    <li>Y is preserved by rotation, which makes multi-storey rooms free.</li>
+    <li><code>align()</code> computes the rotation instead of searching for it — that is what
+        makes every room a candidate for every connection.</li>
+    <li><code>Aabb</code> is inclusive and 3D. 2D would forbid the multi-storey case on purpose.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 7</span>The door anchor, and deriving which wall it is in</h1>
+
+<p class="lead">
+The door anchor is the whole interface between the map team and the engine. It is also, in the
+author's own words, "the one place these systems break". This chapter covers what an anchor is,
+what is deliberately <em>not</em> stored alongside it, and the formula that catches the trap
+hiding in the obvious approach.
+</p>
+
+<h2>7.1 &nbsp;What an anchor is</h2>
+
+<p>
+The anchor is the <strong>base-centre block of the door opening</strong>, written as a local
+coordinate relative to the room's origin. That is all. Two consequences follow and both are
+important.
+</p>
+
+<h3>Facing is not stored — it is derived</h3>
+
+<p>
+There is no <code>facing: NORTH</code> field in the metadata. The anchor vector is already a
+delta from the origin, so the wall can be computed from it. This leaves nowhere for the
+inconsistency "metadata says north but the anchor is in the east wall" to arise.
+</p>
+
+<div class="why">
+  <span class="tag">The principle, stated once and applied everywhere</span>
+  <p>
+    <strong>Every field that can be written is a field that can be written wrong.</strong> The
+    map team will hand-author metadata for forty-plus rooms. Anything derivable is derived: the
+    wall from the anchor, the bounding box from the schematic, the door opening's size and
+    material by measurement (Chapter 14), and the mob spawn points at runtime (Chapter 30). What
+    is left for a human to write is one line per door.
+  </p>
+</div>
+
+<h3>The door need not be in the middle of the wall</h3>
+
+<p>
+Because the anchor is written explicitly, a door can sit anywhere along a wall, and one wall can
+carry several doors. This is not a minor flexibility — it is the engine driving Chapter 11's
+"how the layout stops being a straight line".
+</p>
+
+@@CODE java|DoorAnchor. Note that `wall` is a derived field, filled in by the factory method.@@
+public record DoorAnchor(int index, Vec3i local, Direction wall) {
+
+    /** Builds the door by deriving its wall from the anchor. */
+    public static DoorAnchor of(int index, Vec3i local, Aabb localBox) {
+        return new DoorAnchor(index, local, Direction.ofAnchor(local, localBox));
+    }
+}
+@@END@@
+
+<p>
+<code>index</code> is the door's position in the room's list, and the specification is explicit
+that it is an <strong>address, not a fill order</strong>. Geometry decides which door gets
+filled; the index only tracks which one was connected and which one needs plugging.
+</p>
+
+<h2>7.2 &nbsp;The trap: the naive wall rule</h2>
+
+<p>
+Given an anchor <code>v = (dx, dy, dz)</code>, the obvious rule is "whichever horizontal
+component is larger in absolute value names the axis". In a square room this is correct. In a
+rectangular room it is wrong, and the failure is geometric rather than random — it happens
+reliably in one specific, common situation.
+</p>
+
+@@CODE text|A 9-wide x 25-long corridor. Door in the EAST wall, near the south end.@@
+v = (dx = +4, dz = +11)
+
+naive:   |dz| > |dx|   ->   "south wall"        <- WRONG, the door is in the east wall
+@@END@@
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <!-- room -->
+  <rect x="250" y="24" width="108" height="212" fill="#faf7f1" stroke="#171512" stroke-width="1.6"/>
+  <text x="304" y="16" text-anchor="middle" font-size="10" fill="#6d675f">9 wide × 25 long — test_long</text>
+  <!-- origin -->
+  <circle cx="304" cy="130" r="3.5" fill="#171512"/>
+  <text x="290" y="126" text-anchor="end" font-size="9" fill="#171512">origin</text>
+  <!-- door -->
+  <rect x="354" y="196" width="8" height="20" fill="#b8791f"/>
+  <text x="372" y="210" font-size="9.5" fill="#8a5a11">door anchor</text>
+  <text x="372" y="222" font-size="9.5" fill="#8a5a11">v = (+4, +10)</text>
+  <!-- delta lines -->
+  <path d="M304,130 L358,130" stroke="#b8791f" stroke-dasharray="3 2" stroke-width="1.2"/>
+  <path d="M358,130 L358,206" stroke="#b8791f" stroke-dasharray="3 2" stroke-width="1.2"/>
+  <text x="330" y="124" text-anchor="middle" font-size="9" fill="#8a5a11">dx=+4</text>
+  <text x="366" y="168" font-size="9" fill="#8a5a11">dz=+10</text>
+  <!-- half extents -->
+  <path d="M250,246 L304,246" stroke="#6d675f" stroke-width="1"/>
+  <path d="M304,246 L358,246" stroke="#6d675f" stroke-width="1"/>
+  <text x="332" y="256" text-anchor="middle" font-size="8.6" fill="#6d675f">half width = 4</text>
+  <path d="M238,130 L238,236" stroke="#6d675f" stroke-width="1"/>
+  <text x="232" y="186" text-anchor="end" font-size="8.6" fill="#6d675f">half length = 12</text>
+
+  <!-- verdicts -->
+  <g>
+    <rect x="440" y="34" width="242" height="72" rx="6" fill="#fdf3ef" stroke="#d4633a"/>
+    <text x="452" y="54" font-size="10" font-weight="700" fill="#a8431f">Naive rule — wrong</text>
+    <text x="452" y="72" font-size="9.6" fill="#3d3a36">|dz| = 10  >  |dx| = 4</text>
+    <text x="452" y="88" font-size="9.6" fill="#3d3a36">→ "south wall"</text>
+    <text x="452" y="101" font-size="8.6" fill="#a8431f">the door is not in the south wall</text>
+  </g>
+  <g>
+    <rect x="440" y="122" width="242" height="96" rx="6" fill="#f3f7f4" stroke="#4e8c63"/>
+    <text x="452" y="142" font-size="10" font-weight="700" fill="#33684a">Normalized rule — correct</text>
+    <text x="452" y="160" font-size="9.6" fill="#3d3a36">nx = 4 / 4  = 1.00</text>
+    <text x="452" y="176" font-size="9.6" fill="#3d3a36">nz = 10 / 12 = 0.83</text>
+    <text x="452" y="192" font-size="9.6" fill="#3d3a36">nx ≥ nz  →  dx &gt; 0  →  EAST</text>
+    <text x="452" y="208" font-size="8.6" fill="#33684a">whichever component reaches ±1 is touching its wall</text>
+  </g>
+</svg>
+</div>
+<figcaption><code>test_long</code> exists in the test set purely to catch this. If the formula
+regresses, this room fails immediately.</figcaption>
+</figure>
+
+<h2>7.3 &nbsp;The correct rule: normalize against half-extents</h2>
+
+<p>
+Normalize each component against the room's extent <em>in the direction that component points</em>.
+Whichever normalized value reaches &plusmn;1 is the wall the point is touching.
+</p>
+
+@@CODE java|Direction.ofAnchor — the §4 calculation.@@
+public static Direction ofAnchor(Vec3i local, Aabb localBox) {
+    double nx = ratio(local.x(), localBox.maxX(), -localBox.minX());
+    double nz = ratio(local.z(), localBox.maxZ(), -localBox.minZ());
+
+    if (nx == 0.0 && nz == 0.0) {
+        throw new IllegalArgumentException(
+                "Door anchor coincides with the room origin — no wall can be derived: " + local);
+    }
+    // X wins ties. The rule is fixed so that a corner anchor never leaves the choice ambiguous.
+    if (nx >= nz) {
+        return local.x() > 0 ? EAST : WEST;
+    }
+    return local.z() > 0 ? SOUTH : NORTH;
+}
+
+/**
+ * The component's ratio against the extent in the direction it points.
+ * If the extent is 0 (the origin sits right on that edge) the ratio counts as infinite:
+ * the point is already on that wall.
+ */
+private static double ratio(int delta, int positiveExtent, int negativeExtent) {
+    if (delta == 0) {
+        return 0.0;
+    }
+    int extent = delta > 0 ? positiveExtent : negativeExtent;
+    if (extent <= 0) {
+        return Double.POSITIVE_INFINITY;
+    }
+    return Math.abs(delta) / (double) extent;
+}
+@@END@@
+
+<p>Three details in that code are worth pausing on.</p>
+
+<dl>
+  <dt>Normalization is per direction, not per axis.</dt>
+  <dd>East and west extents are read separately (<code>maxX</code> and <code>-minX</code>). Since
+  the odd-side-length rule was dropped, the origin no longer has to sit at the room's exact
+  middle, so the room may be asymmetric about it. A single "half width" value would give the
+  wrong answer for an asymmetric room.</dd>
+
+  <dt>Ties go to X, deliberately.</dt>
+  <dd>An anchor in a corner reaches &plusmn;1 on both axes. Leaving that ambiguous would make
+  placement depend on floating-point noise. The rule is fixed rather than clever.</dd>
+
+  <dt>A zero extent means infinite ratio.</dt>
+  <dd>If the origin sits exactly on an edge, the extent in that direction is 0 and dividing would
+  be meaningless. The point is already on that wall, so the ratio is treated as infinite.</dd>
+</dl>
+
+<div class="warn">
+  <span class="tag">Why this bug class is dangerous</span>
+  <p>
+    In a square room the naive and correct rules give the same answer. The bug is therefore
+    <strong>invisible in test rooms</strong> and only appears when the first rectangular room
+    arrives — which, in a project whose room set is built in a separate phase by a separate team,
+    could be months later. That is why <code>test_long</code> is a permanent fixture rather than
+    a one-off check.
+  </p>
+</div>
+
+<h2>7.4 &nbsp;A real edge case that was caught</h2>
+
+<p>
+While building the test rooms, <code>test_long</code>'s east door was placed at offset
+<code>+11</code>, which pushed a 3-block opening onto the wall's corner block — in a 25-long
+wall, the last valid centre for a 3-wide opening is 22. A bounds check inside
+<code>carveDoor</code> made this fail loudly at <code>/tdungeons gen</code> time rather than
+producing a subtly broken room, and the offset was pulled back to <code>+10</code>.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>An anchor is the base-centre block of the opening, in local coordinates. Facing is
+        derived, never stored.</li>
+    <li>The door index is an address, not a fill order.</li>
+    <li>The naive <code>|dx| &gt; |dz|</code> rule is correct only in square rooms; the correct
+        rule normalizes each component against the extent in its own direction.</li>
+    <li>Normalization is per direction because rooms may be asymmetric about their origin.</li>
+    <li><code>test_long</code> is a permanent regression test for exactly this.</li>
+  </ul>
+</div>

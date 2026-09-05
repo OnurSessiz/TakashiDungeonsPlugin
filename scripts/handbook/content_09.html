@@ -1,0 +1,519 @@
+<h1><span class="chapnum">Chapter 19</span>What an instance is, and what is deliberately not stored</h1>
+
+<p class="lead">
+<code>DungeonInstance</code> is the object that owns a live dungeon. Reading it is mostly an
+exercise in noticing what is <em>absent</em>: the class is careful about what it keeps in memory
+and equally careful about what it refuses to.
+</p>
+
+<h2>19.1 &nbsp;Identity is four values</h2>
+
+<div class="quote">
+  <span class="tag">Stated in the class comment</span>
+  <p>
+    "The identity of a dungeon is the quadruple <strong>slot + theme + size + seed</strong> — hand
+    those four back to <code>DungeonGenerator</code> and the same rooms come out in the same
+    places. So phase 7 will write four columns, not a layout dump."
+  </p>
+</div>
+
+<p>
+The generated <code>DungeonGenerator.Result</code> <em>is</em> kept in memory, but for two reasons
+that only apply while the instance is alive: <code>bounds()</code> is the exact volume to wipe on
+close, and Phase 3 needs the room graph to know where to spawn what. Neither survives a restart,
+and neither needs to.
+</p>
+
+<h2>19.2 &nbsp;The state machine</h2>
+
+@@CODE java|!InstanceState — four states, one direction.@@
+/**
+ * BUILDING → ACTIVE → CLOSING → CLOSED — a state never moves backwards, and the transition
+ * is enforced rather than assumed. The reason is the same one that made LayoutNode's door
+ * states one-way: closing runs across several ticks (evict → clear → unload → release) and a
+ * second close landing in the middle of the first would release the slot twice and hand the
+ * same square to two parties.
+ */
+public enum InstanceState {
+    /** Rooms are being generated and pasted. Nobody may enter yet. */
+    BUILDING,
+    /** Standing, walkable, players may be inside. */
+    ACTIVE,
+    /** Teardown started: players are out, blocks are being wiped. */
+    CLOSING,
+    /** Gone. The slot has been returned to the pool and may already hold another dungeon. */
+    CLOSED
+}
+@@END@@
+
+<p>
+<code>advanceTo</code> returns <code>false</code> on an illegal transition, and
+<code>close()</code> converts that into a failed future rather than a silent no-op — so the caller
+sees an error instead of a double free.
+</p>
+
+<h2>19.3 &nbsp;The cleanup volume</h2>
+
+<p>
+An instance's <code>bounds()</code> is the <strong>union of its placed rooms</strong>, grown by
+one block of margin and then clamped to the slot.
+</p>
+
+@@CODE java|The margin, and the reasoning for it.@@
+/**
+ * How far the wiped box reaches past the rooms themselves.
+ *
+ * Doors are plugged inside their own room's box, so in principle the union of the rooms is
+ * exactly what was written. One block of slack costs nothing on a volume this size and covers
+ * the off-by-one class of mistake — a wipe that misses is far more expensive than one that
+ * clears a shell of air.
+ */
+private static final int CLEANUP_MARGIN = 1;
+@@END@@
+
+<p>
+The clamp is a second lock on the same door: generation already refuses to place a room that
+overruns its slot, but if one ever did, an unclamped cleanup would overrun too and eat the
+neighbouring instance's blocks.
+</p>
+
+<div class="why">
+  <span class="tag">The number that justifies all of this</span>
+  <p>
+    A slot is 512&times;384&times;512 &asymp; <strong>100 million blocks</strong>. A measured
+    five-room small dungeon occupies a 61&times;17&times;56 box, of which
+    <strong>6,551 blocks actually changed</strong>, cleared in 155 ms. Wiping the whole slot
+    instead would turn "close instance" into a visible server stall.
+  </p>
+</div>
+
+<h2>19.4 &nbsp;Two collections, two different questions</h2>
+
+@@CODE java|Membership, and the per-player return location.@@
+/**
+ * Who is inside, in the order they entered.
+ *
+ * Membership is DECLARED, not derived from position: a player who logged out inside is still a
+ * member, and one who fell through a hole into the void below the rooms has not left. Position
+ * answers a different question — instanceAt — and the two are used for different things: this
+ * set decides who sees the boss bar and who gets teleported home, position decides who gets
+ * swept out of a slot about to be wiped.
+ */
+private final Set<UUID> players = new LinkedHashSet<>();
+
+/**
+ * Where each player came from.
+ *
+ * Kept per player, not per instance: a party can gather from anywhere, and sending everybody to
+ * whoever entered first came from would be a teleport exploit rather than a courtesy.
+ */
+private final Map<UUID, Location> returnLocations = new LinkedHashMap<>();
+@@END@@
+
+<p>
+The return location is <strong>not overwritten</strong> on re-entry. A player whose connection
+dropped and who came back should go to where they originally started, not to wherever they
+happened to be standing the second time.
+</p>
+
+<h2>19.5 &nbsp;The idle timer arms late, on purpose</h2>
+
+@@CODE java|Two fields that exist to protect one specific person.@@
+/**
+ * When the instance last became empty, or -1.
+ *
+ * Only armed once somebody has actually been inside. A dungeon an operator generated and never
+ * entered has been empty since birth, and killing it on that basis would delete rooms out from
+ * under whoever is inspecting them.
+ */
+private long emptySince = -1;
+private boolean everOccupied;
+@@END@@
+
+<p>
+This is a recurring shape in the codebase: a rule that is correct in general gets an explicit
+exception for the case where following it would delete the work of the person operating the
+server.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>A dungeon's identity is slot + theme + size + seed. Phase 7 stores four columns.</li>
+    <li>State is one-way and enforced; a second close fails rather than double-freeing the slot.</li>
+    <li>The wipe volume is the union of the rooms plus one block, clamped to the slot — 6,551
+        blocks rather than 100 million.</li>
+    <li>Membership and position are two different questions with two different answers.</li>
+    <li>The empty-timeout only arms after somebody has actually been inside.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 20</span>Creation: the order of paste, plug, register, populate</h1>
+
+<p class="lead">
+<code>InstanceManager.create</code> is a chain of futures, and the order of its links is load
+bearing at three points. This chapter walks the chain and explains each of them.
+</p>
+
+<h2>20.1 &nbsp;The chain</h2>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs><marker id="ar7" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#8a8278"/></marker></defs>
+  <g font-size="9.6" fill="#3d3a36">
+    <rect x="30" y="20" width="160" height="40" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <text x="110" y="38" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">allocate slot</text>
+    <text x="110" y="52" text-anchor="middle" font-size="8.8" fill="#6d675f">main thread</text>
+
+    <rect x="30" y="86" width="160" height="40" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <text x="110" y="104" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">generate graph</text>
+    <text x="110" y="118" text-anchor="middle" font-size="8.8" fill="#6d675f">pure, no blocks touched</text>
+
+    <rect x="30" y="152" width="160" height="40" rx="6" fill="#faf7f1" stroke="#b8791f" stroke-width="1.5"/>
+    <text x="110" y="170" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">paste rooms</text>
+    <text x="110" y="184" text-anchor="middle" font-size="8.8" fill="#8a5a11">chained — order deterministic</text>
+
+    <rect x="30" y="218" width="160" height="40" rx="6" fill="#faf7f1" stroke="#b8791f" stroke-width="1.5"/>
+    <text x="110" y="236" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">plug doors</text>
+    <text x="110" y="250" text-anchor="middle" font-size="8.8" fill="#8a5a11">after every paste</text>
+
+    <rect x="270" y="152" width="160" height="40" rx="6" fill="#f3f7f4" stroke="#4e8c63" stroke-width="1.5"/>
+    <text x="350" y="170" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">register instance</text>
+    <text x="350" y="184" text-anchor="middle" font-size="8.8" fill="#33684a">BUILDING → ACTIVE</text>
+
+    <rect x="270" y="86" width="160" height="40" rx="6" fill="#f3f7f4" stroke="#4e8c63" stroke-width="1.5"/>
+    <text x="350" y="104" text-anchor="middle" font-size="10.4" font-weight="700" fill="#171512">populate mobs</text>
+    <text x="350" y="118" text-anchor="middle" font-size="8.8" fill="#33684a">main thread</text>
+
+    <rect x="270" y="20" width="160" height="40" rx="6" fill="#171512"/>
+    <text x="350" y="38" text-anchor="middle" font-size="10.4" font-weight="700" fill="#f4b13c">future completes</text>
+    <text x="350" y="52" text-anchor="middle" font-size="8.8" fill="#c8c0b2">caller opens the door</text>
+
+    <path d="M110,60 L110,82" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)"/>
+    <path d="M110,126 L110,148" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)"/>
+    <path d="M110,192 L110,214" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)"/>
+    <path d="M190,238 L250,190" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)" fill="none"/>
+    <path d="M350,152 L350,130" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)"/>
+    <path d="M350,86 L350,64" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar7)"/>
+
+    <rect x="470" y="86" width="212" height="140" rx="6" fill="#fdf3ef" stroke="#d4633a"/>
+    <text x="484" y="108" font-size="10" font-weight="700" fill="#a8431f">The failure path</text>
+    <text x="484" y="128">If anything before "register" throws,</text>
+    <text x="484" y="144">the ONLY thing held is the slot.</text>
+    <text x="484" y="164">Recovery wipes the <tspan font-weight="700">whole slot</tspan>, not</text>
+    <text x="484" y="180">the rooms' union — the failure may</text>
+    <text x="484" y="196">have happened mid-paste, so which</text>
+    <text x="484" y="212">rooms landed is exactly what is</text>
+  </g>
+  <text x="484" y="222" font-size="9.6" fill="#3d3a36">not known.</text>
+</svg>
+</div>
+<figcaption>The one path in the system that pays for a full-slot clear — and it is the rare
+one.</figcaption>
+</figure>
+
+<h2>20.2 &nbsp;Pastes are chained, not parallel</h2>
+
+@@CODE java|InstanceManager.paste — thenCompose, one room at a time.@@
+/** Pastes the rooms one after another — chained so the order stays deterministic. */
+private CompletableFuture<Long> paste(SchematicService service, World world,
+                                      DungeonGenerator.Result result) {
+    CompletableFuture<Long> chain = CompletableFuture.completedFuture(0L);
+    for (LayoutNode node : result.layout().nodes()) {
+        PlacedRoom room = node.room();
+        chain = chain.thenCompose(ignored -> service.load(room.template().name())
+                .thenCompose(clip -> {
+                    Vec3i o = room.origin();
+                    return service.paste(clip, world, o.x(), o.y(), o.z(),
+                            room.rotation().degrees(), false);
+                }));
+    }
+    return chain;
+}
+@@END@@
+
+<p>
+Rooms do not overlap, so parallel pasting would be safe in principle — but chaining keeps the
+sequence deterministic, which matters for reproducing a report and for reasoning about what
+happened when something goes wrong mid-generation.
+</p>
+
+<h2>20.3 &nbsp;Registration happens only once the dungeon stands</h2>
+
+<div class="why">
+  <span class="tag">Why not register first and fill in later?</span>
+  <p>
+    Because publishing a half-pasted dungeon would let a player be sent into rooms that do not
+    exist yet. And on failure there would be a registered instance whose teardown has to undo a
+    teardown that never started. Until the paste is done, the only thing held is the slot, and the
+    failure path returns it.
+  </p>
+</div>
+
+<h2>20.4 &nbsp;Population comes before the future completes</h2>
+
+@@CODE java|!InstanceManager.populate — the ordering argument, and the error policy.@@
+/**
+ * Fills the rooms with mobs, on the main thread, BEFORE the future completes.
+ *
+ * The ordering is the point: whoever asked for this dungeon opens the door the moment the
+ * future resolves. Populating afterwards would let a player walk into an empty hall and watch
+ * mobs blink into existence around them. A tick's pause before the door opens is invisible;
+ * a room that fills up behind you is not.
+ *
+ * A failure here never fails the instance. A dungeon with no mobs is a disappointing dungeon;
+ * a dungeon that failed to generate is a held slot and a player standing at a portal being
+ * told nothing.
+ */
+@@END@@
+
+<p>
+Two distinct policies in one method, and both are worth naming. The <em>ordering</em> policy trades
+an invisible cost (one tick) against a visible one (mobs appearing around the player). The
+<em>error</em> policy ranks two failure modes and accepts the cheaper one.
+</p>
+
+<h2>20.5 &nbsp;The close callback seam</h2>
+
+@@CODE java|A callback rather than a direct call — and the reason names phase 8.@@
+/**
+ * Called once per instance, after it has been torn down.
+ *
+ * A callback rather than a direct call into the portal layer: instances must not have to know
+ * what opened them. Phase 8's DungeonCompleteEvent hangs off the same seam.
+ */
+private final List<java.util.function.Consumer<DungeonInstance>> closeHandlers = new ArrayList<>();
+@@END@@
+
+<p>
+The portal layer registers here to learn that its dungeon ended. A listener that throws is logged
+and the teardown continues — by that point the slot has already been released by design, so
+aborting would leave the system in a worse state than carrying on.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Allocate → generate → paste → plug → register → populate → complete.</li>
+    <li>Pastes are chained for determinism, not for safety.</li>
+    <li>Registration happens only once the dungeon stands; before that the only thing held is the
+        slot.</li>
+    <li>The failure path wipes the whole slot because which rooms landed is exactly what is
+        unknown.</li>
+    <li>Mobs are placed before the future resolves; a population failure never fails the
+        instance.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 21</span>Teardown: five steps, and why each one is where it is</h1>
+
+<p class="lead">
+The class comment for <code>InstanceManager</code> says "the teardown order is the whole design",
+and it is not overstating. Each of the five steps is in its position because moving it breaks
+something specific and identifiable.
+</p>
+
+<h2>21.1 &nbsp;The order</h2>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 330" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <g font-size="9.6" fill="#3d3a36">
+    <rect x="24" y="16" width="652" height="56" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="52" cy="44" r="13" fill="#171512"/><text x="52" y="48" text-anchor="middle" fill="#f4b13c" font-size="11" font-weight="700">1</text>
+    <text x="78" y="38" font-size="11" font-weight="700" fill="#171512">Players out</text>
+    <text x="78" y="54" >A player still standing there when the floor is deleted falls through the void of a world</text>
+    <text x="78" y="66" >that is about to be reused. Members go to their OWN return location first.</text>
+
+    <rect x="24" y="80" width="652" height="56" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="52" cy="108" r="13" fill="#171512"/><text x="52" y="112" text-anchor="middle" fill="#f4b13c" font-size="11" font-weight="700">2</text>
+    <text x="78" y="102" font-size="11" font-weight="700" fill="#171512">Entities out</text>
+    <text x="78" y="118" >WorldEdit wipes BLOCKS only. Mobs, dropped items and item frames survive it and would</text>
+    <text x="78" y="130" >greet the next dungeon in that slot. Chunks must be loaded first — see below.</text>
+
+    <rect x="24" y="144" width="652" height="42" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="52" cy="165" r="13" fill="#171512"/><text x="52" y="169" text-anchor="middle" fill="#f4b13c" font-size="11" font-weight="700">3</text>
+    <text x="78" y="160" font-size="11" font-weight="700" fill="#171512">Blocks wiped</text>
+    <text x="78" y="176" >The union of the placed rooms, not the 512-block slot. Measured: 6,551 blocks, 155 ms.</text>
+
+    <rect x="24" y="194" width="652" height="42" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="52" cy="215" r="13" fill="#171512"/><text x="52" y="219" text-anchor="middle" fill="#f4b13c" font-size="11" font-weight="700">4</text>
+    <text x="78" y="210" font-size="11" font-weight="700" fill="#171512">Chunks unloaded</text>
+    <text x="78" y="226" >The memory is the point. An instance that closes without unloading leaves its chunks resident.</text>
+
+    <rect x="24" y="244" width="652" height="56" rx="6" fill="#faf7f1" stroke="#b8791f" stroke-width="1.6"/>
+    <circle cx="52" cy="272" r="13" fill="#b8791f"/><text x="52" y="276" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">5</text>
+    <text x="78" y="266" font-size="11" font-weight="700" fill="#171512">Slot released — LAST</text>
+    <text x="78" y="282" >Released first, an allocation racing the wipe would receive a square whose blocks are</text>
+    <text x="78" y="294" >still being deleted. The two parties would then be writing into the same volume.</text>
+  </g>
+  <text x="24" y="320" font-size="9" fill="#6d675f">Steps 1, 2, 4 and 5 run on the main thread; step 3 takes the same threading decision as pasting.</text>
+</svg>
+</div>
+<figcaption>Move any step and something identifiable breaks. That is what "the order is the
+design" means.</figcaption>
+</figure>
+
+<h2>21.2 &nbsp;The code</h2>
+
+@@CODE java|InstanceManager.close — the shape of the chain mirrors the order above.@@
+long start = System.currentTimeMillis();
+CompletableFuture<int[]> evicted = onMainThread(() -> {
+    // Registered members go to their own return location; the positional sweep that
+    // follows is for anyone standing in the slot without being a member — an operator
+    // who walked in, or a player mid-fall.
+    int home = instance.playerCount();
+    sendEveryoneHome(instance);
+    return new int[]{home + evictPlayers(world, instance), removeEntities(world, instance)};
+});
+
+return evicted
+        .thenCompose(counts -> cleaner.clear(world, instance.bounds())
+                .thenApply(report -> new int[]{counts[0], counts[1], report.blocks()}))
+        .thenCompose(counts -> onMainThread(() -> {
+            int chunks = unloadChunks(world, instance);
+            plugin.getSlotManager().release(instance.slot().index());
+            unregister(instance);
+            instance.advanceTo(InstanceState.CLOSED);
+            notifyClosed(instance);
+            ...
+        }));
+@@END@@
+
+<p>
+Note the two-stage player removal. Members are sent to their <em>own</em> return locations first;
+only then does a positional sweep collect anyone else standing in the slot. If only the sweep ran,
+everybody would be dropped at world spawn — including the party that entered from a lobby portal
+fifty blocks away.
+</p>
+
+<h2>21.3 &nbsp;The entity sweep needs its chunks loaded</h2>
+
+@@CODE java|removeEntities — and the trap that made this necessary.@@
+/**
+ * THE CHUNKS ARE LOADED FIRST, AND THAT IS THE WHOLE POINT. FAWE does not leave the chunks it
+ * wrote resident — the same fact that makes `execute if block` need a `forceload` in manual
+ * testing. An entity search only sees loaded chunks, so without this the mobs of a closed
+ * dungeon would stay asleep in the region files and wake up inside the next party's dungeon.
+ * Loading is not extra work either: the wipe that follows has to load exactly these chunks
+ * anyway, and unloadChunks then has something real to release.
+ *
+ * Players are excluded — they were teleported out a step earlier, and anyone who slipped in
+ * since is a bug to notice, not an entity to delete.
+ */
+private int removeEntities(World world, DungeonInstance instance) {
+    Aabb box = instance.bounds();
+    for (int cx = box.minX() >> 4; cx <= box.maxX() >> 4; cx++) {
+        for (int cz = box.minZ() >> 4; cz <= box.maxZ() >> 4; cz++) {
+            world.getChunkAt(cx, cz);
+        }
+    }
+    ...
+}
+@@END@@
+
+<div class="trap">
+  <span class="tag">How this was caught</span>
+  <p>
+    The first test close reported <code>0 entities removed</code> where it should have reported
+    <code>2</code>. That single wrong number is the whole bug: without the fix, a closed dungeon's
+    mobs sleep in the region files and wake up inside the next party's dungeon. A number being
+    zero is easy to overlook — which is exactly why the close report prints counts at all.
+  </p>
+</div>
+
+<h2>21.4 &nbsp;unloadChunk's return value is deliberately ignored</h2>
+
+@@CODE java|A case where trusting the API's boolean produced a wrong report.@@
+/**
+ * THE RETURN VALUE IS DELIBERATELY IGNORED. Paper's chunk system is ticket-based:
+ * unloadChunk is a request, it answers false whenever something still holds a ticket —
+ * including the one the entity sweep just took — and the chunk is dropped when the last holder
+ * lets go. Counting only the calls that returned true therefore reported a flat zero on every
+ * close while the chunks did in fact come out of memory. What is counted is what was asked
+ * for, which is the part this method controls.
+ *
+ * Saved rather than dropped: with reset-on-start off, dropping them would leave the pre-wipe
+ * blocks on disk and the deleted dungeon would come back on the next load. The chunks are pure
+ * air by this point, so the write is cheap.
+ */
+@@END@@
+
+<p>
+There is a third detail in the same method: a <strong>forceloaded chunk is skipped</strong>.
+Forceloading is what an operator does to run block verification (Chapter 2's trap 1), and silently
+unpinning it would break their diagnosis mid-investigation.
+</p>
+
+<h2>21.5 &nbsp;What close does not do</h2>
+
+<dl>
+  <dt><code>onDisable</code> does not delete blocks.</dt>
+  <dd>Shutdown is not a teardown. The world is reset on the next start anyway, so wiping now would
+  only lengthen the stop. The one thing <code>onDisable</code> does is move players out of the
+  dungeon world — because their exit location outlives the instance.</dd>
+
+  <dt><code>/tdungeons free</code> is not <code>close</code>.</dt>
+  <dd>It releases a raw slot and still leaves blocks, deliberately, for the manual
+  <code>paste</code> and <code>connect</code> commands. Using it on an instance leaves the dungeon
+  standing while the slot gets handed out again.</dd>
+
+  <dt>Instance ids are never reused.</dt>
+  <dd>Slot indices are. A slot is a <em>place</em> and may be handed out again; an instance is an
+  <em>event</em>. Reusing the number would make a log line about "instance#3" ambiguous between two
+  different dungeons.</dd>
+</dl>
+
+<h2>21.6 &nbsp;The rescue on join</h2>
+
+<p>
+A player who logs out inside an instance has that position written to their player data. The
+instance does not survive the restart, so on their next join they load into a void world standing
+on nothing. The same happens, without a restart, to anyone who is offline when their dungeon
+expires.
+</p>
+
+@@CODE java|InstanceListener.onJoin — and the reason it fires only on join.@@
+DungeonInstance standing = instances.instanceAt(loc);
+if (standing != null && standing.contains(event.getPlayer().getUniqueId())) {
+    // Their dungeon is still up and they are still a member: put them back on the bar
+    // and leave them where they were. Logging out is not leaving.
+    standing.showBar(event.getPlayer());
+    return;
+}
+instances.teleportInternal(event.getPlayer(), instances.fallbackExit());
+@@END@@
+
+<div class="why">
+  <span class="tag">Why join, and not every world change</span>
+  <p>
+    Entering the dungeon world is a legitimate thing to do — <code>/tdungeons world</code> puts an
+    operator there on purpose, and the portal puts players there. A rescue that fired on every
+    world change would drag them straight back out. Logging in, by contrast, is never a deliberate
+    entry: the position is a leftover.
+  </p>
+</div>
+
+<h2>21.7 &nbsp;Verified</h2>
+
+<p>
+Console-verified on 2 September 2026. The floor block at <code>(256,63,256)</code>: solid after
+generation &rarr; air after <code>close</code> &rarr; solid again after regenerating into the same
+slot, with no overlap. The close report read 6,551 blocks, 25 chunks, 2 entities (a zombie and an
+armour stand), 155 ms. Six chunk files were deleted at startup. No exceptions in the log.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Players out, entities out, blocks wiped, chunks unloaded, slot released — last.</li>
+    <li>Members go to their own return locations before the positional sweep, or everyone lands at
+        world spawn.</li>
+    <li>The entity sweep must load chunks first; FAWE leaves them unloaded and an entity search
+        only sees loaded ones.</li>
+    <li><code>unloadChunk</code>'s boolean is a ticket answer, not a success answer.</li>
+    <li>Shutdown is not teardown; <code>free</code> is not <code>close</code>; instance ids are
+        never reused.</li>
+  </ul>
+</div>

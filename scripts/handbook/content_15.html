@@ -1,0 +1,312 @@
+<h1><span class="chapnum">Chapter 34</span>Command reference</h1>
+
+<p class="lead">
+Every subcommand of <code>/tdungeons</code> (aliases <code>/td</code>,
+<code>/takashidungeons</code>; permission <code>takashidungeons.admin</code>, default op), grouped
+by what it is for.
+</p>
+
+<h2>34.1 &nbsp;Status and inspection</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons version</code></td><td>Version and author. One of the three places attribution travels.</td></tr>
+    <tr><td><code>/tdungeons status</code></td><td>The soft-integration table: WorldEdit, FastAsyncWorldEdit, MythicMobs, Vault. Detected once at enable — a plugin loaded later via PlugMan will not appear until reload.</td></tr>
+    <tr><td><code>/tdungeons world</code></td><td>Teleport to the dungeon world. A legitimate entry, which is why the join rescue does not fire on world change.</td></tr>
+    <tr><td><code>/tdungeons slots</code></td><td>Allocated slots.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.2 &nbsp;Rooms and themes</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons list</code></td><td>Schematic files on disk.</td></tr>
+    <tr><td><code>/tdungeons rooms</code></td><td>Loaded templates with type, weight, size and door count.</td></tr>
+    <tr><td><code>/tdungeons room &lt;name&gt;</code></td><td>One template in detail: each door's anchor and derived wall.</td></tr>
+    <tr><td><code>/tdungeons themes</code></td><td>Per theme: room count, entrance/boss/normal split, multi-door count, and a warning if an entrance or boss is missing.</td></tr>
+    <tr><td><code>/tdungeons weights [pool]</code></td><td>The weighted draw distribution as percentages. Matches <code>GenProbe</code>'s measured numbers exactly.</td></tr>
+    <tr><td><code>/tdungeons gen</code></td><td>Generate the eight placeholder test rooms, <code>.schem</code> and <code>.yml</code> both.</td></tr>
+    <tr><td><code>/tdungeons extract [force]</code></td><td>Extract bundled rooms from the jar. Never overwrites without <code>force</code>. Clears both caches if anything was written.</td></tr>
+    <tr><td><code>/tdungeons reload</code></td><td>Re-read templates, mob registry and HUD from disk. Runs the non-WorldEdit parts first, so a server without WorldEdit can still reload them.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.3 &nbsp;Manual geometry testing</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons paste &lt;room&gt; [rot]</code></td><td>Paste a single room into a raw slot.</td></tr>
+    <tr><td><code>/tdungeons connect &lt;a&gt; &lt;b&gt; [doorA] [doorB]</code></td><td>Attach two rooms by their doors and report the computed R, origin and box — the values that were hand-checked against the specification.</td></tr>
+    <tr><td><code>/tdungeons free &lt;index&gt;</code></td><td>Release a raw slot. <b>Leaves blocks behind, deliberately.</b> Not a substitute for <code>close</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.4 &nbsp;Dungeons and instances</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons dungeon &lt;theme&gt; [size] [seed]</code></td>
+      <td>Generate a full dungeon and register it as an instance, then <b>put the caller inside</b>
+      (not teleport them to the coordinates — see Chapter 23). The theme is implied when only one
+      exists. Same seed, same dungeon.</td></tr>
+    <tr><td><code>/tdungeons instances</code></td><td>Id, theme/size, room count, slot, state, age, remaining time, players inside.</td></tr>
+    <tr><td><code>/tdungeons enter &lt;id&gt;</code></td><td>Join an instance as a member.</td></tr>
+    <tr><td><code>/tdungeons leave</code></td><td>Leave. Admin-permission only today; the real exit is the portal.</td></tr>
+    <tr><td><code>/tdungeons close &lt;id|all&gt;</code></td><td>Full teardown, reporting blocks, chunks, entities, players and milliseconds.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.5 &nbsp;Portals</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons portal list</code></td><td>Id, kind, state, bound instance, position.</td></tr>
+    <tr><td><code>/tdungeons portal create [size] [theme]</code></td><td>Place a <b>lobby</b> portal where you stand. Wild portals are never placed on request — that would be a contradiction.</td></tr>
+    <tr><td><code>/tdungeons portal remove &lt;id|all&gt;</code></td><td>Remove, restoring the previous block if the plugin placed it.</td></tr>
+    <tr><td><code>/tdungeons portal tp &lt;id&gt;</code></td><td>Teleport to a portal.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.6 &nbsp;Mobs</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/tdungeons mob list [class]</code></td><td>Definitions, with disabled entries marked in red <em>and their reason</em>.</td></tr>
+    <tr><td><code>/tdungeons mob info &lt;id&gt;</code></td><td>One definition, including the <b>resolved</b> <code>statOverride</code> and where that value came from.</td></tr>
+    <tr><td><code>/tdungeons mob spawn &lt;id&gt; [difficulty]</code></td><td>Spawn one where you are looking, with stats applied.</td></tr>
+    <tr><td><code>/tdungeons mob providers</code></td><td>Each provider's availability and known key count.</td></tr>
+    <tr><td><code>/tdungeons mob reload</code></td><td>Re-read <code>mobs.yml</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.7 &nbsp;HUD</h2>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Command</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>/hud [on|off]</code></td><td>Player-facing. Permission <code>takashidungeons.hud</code>, <b>default true</b>. Aliases <code>/tdhud</code>, <code>/dhud</code>. The preference is session-only — persisting it would mean player data in YAML.</td></tr>
+    <tr><td><code>/tdungeons hud</code></td><td>Show current HUD settings.</td></tr>
+    <tr><td><code>/tdungeons hud name &lt;text&gt;</code></td><td>Write the server name into <code>config.yml</code> and repaint every open sidebar. Comments in the file are preserved.</td></tr>
+    <tr><td><code>/tdungeons hud ip &lt;text&gt;</code></td><td>Same for the IP line.</td></tr>
+  </tbody>
+</table>
+
+<h2>34.8 &nbsp;Permissions</h2>
+
+<table class="small">
+  <thead><tr><th style="width:38%">Node</th><th style="width:14%">Default</th><th>Grants</th></tr></thead>
+  <tbody>
+    <tr><td><code>takashidungeons.admin</code></td><td>op</td><td>All of <code>/tdungeons</code></td></tr>
+    <tr><td><code>takashidungeons.hud</code></td><td><b>true</b></td><td>Toggling your own sidebar</td></tr>
+    <tr><td><code>takashidungeons.teleport.bypass</code></td><td>op</td><td>Teleporting into and out of dungeons — the admin exception to the no-teleport rule</td></tr>
+  </tbody>
+</table>
+
+<h1><span class="chapnum">Chapter 35</span>Configuration reference</h1>
+
+<p class="lead">
+Two files. <code>config.yml</code> holds everything except the mob set;
+<code>mobs.yml</code> holds the mob set, separately, because Phase 9's GUI will rewrite it and a
+rewritten file loses its comments.
+</p>
+
+<h2>35.1 &nbsp;config.yml</h2>
+
+<h3><code>dungeon-world</code></h3>
+<table class="small">
+  <thead><tr><th style="width:26%">Key</th><th style="width:14%">Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>name</code></td><td><code>takashi_dungeons</code></td><td>Keep it unique so it cannot collide with another world.</td></tr>
+    <tr><td><code>slot-size</code></td><td>512</td><td>Must exceed the largest possible dungeon's footprint. Changing it after the world has content shifts all slot geometry.</td></tr>
+    <tr><td><code>columns</code></td><td>32</td><td>512 &times; 32 = 16,384 blocks along X, well inside the world border.</td></tr>
+    <tr><td><code>base-y</code></td><td>64</td><td>The Y rooms are seated at.</td></tr>
+    <tr><td><code>reset-on-start</code></td><td>true</td><td>Wipes chunk files at startup. Turn off only if you deliberately build something permanent here. <code>level.dat</code> is never touched.</td></tr>
+  </tbody>
+</table>
+
+<h3><code>schematics</code></h3>
+<table class="small">
+  <thead><tr><th style="width:26%">Key</th><th style="width:14%">Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>extract-bundled</code></td><td>true</td><td>Off means zero rooms on a clean install. Only servers managing their own room set should disable it.</td></tr>
+    <tr><td><code>force-sync-paste</code></td><td>false</td><td>Diagnostic only. On, generating a large dungeon costs TPS.</td></tr>
+  </tbody>
+</table>
+
+<h3><code>generation</code></h3>
+<table class="small">
+  <thead><tr><th style="width:26%">Key</th><th style="width:14%">Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>turn-bias</code></td><td>2.0</td><td>1.0 = no penalty; 2.0 = a straight option still jumps ahead half the time; higher = turns dominate. Applied at <b>door</b> selection, never template selection.</td></tr>
+    <tr><td><code>max-attempts</code></td><td>8</td><td>Retries with a derived seed when the path falls short. When they run out, the best attempt is used <em>and warned about</em>.</td></tr>
+    <tr><td><code>plug-open-doors</code></td><td>true</td><td>Off, players walk out of rooms into the void. Useful while debugging to see where the graph choked.</td></tr>
+  </tbody>
+</table>
+
+<h3><code>instance</code></h3>
+<table class="small">
+  <thead><tr><th style="width:26%">Key</th><th style="width:20%">Default / shipped</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>duration-seconds</code></td><td>1800 <span style="color:#a8431f">(300 in the current file — a test value)</span></td><td><b>Fixed at creation.</b> Changing it does not affect open instances.</td></tr>
+    <tr><td><code>empty-timeout-seconds</code></td><td>300 <span style="color:#a8431f">(60 currently)</span></td><td>0 disables. Only arms after somebody has been inside.</td></tr>
+    <tr><td><code>warn-seconds</code></td><td><code>[300, 60, 10]</code> <span style="color:#a8431f">([120, 60, 10] currently)</span></td><td>Each fires once, only while somebody is inside, and fires <em>below</em> the threshold rather than at it.</td></tr>
+    <tr><td><code>boss-bar.enabled</code></td><td>true</td><td>Off, the timer still works; it is just invisible.</td></tr>
+    <tr><td><code>boss-bar.title</code></td><td>MiniMessage</td><td>Placeholders <code>&lt;time&gt; &lt;theme&gt; &lt;size&gt; &lt;rooms&gt;</code>, all unparsed. Read every tick.</td></tr>
+  </tbody>
+  <caption>The shipped file carries deliberately short test values, marked as such in its own
+  comments and scheduled to be restored before release.</caption>
+</table>
+
+<h3><code>portal</code></h3>
+<table class="small">
+  <thead><tr><th style="width:30%">Key</th><th style="width:18%">Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>block</code> / <code>item</code> / <code>label</code></td><td>amethyst block / amethyst shard / "Dungeon"</td><td>Placeholder visual, fully configurable.</td></tr>
+    <tr><td><code>size</code></td><td><code>medium</code></td><td>Size of the dungeon a right-click opens.</td></tr>
+    <tr><td><code>theme</code></td><td>empty</td><td>Empty means: use the only theme if there is one; refuse with a reason if there are several.</td></tr>
+    <tr><td><code>lobby.refresh-hours</code></td><td><code>[0, 12]</code></td><td>Hours of the day, not a duration — so a server can announce them. Empty means no wait.</td></tr>
+    <tr><td><code>lobby.points</code></td><td><code>[]</code></td><td>Fixed portals built at startup. Today's permanent address for lobby portals, since portals do not persist until Phase 7.</td></tr>
+    <tr><td><code>wild.enabled</code></td><td>true</td><td>Wild portals are single-use: consumed with the dungeon they opened.</td></tr>
+    <tr><td><code>wild.worlds</code></td><td><code>[world]</code></td><td>Empty means any world.</td></tr>
+    <tr><td><code>wild.interval-minutes</code></td><td>10</td><td>Clamped to at least 1.</td></tr>
+    <tr><td><code>wild.max</code></td><td>3</td><td>Concurrent wild portals.</td></tr>
+    <tr><td><code>wild.min-distance</code> / <code>max-distance</code></td><td>64 / 256</td><td>The ring around a random <b>online player</b>. Nobody online, nothing spawns.</td></tr>
+    <tr><td><code>wild.spacing</code></td><td>128</td><td>Minimum distance between two portals.</td></tr>
+  </tbody>
+</table>
+
+<h3><code>hud</code></h3>
+<table class="small">
+  <thead><tr><th style="width:26%">Key</th><th style="width:16%">Default</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>enabled</code></td><td>true</td><td>Off, nobody sees it and <code>/hud</code> stops working.</td></tr>
+    <tr><td><code>show-by-default</code></td><td>true</td><td>The per-player toggle is session-only until Phase 7's database.</td></tr>
+    <tr><td><code>refresh-ticks</code></td><td>20</td><td>20 ticks = 1 second. Matters once coin and XP return real values.</td></tr>
+    <tr><td><code>server-name</code> / <code>server-ip</code></td><td>MiniMessage / plain</td><td>Also writable from <code>/tdungeons hud name|ip</code>.</td></tr>
+    <tr><td><code>lines</code></td><td>6 lines</td><td>Placeholders: <code>&lt;player&gt; &lt;coin&gt; &lt;xp&gt; &lt;rank&gt;</code> unparsed, <code>&lt;server&gt; &lt;ip&gt;</code> parsed. <b>Maximum 16 lines</b> — one per colour code. Sidebar width follows the longest line.</td></tr>
+  </tbody>
+</table>
+
+<h2>35.2 &nbsp;mobs.yml</h2>
+
+<table class="small">
+  <thead><tr><th style="width:30%">Section</th><th>Contents</th></tr></thead>
+  <tbody>
+    <tr><td><code>default-difficulty</code></td><td>Used by dungeons generated without one specified.</td></tr>
+    <tr><td><code>spawn.density</code></td><td>Walkable blocks per mob. Higher thins rooms out.</td></tr>
+    <tr><td><code>spawn.min-per-room</code> / <code>max-per-room</code></td><td>Clamps. The minimum only applies to rooms that have floor.</td></tr>
+    <tr><td><code>spawn.entrance</code></td><td>Whether to populate the entrance. Default off.</td></tr>
+    <tr><td><code>spawn.bands</code></td><td><code>until</code> = upper bound of <code>depth/maxDepth</code>; <code>classes</code> = weighted mix. Sorted after parsing.</td></tr>
+    <tr><td><code>difficulty.&lt;level&gt;</code></td><td><code>health</code>, <code>damage</code>, <code>speed</code>, <code>armor</code>, <code>armor-chance</code>. Three separate multipliers on purpose.</td></tr>
+    <tr><td><code>mobs.&lt;id&gt;</code></td><td><code>mob: provider:key</code>, <code>class</code>, <code>weight</code>, optional <code>health</code>/<code>damage</code>/<code>speed</code> (number or <code>[min,max]</code>), <code>name</code>, <code>baby</code>, <code>statOverride</code>.</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <span class="tag">A configuration hazard worth repeating</span>
+  <p>
+    The plugin <strong>never overwrites an existing <code>mobs.yml</code></strong>. A file carried
+    over from Phase 3A has no <code>spawn:</code> section, so <code>SpawnRules.DEFAULT</code> takes
+    over. The values are identical to the shipped ones, so behaviour is correct — but the operator
+    cannot tune a section that is not in their file. Delete it and reload.
+  </p>
+</div>
+
+<h1><span class="chapnum">Chapter 36</span>Glossary, and what comes next</h1>
+
+<h2>36.1 &nbsp;Glossary</h2>
+
+<dl>
+  <dt>Anchor</dt>
+  <dd>The base-centre block of a door opening, stored as a local coordinate relative to the room's
+  origin. Facing is derived from it, never written.</dd>
+
+  <dt>Back to back</dt>
+  <dd>The placement convention in which a child room's door anchor sits exactly one block outside
+  the parent's, so the two walls face each other and no room writes another's blocks.</dd>
+
+  <dt>Branching pool</dt>
+  <dd>The normal pool minus single-door templates. Used only while building the critical path,
+  where a dead end kills the branch.</dd>
+
+  <dt>Critical path</dt>
+  <dd>The mandatory route from entrance to boss. Its length is <code>round(rooms &times; 0.65)</code>,
+  minimum 2, and it is built first so that playtime has a floor.</dd>
+
+  <dt>DEAD door</dt>
+  <dd>A door that was tried and for which every candidate collided or overran the slot. Sealed by
+  the plugger; indistinguishable from a wall in game.</dd>
+
+  <dt>Instance</dt>
+  <dd>One live dungeon: a slot, a generated layout, a membership set, a countdown and a teardown.
+  Identity is slot + theme + size + seed.</dd>
+
+  <dt>Plug</dt>
+  <dd>A procedurally built wall sealing a door that opens into the void. Its size and material are
+  both measured, never configured.</dd>
+
+  <dt>Slot</dt>
+  <dd>A 512-block square of the void world reserved for one instance. Position is a pure function
+  of the index.</dd>
+
+  <dt>statOverride</dt>
+  <dd>Per-definition flag deciding whether the plugin writes a mob's attributes. Default comes from
+  the provider — vanilla true, external false. Difficulty scaling rides on the same flag.</dd>
+
+  <dt>Theme</dt>
+  <dd>The folder a room sits in. Discovered, never declared; the root folder is
+  <code>default</code>.</dd>
+
+  <dt>Turn bias</dt>
+  <dd>A coefficient in door ordering that pushes straight continuations back. The <em>real</em>
+  mechanism against straight lines is door offsets.</dd>
+</dl>
+
+<h2>36.2 &nbsp;What comes next</h2>
+
+<table class="small">
+  <thead><tr><th style="width:12%">Phase</th><th style="width:26%">Subject</th><th>The interesting problem in it</th></tr></thead>
+  <tbody>
+    <tr><td><b>3C</b></td><td>Boss and ownership</td><td>The boss encounter; PDC tags binding mobs to their instance; the kill signal that Phase 4 and Phase 8 both hang off.</td></tr>
+    <tr><td>4</td><td>Loot</td><td>Weighted rarity on a 1000 base, and a difficulty multiplier applied <em>only</em> to rare and above, with the increase subtracted from common so the total stays 1000. Applying it to every class would leave the ratios unchanged after normalization — that is the trap.</td></tr>
+    <tr><td>5</td><td>Parties</td><td>Hangs off the portal's existing "an occupied portal is joined, not reopened" behaviour.</td></tr>
+    <tr><td>6</td><td>Supply mob</td><td>Cancel <code>PlayerInteractEntityEvent</code> and open a custom GUI. Vanilla villager trading cannot accept custom currency.</td></tr>
+    <tr><td>7</td><td>Database</td><td>SQLite (relocated to <code>com.takashi.dungeons.libs.sqlite</code>) and MySQL, async, with a schema version field. Persists lobby portals and the HUD preference. Stores four columns per dungeon, not a layout.</td></tr>
+    <tr><td>8</td><td>Public API</td><td><code>MobProvider</code> is already shaped for it. Events: <code>DungeonEnterEvent</code>, <code>MobKillEvent</code>, <code>DungeonCompleteEvent</code>. No breaking changes, ever.</td></tr>
+    <tr><td>9</td><td>GUI editors</td><td>Over the YAML that already works. This is why <code>mobs.yml</code> is a separate file.</td></tr>
+    <tr><td>10</td><td>Map building</td><td>4 biomes &times; 10 room types = 40 schematics, in parallel. <b>This is the current bottleneck</b>: the engine is finished and the jar has three entrance rooms.</td></tr>
+    <tr><td>11&ndash;12</td><td>Ranks, Market</td><td>Separate jars, separate repos, over the Phase 8 API. The HUD's <code>coin</code>, <code>xp</code> and <code>rank</code> rows are already waiting.</td></tr>
+    <tr><td>13</td><td>Release</td><td>Multi-version testing, TPS under many instances, documentation, GitHub Releases, SpigotMC / Modrinth / Hangar, and promotional material — which is the project's actual return.</td></tr>
+  </tbody>
+</table>
+
+<h2>36.3 &nbsp;Where the engine stands</h2>
+
+<p>
+Phase 1 is complete and verified: 135 headless assertions across four probes, plus block-level
+verification on a live server, plus a measured 100% / 100% / 99.9% critical path guarantee across
+3,000 generations. Phase 2 is complete and verified both from the console and in game with two
+accounts. Phase 3 is at 3C, with 3A and 3B verified in game.
+</p>
+
+<p>
+What is missing to make this a product somebody can download and use is not code. It is
+<strong>rooms</strong> — and that is Phase 10.
+</p>
+
+<div class="summary">
+  <span class="tag">Closing note</span>
+  <p>
+    Almost every rule in this book exists because a specific thing went wrong, or would have gone
+    wrong silently, and somebody measured it. The most useful habit to take from the codebase is
+    the one that produced those measurements: when a decision has a plausible wrong answer
+    <em>and</em> a failure mode with no exception attached, do not reason about it — run it.
+  </p>
+</div>

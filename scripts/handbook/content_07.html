@@ -1,0 +1,476 @@
+<h1><span class="chapnum">Chapter 14</span>Plugging: measuring the opening and its material</h1>
+
+<p class="lead">
+When the graph is finished, some doors open into the void. A player who walks through one falls
+out of the world. The fix could have cost the map team two hundred extra schematics; instead it
+costs zero files, because the engine <em>measures</em> both the hole and the wall around it.
+</p>
+
+<h2>14.1 &nbsp;The rejected alternative, with arithmetic</h2>
+
+<p>
+The intuitive solution is room variants: "give every room a 1-, 2- and 3-door version, and when a
+door is left over, use a version with one fewer." It was evaluated and eliminated, for a reason
+that is mathematical rather than aesthetic.
+</p>
+
+<p>
+A variant is not defined by the door <strong>count</strong> but by the door <strong>set</strong>.
+In a three-door room <code>{N, E, S}</code> where east is left over, you need <code>{N, S}</code>
+— opposite pair. In another scenario you need <code>{N, E}</code> — adjacent pair. Different
+geometry, different walls. There is no single file called "the two-door version".
+</p>
+
+<table>
+  <thead><tr><th>Shape</th><th>Example</th><th class="num">Rotations it produces</th></tr></thead>
+  <tbody>
+    <tr><td>Single door</td><td><code>{N}</code></td><td class="num">4</td></tr>
+    <tr><td>Opposite pair</td><td><code>{N,S}</code></td><td class="num">2</td></tr>
+    <tr><td>Adjacent pair</td><td><code>{N,E}</code></td><td class="num">4</td></tr>
+    <tr><td>Three doors</td><td><code>{N,E,S}</code></td><td class="num">4</td></tr>
+    <tr><td>Four doors</td><td><code>{N,E,S,W}</code></td><td class="num">1</td></tr>
+    <tr><td colspan="2"><b>Total distinct door sets over four walls</b></td><td class="num"><b>15</b></td></tr>
+  </tbody>
+  <caption>Rotation collapses 15 sets into 5 shapes. But 5 shapes &times; 40 rooms =
+  <b>200 schematics</b>. The rotation decision had already cut the map workload from 120 to 40;
+  variants would have pushed it to 200. The map team is the project's tightest bottleneck.</caption>
+</table>
+
+<h2>14.2 &nbsp;What was built instead</h2>
+
+<p>
+<code>DoorPlugger</code> seals both OPEN doors (never tried, the side-branch quota ran out) and
+DEAD doors (tried, everything collided). It does so by scanning.
+</p>
+
+<h3>The opening's size is measured, not declared</h3>
+
+<p>
+There is no "door is 3&times;3" field anywhere in the metadata. The engine starts at the anchor
+and flood-fills air blocks <em>within the room's wall plane</em>. If a mapper draws a 3&times;4
+door the plug still fits; arched, stepped and asymmetric openings work too.
+</p>
+
+<h3>The material is measured too</h3>
+
+<p>
+The plug block does not come from configuration. The wall blocks at the <em>edge</em> of the
+opening are sampled and the most frequent one wins. A Nether room therefore yields nether brick
+and an End room end stone, with no per-biome setting at all.
+</p>
+
+<div class="why">
+  <span class="tag">This delivered more than the design expected</span>
+  <p>
+    The specification listed two implementations: procedural plugging, and hand-drawn plug
+    schematics at four files (one per biome). Because the material is sampled rather than
+    configured, the procedural route already produces the biome-appropriate result. The four-file
+    route is now needed only if somebody wants a <em>decorative</em> plug — an ornate frame —
+    rather than a matching wall.
+  </p>
+</div>
+
+<h2>14.3 &nbsp;The scan</h2>
+
+@@CODE java|DoorPlugger.scan — a bounded flood fill inside the wall plane.@@
+private static Opening scan(EditSession session, PlugTarget target) {
+    Vec3i anchor = target.anchor();
+    Aabb bounds = target.roomBounds();
+    boolean alongX = target.outward() == Direction.NORTH || target.outward() == Direction.SOUTH;
+
+    List<BlockVector3> cells = new ArrayList<>();
+    Set<Long> seen = new HashSet<>();
+    Deque<BlockVector3> queue = new ArrayDeque<>();
+    // Materials sampled from the edge — the most frequent one wins. Looking at a single
+    // neighbour would be misleading: right beside a door there may be a torch, a window or
+    // some other decorative block.
+    Map<BlockState, Integer> materials = new HashMap<>();
+
+    BlockVector3 start = BlockVector3.at(anchor.x(), anchor.y(), anchor.z());
+    queue.add(start);
+    seen.add(key(start));
+
+    while (!queue.isEmpty()) {
+        BlockVector3 pos = queue.poll();
+
+        if (!contains(bounds, pos)) {
+            continue;   // don't leak outside the room
+        }
+        BlockState state = session.getBlock(pos);
+        if (!state.getBlockType().getMaterial().isAir()) {
+            materials.merge(state, 1, Integer::sum);   // the edge of the opening is wall
+            continue;
+        }
+
+        cells.add(pos);
+        if (cells.size() > MAX_OPENING_BLOCKS) {
+            return null;
+        }
+        for (BlockVector3 next : neighbours(pos, alongX)) {
+            if (seen.add(key(next))) {
+                queue.add(next);
+            }
+        }
+    }
+
+    BlockState material = materials.entrySet().stream()
+            .max(Map.Entry.comparingByValue())
+            .map(Map.Entry::getKey)
+            .orElse(null);
+    return new Opening(cells, material);
+}
+@@END@@
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <text x="20" y="18" font-size="10.5" font-weight="700" fill="#171512">The wall plane, seen face on</text>
+  <!-- wall grid -->
+  <g>
+    <rect x="40" y="30" width="240" height="180" fill="#e6e0d6" stroke="#171512"/>
+    <!-- opening -->
+    <rect x="130" y="120" width="60" height="60" fill="#fff" stroke="#b8791f" stroke-width="1.6"/>
+    <circle cx="160" cy="170" r="4" fill="#b8791f"/>
+    <text x="160" y="196" text-anchor="middle" font-size="8.6" fill="#8a5a11">anchor (base-centre)</text>
+    <text x="160" y="112" text-anchor="middle" font-size="8.6" fill="#8a5a11">air — filled by the plug</text>
+    <text x="72" y="60" font-size="8.6" fill="#3d3a36">wall — sampled for material</text>
+  </g>
+  <!-- arrows out of the opening -->
+  <g stroke="#4e8c63" stroke-width="1.3">
+    <path d="M160,170 L160,128"/><path d="M160,150 L136,150"/><path d="M160,150 L184,150"/>
+  </g>
+  <text x="300" y="52" font-size="9.6" fill="#3d3a36">Four neighbours only, all within the plane:</text>
+  <text x="300" y="68" font-size="9.6" fill="#3d3a36">up, down, and the two directions along the wall.</text>
+  <text x="300" y="94" font-size="9.6" font-weight="700" fill="#171512">Three guards:</text>
+  <text x="300" y="112" font-size="9.4" fill="#3d3a36">1. bounded by the room's box — the plane is</text>
+  <text x="314" y="126" font-size="9.4" fill="#3d3a36">infinite and outside the room it is all void</text>
+  <text x="300" y="146" font-size="9.4" fill="#3d3a36">2. 64-block cap — catches an anchor that is not</text>
+  <text x="314" y="160" font-size="9.4" fill="#3d3a36">actually on a wall; the door is skipped and warned</text>
+  <text x="300" y="180" font-size="9.4" fill="#3d3a36">3. empty result is not an error — the same dungeon</text>
+  <text x="314" y="194" font-size="9.4" fill="#3d3a36">plugged twice, or a door the mapper drew closed</text>
+</svg>
+</div>
+<figcaption>Why each guard exists. Without guard 1 the scan would escape the opening into empty
+space and fill half the dungeon with wall.</figcaption>
+</figure>
+
+<h2>14.4 &nbsp;The 64-block cap is a guard against broken metadata</h2>
+
+<p>
+A 3&times;3 door is 9 blocks, so 64 leaves plenty of slack. Its real purpose is different: if the
+anchor sits <em>inside</em> the room rather than on a wall — which
+<code>RoomTemplateStore</code> warns about but does not treat as fatal — the scan starts on an
+empty interior plane and would fill the room's entire cross-section. When the cap is exceeded the
+door is skipped and a warning is logged, naming the coordinate and asking the obvious question
+("is the anchor really on a wall?").
+</p>
+
+<h2>14.5 &nbsp;One EditSession for the whole pass</h2>
+
+<p>
+All plugs go through a single <code>EditSession</code>. Opening one per door would break FAWE's
+batching and become visibly slow on a large dungeon. The pass runs on the same threading decision
+as pasting: async when FAWE is present, main thread otherwise.
+</p>
+
+<div class="warn">
+  <span class="tag">Plugging happens AFTER every paste, never before</span>
+  <p>
+    Two reasons, and either alone is sufficient. First, a plug written before a neighbouring
+    room's paste would simply be overwritten. Second — and more fundamentally — <strong>whether a
+    door is left open is not known until the graph is complete</strong>. Plugging is not a
+    per-room operation; it is a whole-dungeon one.
+  </p>
+</div>
+
+<h2>14.6 &nbsp;The escape hatch that was left open</h2>
+
+<p>
+The specification deliberately preserves the variant idea in a reduced form: a room may
+<em>declare</em> its own variants in metadata. For places where "this must look perfect" — a boss
+room, a signature entrance — a fully hand-drawn variant can be supplied, and the engine will use
+it when present and fall back to the plug when not. The engine code is the same either way; the
+map investment is optional.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Door-count variants are not a thing: a variant is defined by the door <em>set</em>, and
+        that is 5 shapes &times; 40 rooms = 200 schematics.</li>
+    <li>The opening is found by a bounded flood fill in the wall plane; its size is never
+        declared.</li>
+    <li>The material is sampled from the opening's edge, most-frequent wins — which gives
+        per-biome plugs for zero files.</li>
+    <li>Three guards: the room's box, a 64-block cap against bad anchors, and treating an already
+        sealed door as normal.</li>
+    <li>Plug after all pastes, because "is this door open" is a whole-graph question.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 15</span>The void world and the slot grid</h1>
+
+<p class="lead">
+Four small files that set the stage: a world with nothing in it, a set of gamerules that keep it
+that way, and a grid that hands out squares.
+</p>
+
+<h2>15.1 &nbsp;VoidChunkGenerator: every stage disabled</h2>
+
+@@CODE java|VoidChunkGenerator — the whole point is what it returns false for.@@
+@Override public boolean shouldGenerateNoise()       { return false; }
+@Override public boolean shouldGenerateSurface()     { return false; }
+@Override public boolean shouldGenerateCaves()       { return false; }
+@Override public boolean shouldGenerateDecorations() { return false; }
+@Override public boolean shouldGenerateMobs()        { return false; }
+@Override public boolean shouldGenerateStructures()  { return false; }
+@@END@@
+
+<p>
+No stone, no caves, no structures, no decoration, no bedrock. A dungeon's only content is the
+schematics pasted into it; leaving vanilla generation on would burn CPU and accumulate unrelated
+blocks and mobs outside the rooms.
+</p>
+
+<p>
+The biome is <code>THE_VOID</code>, chosen for two properties: its natural mob spawn table is
+empty, so nothing leaks in outside the rooms, and there are no visual artefacts such as grass
+tint or water colour. Two more overrides tidy up the edges — <code>getBaseHeight</code> returns
+the world minimum so that Bukkit's "highest block" queries do not climb to the ceiling, and
+<code>getFixedSpawnLocation</code> hands back a fixed point outside the grid because Bukkit
+insists on having one even though players only ever arrive by teleport.
+</p>
+
+<h2>15.2 &nbsp;The gamerules</h2>
+
+<p>
+On load, <code>DungeonWorldManager</code> applies a set of rules that together make the world
+inert:
+</p>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Rule</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>doMobSpawning = false</code></td><td>Every mob in a dungeon is placed by Phase 3, with known stats. Natural spawns would be outside that system.</td></tr>
+    <tr><td><code>doDaylightCycle = false</code></td><td>Time is pinned at noon. Rooms are sealed, so there is no sky light — which is also why zombies and skeletons do not burn. A room schematic with an open ceiling changes that.</td></tr>
+    <tr><td><code>doWeatherCycle = false</code></td><td>No weather in a sealed world.</td></tr>
+    <tr><td><code>doFireTick = false</code></td><td>Fire must not spread through hand-built rooms.</td></tr>
+    <tr><td><code>mobGriefing = false</code></td><td>A creeper explosion must not punch a hole in a room. This is why creepers are usable in the default mob set at all.</td></tr>
+    <tr><td>patrol / trader spawning off</td><td>Vanilla event spawns have no place here.</td></tr>
+    <tr><td><code>randomTickSpeed = 0</code></td><td>Nothing should grow, melt or decay.</td></tr>
+    <tr><td><code>spawnChunkRadius = 0</code></td><td>No permanently loaded chunks around a spawn nobody uses.</td></tr>
+  </tbody>
+</table>
+
+<h2>15.3 &nbsp;The slot grid</h2>
+
+<p>
+Covered structurally in Chapter 5; the operational details are here.
+</p>
+
+@@CODE java|GridSlotManager — allocation and release.@@
+/** Allocates a new slot: the released pool first, otherwise the next fresh index. */
+public synchronized GridSlot allocate() {
+    int index = freed.isEmpty() ? nextIndex++ : freed.pollFirst();
+    GridSlot slot = slotAt(index);
+    allocated.put(index, slot);
+    return slot;
+}
+
+/** Releases the slot (does not clear its blocks — see the class note). */
+public synchronized boolean release(int index) {
+    if (allocated.remove(index) == null) {
+        return false;
+    }
+    freed.add(index);
+    return true;
+}
+@@END@@
+
+<p>
+Released indices go into a <code>TreeSet</code> and are reused smallest first, so the world does
+not grow without bound. Every method that touches state is <code>synchronized</code>, because
+allocation happens on whichever thread asked for a dungeon while release can happen from the
+teardown path.
+</p>
+
+<h2>15.4 &nbsp;GridSlot: the X/Z-only containment test</h2>
+
+@@CODE java|GridSlot.contains — deliberately ignoring Y.@@
+/**
+ * Whether a horizontal position falls inside this slot.
+ *
+ * Deliberately X/Z only: "which instance is this player in" must answer the same whether they
+ * stand on a room's floor or in the void above it — a Y test would lose them the moment they
+ * fall through a hole.
+ */
+public boolean contains(double x, double z) {
+    return x >= originX && x < originX + size && z >= originZ && z < originZ + size;
+}
+@@END@@
+
+<p>
+This one method decides the behaviour of three later systems: the teleport block (Chapter 25), the
+eviction sweep at teardown (Chapter 21), and eventually the party system. A player who falls off a
+bridge into the void <strong>is still inside that dungeon</strong>, and all three need to agree
+about that.
+</p>
+
+<p>
+The slot's 3D bounds take X and Z from the slot and Y from the world's height limits. There is no
+vertical slot concept: rooms may stack as tall as the world allows, and the X/Z bound is the only
+hard requirement, because overflowing it reaches into a neighbouring instance.
+</p>
+
+<h2>15.5 &nbsp;World reset on start</h2>
+
+<p>
+<code>dungeon-world.reset-on-start</code> defaults to <code>true</code>, and the reasoning is a
+clean syllogism: this world holds nothing but dungeon instances; no instance survives a shutdown,
+because they live in memory only; therefore every block left on disk is the debris of a dungeon
+that no longer exists.
+</p>
+
+<p>
+Without the wipe, the slot counter restarts at 0 while the old blocks stay put, and the next
+dungeon is pasted directly on top of the previous one. <code>level.dat</code> is deliberately
+<em>not</em> deleted, so the world's own settings and spawn point survive.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Every generation stage is disabled and the biome is <code>THE_VOID</code>, whose spawn
+        table is empty.</li>
+    <li>The gamerules exist to make the world inert; <code>mobGriefing = false</code> is what
+        makes creepers usable.</li>
+    <li>Slots are handed out from a reuse pool, smallest index first, under a lock.</li>
+    <li><code>contains</code> is X/Z only, so a player in the void below the rooms is still
+        "inside" the dungeon — three later systems depend on that.</li>
+    <li>The world resets on start because it is entirely derived data.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 16</span>Schematics: loading, caching, rotating, pasting</h1>
+
+<p class="lead">
+<code>SchematicService</code> is the only place in the project that talks to WorldEdit for
+writing, and it makes three decisions that are easy to get wrong and expensive to get wrong
+quietly.
+</p>
+
+<h2>16.1 &nbsp;Always load asynchronously, cache the result</h2>
+
+<p>
+Files live under <code>plugins/TakashiDungeons/schematics/</code> and are read
+<strong>always</strong> off the main thread — disk I/O plus NBT parsing will block it. The
+resulting <code>Clipboard</code> is cached in memory: the same room is pasted hundreds of times
+over a server's life, so the file is read once. <code>invalidateCache()</code> is called on
+reload.
+</p>
+
+<h2>16.2 &nbsp;Async paste is only safe with FAWE</h2>
+
+<div class="warn">
+  <span class="tag">The threading rule</span>
+  <p>
+    Plain WorldEdit's <code>EditSession</code> is <strong>not thread safe</strong>; writing from
+    another thread corrupts the world. So the paste thread is chosen by what is installed: async
+    when FAWE is present, main thread otherwise. <code>schematics.force-sync-paste</code> exists
+    to force the main thread even with FAWE, purely for diagnosis — with it on, generating a large
+    dungeon costs TPS.
+  </p>
+</div>
+
+<p>
+The same decision is reused deliberately elsewhere: <code>RegionCleaner</code> takes
+<em>identical</em> threading, because a synchronous paste racing an asynchronous wipe in the same
+slot is exactly the corruption that decision exists to prevent.
+</p>
+
+<h2>16.3 &nbsp;The rotation sign, once more</h2>
+
+@@CODE text|The call, and why the sign is negative.@@
+new AffineTransform().rotateY(-degrees)
+@@END@@
+
+<p>
+Negative, so that the engine's rotation matches WorldEdit's own <code>//rotate</code> command. If
+this sign changes, the direction a mapper sees in the editor and the direction the engine produces
+diverge — and every door in every dungeon stops lining up, silently. Chapter 6 has the
+measurement.
+</p>
+
+<h2>16.4 &nbsp;Three traps in this file</h2>
+
+<div class="trap">
+  <span class="tag">copyEntities(false)</span>
+  <p>
+    Entities embedded in a schematic would be duplicated on every paste and would sit
+    <em>outside</em> Phase 3's stat system entirely. The map team's rule is therefore "do not
+    embed entities in schematics", and this flag enforces it regardless.
+  </p>
+</div>
+
+<div class="trap">
+  <span class="tag">ClipboardFormats.findByFile cannot be used on the write path</span>
+  <p>
+    It detects a format by opening the file, so on a file that does not exist yet it throws
+    <code>NoSuchFileException</code>. The write path resolves the format by alias instead
+    (<code>sponge.3</code> / <code>schem</code> / &hellip;).
+  </p>
+</div>
+
+<div class="trap">
+  <span class="tag">FAWE does not leave pasted chunks loaded</span>
+  <p>
+    This one trap appears in four different places in this book: console block verification
+    (Chapter 2), entity sweeping at teardown (Chapter 21), mob population (Chapter 32), and here.
+    A block read in an unloaded chunk answers <em>air</em>. Anything that inspects the world after
+    a paste must load the chunks first.
+  </p>
+</div>
+
+<h2>16.5 &nbsp;TestRoomFactory: placeholder rooms, and why it writes the metadata too</h2>
+
+<p>
+Until Phase 10's hand-built rooms arrive, <code>/tdungeons gen</code> generates eight placeholder
+rooms in code. There are five basic shapes plus three that exist to hold specific properties in
+place:
+</p>
+
+<table class="small">
+  <thead><tr><th style="width:26%">Room</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>test_corridor</code></td><td>Two opposite doors — the straight-continuation case</td></tr>
+    <tr><td><code>test_corner</code></td><td>Two adjacent doors (N+E) — used to verify the rotation sign</td></tr>
+    <tr><td><code>test_cross</code></td><td>Four doors — the branching case, and the reference for floor/ceiling coverage</td></tr>
+    <tr><td><code>test_deadend</code></td><td>One door — the branching-extinction case</td></tr>
+    <tr><td><code>test_entrance</code></td><td>Type <code>entrance</code> — the critical path's root</td></tr>
+    <tr><td><code>test_long</code></td><td>9&times;25 with an off-centre east door — the Chapter 7 wall-derivation trap</td></tr>
+    <tr><td><code>test_even</code></td><td>10&times;16, asymmetric origin — proof the odd-side rule is unnecessary</td></tr>
+  </tbody>
+</table>
+
+<div class="why">
+  <span class="tag">Why the factory writes the .yml as well as the .schem</span>
+  <p>
+    It is the only place that knows where it carved the doors. If the metadata were hand-written,
+    then changing the schematic without changing the metadata would produce rooms whose doors do
+    not line up — and, per Chapter 7, that failure is silent. One producer, one truth.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Load async always; cache the clipboard; invalidate on reload.</li>
+    <li>Paste async only with FAWE. <code>RegionCleaner</code> mirrors the decision on purpose.</li>
+    <li><code>rotateY(-degrees)</code> matches WorldEdit's own command; changing the sign breaks
+        every door silently.</li>
+    <li>No entities in schematics; no <code>findByFile</code> on the write path; load chunks
+        before reading blocks.</li>
+    <li>The test room factory writes metadata as well as geometry, because it is the only thing
+        that knows the door positions.</li>
+  </ul>
+</div>

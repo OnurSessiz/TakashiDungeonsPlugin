@@ -1,0 +1,515 @@
+<h1><span class="chapnum">Chapter 3</span>Architecture map: packages, layers and the purity boundary</h1>
+
+<p class="lead">
+Eight packages, roughly ten thousand lines of Java. This chapter is the map you should be able
+to come back to whenever a later chapter mentions a class you have forgotten. The single most
+important structural fact is the <em>purity boundary</em>: which packages are allowed to know
+that Minecraft exists.
+</p>
+
+<h2>3.1 &nbsp;The packages</h2>
+
+<table class="small">
+  <thead><tr><th style="width:20%">Package</th><th style="width:8%" class="num">Files</th><th>Responsibility</th><th style="width:20%">Depends on</th></tr></thead>
+  <tbody>
+    <tr><td><code>generation</code></td><td class="num">18</td><td>Geometry, rotation, door anchors, collision, the room graph, the generator itself</td><td><b>Nothing</b> (two boundary classes excepted)</td></tr>
+    <tr><td><code>schematic</code></td><td class="num">5</td><td>Loading and pasting <code>.schem</code> files, plugging doors, wiping regions, generating test rooms, extracting bundled rooms</td><td>WorldEdit/FAWE, Bukkit</td></tr>
+    <tr><td><code>world</code></td><td class="num">4</td><td>The void world, its gamerules, and the slot grid</td><td>Bukkit</td></tr>
+    <tr><td><code>instance</code></td><td class="num">4</td><td>Live dungeons: creation, membership, the clock, teardown, the teleport block</td><td>All of the above</td></tr>
+    <tr><td><code>portal</code></td><td class="num">5</td><td>Entrances standing in the world, wild spawning, lobby refresh</td><td><code>instance</code></td></tr>
+    <tr><td><code>mob</code></td><td class="num">14</td><td>Providers, the registry, stat application, spawn point search, room population</td><td><code>generation</code>, <code>instance</code>, Bukkit</td></tr>
+    <tr><td><code>hud</code></td><td class="num">1</td><td>The sidebar scoreboard</td><td>Bukkit only</td></tr>
+    <tr><td><code>command</code></td><td class="num">2</td><td>Everything reachable from <code>/tdungeons</code> and <code>/hud</code></td><td>Everything</td></tr>
+  </tbody>
+</table>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 720 400" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#8a8278"/>
+    </marker>
+  </defs>
+
+  <!-- pure core -->
+  <rect x="24" y="248" width="228" height="128" rx="8" fill="#fff" stroke="#b8791f" stroke-width="2"/>
+  <text x="138" y="272" text-anchor="middle" font-size="13" font-weight="700" fill="#171512">generation</text>
+  <text x="138" y="289" text-anchor="middle" font-size="10" fill="#b8791f">PURE JAVA — no Bukkit, no WorldEdit</text>
+  <text x="138" y="311" text-anchor="middle" font-size="9.5" fill="#3d3a36">Vec3i · Direction · Rotation · Aabb</text>
+  <text x="138" y="326" text-anchor="middle" font-size="9.5" fill="#3d3a36">DoorAnchor · RoomTemplate · PlacedRoom</text>
+  <text x="138" y="341" text-anchor="middle" font-size="9.5" fill="#3d3a36">DungeonLayout · RoomLibrary · RoomPlacer</text>
+  <text x="138" y="356" text-anchor="middle" font-size="9.5" fill="#3d3a36">DungeonGenerator · DungeonSize · Seeds</text>
+  <text x="138" y="370" text-anchor="middle" font-size="8.5" fill="#6d675f">testable on a bare JVM · geo-probe</text>
+
+  <!-- boundary -->
+  <rect x="272" y="286" width="150" height="56" rx="8" fill="#faf7f1" stroke="#c9c2b6" stroke-dasharray="4 3"/>
+  <text x="347" y="306" text-anchor="middle" font-size="10.5" font-weight="600" fill="#3d3a36">the boundary</text>
+  <text x="347" y="321" text-anchor="middle" font-size="9" fill="#6d675f">RoomMetadata</text>
+  <text x="347" y="334" text-anchor="middle" font-size="9" fill="#6d675f">RoomTemplateStore</text>
+
+  <!-- world / schematic -->
+  <rect x="452" y="248" width="118" height="60" rx="8" fill="#fff" stroke="#c9c2b6"/>
+  <text x="511" y="272" text-anchor="middle" font-size="12" font-weight="700" fill="#171512">world</text>
+  <text x="511" y="289" text-anchor="middle" font-size="8.6" fill="#6d675f">void world · slot grid</text>
+  <text x="511" y="301" text-anchor="middle" font-size="8.6" fill="#6d675f">gamerules</text>
+
+  <rect x="586" y="248" width="112" height="60" rx="8" fill="#fff" stroke="#c9c2b6"/>
+  <text x="642" y="272" text-anchor="middle" font-size="12" font-weight="700" fill="#171512">schematic</text>
+  <text x="642" y="289" text-anchor="middle" font-size="8.6" fill="#6d675f">paste · plug</text>
+  <text x="642" y="301" text-anchor="middle" font-size="8.6" fill="#6d675f">wipe · extract</text>
+
+  <!-- instance -->
+  <rect x="266" y="136" width="196" height="72" rx="8" fill="#fff" stroke="#171512" stroke-width="1.6"/>
+  <text x="364" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#171512">instance</text>
+  <text x="364" y="177" text-anchor="middle" font-size="9" fill="#6d675f">DungeonInstance · InstanceManager</text>
+  <text x="364" y="191" text-anchor="middle" font-size="9" fill="#6d675f">InstanceState · InstanceListener</text>
+  <text x="364" y="203" text-anchor="middle" font-size="8.4" fill="#b8791f">owns the live dungeon</text>
+
+  <!-- mob -->
+  <rect x="494" y="136" width="204" height="72" rx="8" fill="#fff" stroke="#c9c2b6"/>
+  <text x="596" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#171512">mob</text>
+  <text x="596" y="177" text-anchor="middle" font-size="9" fill="#6d675f">MobProvider · MobRegistry · MobService</text>
+  <text x="596" y="191" text-anchor="middle" font-size="9" fill="#6d675f">RoomSpawnFinder · MobPopulator</text>
+  <text x="596" y="203" text-anchor="middle" font-size="8.4" fill="#b8791f">ColumnProbe keeps the search pure</text>
+
+  <!-- portal -->
+  <rect x="24" y="136" width="212" height="72" rx="8" fill="#fff" stroke="#c9c2b6"/>
+  <text x="130" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#171512">portal</text>
+  <text x="130" y="177" text-anchor="middle" font-size="9" fill="#6d675f">DungeonPortal · PortalManager</text>
+  <text x="130" y="191" text-anchor="middle" font-size="9" fill="#6d675f">PortalKind · PortalState · Listener</text>
+  <text x="130" y="203" text-anchor="middle" font-size="8.4" fill="#b8791f">the way in, for players</text>
+
+  <!-- top -->
+  <rect x="176" y="30" width="368" height="62" rx="8" fill="#171512"/>
+  <text x="360" y="54" text-anchor="middle" font-size="13" font-weight="700" fill="#f4b13c">TakashiDungeonsPlugin</text>
+  <text x="360" y="71" text-anchor="middle" font-size="9" fill="#c8c0b2">bootstrap · integration detection · wiring</text>
+  <text x="360" y="84" text-anchor="middle" font-size="9" fill="#c8c0b2">command · hud</text>
+
+  <!-- arrows -->
+  <path d="M300,92 L300,132" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M420,92 L560,132" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M230,92 L150,132" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M266,176 L240,176" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M340,208 L300,244" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M420,208 L500,244" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M440,208 L620,244" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M560,208 L200,250" stroke="#8a8278" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)" fill="none"/>
+  <path d="M272,314 L256,314" stroke="#8a8278" stroke-width="1.4" marker-end="url(#ar)" fill="none"/>
+  <path d="M452,290 L424,304" stroke="#8a8278" stroke-width="1.2" stroke-dasharray="4 3" fill="none"/>
+</svg>
+</div>
+<figcaption>Dependencies point <em>downward and inward</em>. Nothing points into
+<code>generation</code> from below, and <code>generation</code> points at nothing at all.</figcaption>
+</figure>
+
+<h2>3.2 &nbsp;The purity boundary, and why it is worth the effort</h2>
+
+<p>
+The <code>generation</code> package uses no Bukkit type and no WorldEdit type. It has its own
+integer vector (<code>Vec3i</code>) rather than WorldEdit's <code>BlockVector3</code>, and its own
+box (<code>Aabb</code>) rather than anything Bukkit offers. Two classes sit on the boundary and
+are the exception — <code>RoomMetadata</code>, which parses YAML, and
+<code>RoomTemplateStore</code>, which joins a schematic to its metadata.
+</p>
+
+<p>There are exactly two reasons, and both are load-bearing:</p>
+
+<dl>
+  <dt>1. The placement mathematics is testable without a server.</dt>
+  <dd>
+    Starting a Paper server, generating a dungeon and walking through it is a thirty-second loop
+    at best. Running <code>GeoProbe</code> is under a second, and it asserts fifty-three
+    invariants including cases that are physically awkward to construct in game — an asymmetric
+    room, a rotation round-trip, a box that overhangs a slot edge by one block.
+  </dd>
+  <dt>2. No third-party type leaks into the API that Phase 8 will publish.</dt>
+  <dd>
+    Addons will consume these classes. If <code>PlacedRoom</code> exposed a
+    <code>BlockVector3</code>, then a WorldEdit major version bump would be a breaking change to
+    <em>this</em> plugin's API — and breaking the API is on the never-do list. The conversion to
+    WorldEdit types happens at the paste call, on one line.
+  </dd>
+</dl>
+
+<div class="why">
+  <span class="tag">The same idea appears twice more</span>
+  <p>
+    <code>ColumnProbe</code> in the mob package does exactly this for the spawn-point search: the
+    flood fill sees the world only through <code>isFloor(x,y,z)</code> and
+    <code>isClear(x,y,z)</code>. <code>WorldColumnProbe</code> is the one-line Bukkit
+    implementation; <code>SpawnProbe</code> in <code>geo-probe</code> implements the same two
+    methods over hand-drawn ASCII room shapes. Likewise <code>DungeonLayout</code> receives the
+    slot boundary as an <code>Aabb</code> passed in from outside rather than asking a
+    <code>World</code> for its height limits.
+  </p>
+</div>
+
+<h2>3.3 &nbsp;How a dungeon comes into existence, end to end</h2>
+
+<p>
+This is the whole system in one sequence. Every step gets a chapter of its own later; the point
+here is the shape.
+</p>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 470" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="ar2" markerWidth="9" markerHeight="9" refX="8" refY="3.2" orient="auto">
+      <path d="M0,0 L8,3.2 L0,6.4 z" fill="#b8791f"/>
+    </marker>
+  </defs>
+  <g font-size="10.4" fill="#3d3a36">
+  <!-- steps -->
+  <g>
+    <rect x="40" y="14" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="31" r="11" fill="#171512"/><text x="62" y="35" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">1</text>
+    <text x="84" y="28" font-weight="700" fill="#171512">Right-click a portal</text>
+    <text x="84" y="42">PortalListener → PortalManager.use() → InstanceManager.create(theme, size, seed)</text>
+  </g>
+  <g>
+    <rect x="40" y="58" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="75" r="11" fill="#171512"/><text x="62" y="79" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">2</text>
+    <text x="84" y="72" font-weight="700" fill="#171512">Allocate a slot</text>
+    <text x="84" y="86">GridSlotManager.allocate() → a 512-block square nobody else holds</text>
+  </g>
+  <g>
+    <rect x="40" y="102" width="620" height="34" rx="6" fill="#fff" stroke="#b8791f" stroke-width="1.6"/>
+    <circle cx="62" cy="119" r="11" fill="#b8791f"/><text x="62" y="123" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">3</text>
+    <text x="84" y="116" font-weight="700" fill="#171512">Build the graph — in memory, no blocks touched</text>
+    <text x="84" y="130">DungeonGenerator: entrance → critical path → side branches → boss</text>
+  </g>
+  <g>
+    <rect x="40" y="146" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="163" r="11" fill="#171512"/><text x="62" y="167" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">4</text>
+    <text x="84" y="160" font-weight="700" fill="#171512">Paste the rooms</text>
+    <text x="84" y="174">SchematicService, one room after another, chained so the order is deterministic</text>
+  </g>
+  <g>
+    <rect x="40" y="190" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="207" r="11" fill="#171512"/><text x="62" y="211" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">5</text>
+    <text x="84" y="204" font-weight="700" fill="#171512">Plug the doors that open into nothing — AFTER the pastes</text>
+    <text x="84" y="218">DoorPlugger measures each opening and samples its wall material</text>
+  </g>
+  <g>
+    <rect x="40" y="234" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="251" r="11" fill="#171512"/><text x="62" y="255" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">6</text>
+    <text x="84" y="248" font-weight="700" fill="#171512">Register the instance — only now does it exist</text>
+    <text x="84" y="262">state BUILDING → ACTIVE; duration fixed; boss bar created</text>
+  </g>
+  <g>
+    <rect x="40" y="278" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="295" r="11" fill="#171512"/><text x="62" y="299" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">7</text>
+    <text x="84" y="292" font-weight="700" fill="#171512">Populate with mobs — before the future completes</text>
+    <text x="84" y="306">MobPopulator: floor survey → count → class band → weighted draw → spawn</text>
+  </g>
+  <g>
+    <rect x="40" y="322" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="339" r="11" fill="#171512"/><text x="62" y="343" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">8</text>
+    <text x="84" y="336" font-weight="700" fill="#171512">Player enters</text>
+    <text x="84" y="350">membership declared, return location stored, boss bar shown, /tp blocked</text>
+  </g>
+  <g>
+    <rect x="40" y="366" width="620" height="34" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <circle cx="62" cy="383" r="11" fill="#171512"/><text x="62" y="387" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">9</text>
+    <text x="84" y="380" font-weight="700" fill="#171512">Time runs out, or the last member leaves</text>
+    <text x="84" y="394">everyone teleported to their own return location</text>
+  </g>
+  <g>
+    <rect x="40" y="410" width="620" height="44" rx="6" fill="#faf7f1" stroke="#171512" stroke-width="1.4"/>
+    <circle cx="62" cy="432" r="11" fill="#171512"/><text x="62" y="436" text-anchor="middle" fill="#f4b13c" font-size="10" font-weight="700">10</text>
+    <text x="84" y="427" font-weight="700" fill="#171512">Teardown, in a fixed order</text>
+    <text x="84" y="441">players out → entities out → blocks wiped → chunks unloaded → slot released</text>
+  </g>
+  </g>
+  <path d="M30,31 L30,432" stroke="#e6e0d6" stroke-width="2" fill="none"/>
+</svg>
+</div>
+<figcaption>The full lifecycle. Steps 1&ndash;5 belong to Phase 1, 6 and 8&ndash;10 to Phase 2,
+step 7 to Phase 3.</figcaption>
+</figure>
+
+<h2>3.4 &nbsp;Reading order for the rest of the book</h2>
+
+<p>
+Part I is the longest and the most mathematical; it is also the part everything else assumes.
+Parts II and III can be read independently of each other, but both assume Part I's vocabulary —
+<em>slot</em>, <em>layout</em>, <em>node</em>, <em>anchor</em>, <em>plug</em>. Part IV collects
+the principles that recur everywhere, plus the command and configuration reference.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Eight packages; dependencies point inward, and <code>generation</code> depends on nothing.</li>
+    <li>The purity boundary buys headless testability and protects the future public API.</li>
+    <li><code>ColumnProbe</code> repeats the same trick for the mob spawn search.</li>
+    <li>A dungeon's life is ten steps; the ordering of steps 4&ndash;7 and of the teardown is
+        itself the design, not an implementation detail.</li>
+  </ul>
+</div>
+
+<!-- =========================================================== PART I -->
+<section class="part">
+  <div class="pnum">Part One<span class="pgmark">[[PARTPAGE]]</span></div>
+  <h1 class="nolist">The generation core</h1>
+  <p class="pdesc">
+    Phase 1. How a list of hand-drawn schematics becomes a connected, sealed, walkable dungeon
+    with a guaranteed critical path — and how every formula in it was measured rather than
+    assumed.
+  </p>
+  <div class="plist">
+    <b>4</b> &nbsp;Why arrange rooms instead of generating them<br>
+    <b>5</b> &nbsp;Two grids, and why conflating them breaks everything<br>
+    <b>6</b> &nbsp;Coordinates and the rotation algebra<br>
+    <b>7</b> &nbsp;The door anchor, and deriving which wall it is in<br>
+    <b>8</b> &nbsp;The placement formula: back to back<br>
+    <b>9</b> &nbsp;Collision, bounds and self-validation<br>
+    <b>10</b> &nbsp;Candidate selection and who owns the weight<br>
+    <b>11</b> &nbsp;Backing off, dead doors and the turn bias<br>
+    <b>12</b> &nbsp;Graph generation: path first, boss last<br>
+    <b>13</b> &nbsp;Randomness, and a trap that would have been silent<br>
+    <b>14</b> &nbsp;Plugging: measuring the opening and its material<br>
+    <b>15</b> &nbsp;The void world and the slot grid<br>
+    <b>16</b> &nbsp;Schematics: loading, caching, rotating, pasting<br>
+    <b>17</b> &nbsp;Templates, metadata, themes and bundled rooms
+  </div>
+</section>
+
+<h1><span class="chapnum">Chapter 4</span>Why arrange rooms instead of generating them</h1>
+
+<p class="lead">
+Every procedural dungeon system starts with the same fork in the road: do you generate the
+space, or do you generate the arrangement of spaces somebody else drew? This project takes the
+second road, and the reason is not a preference. It is a consequence of who is doing the work.
+</p>
+
+<h2>4.1 &nbsp;The constraint that decides it</h2>
+
+<p>
+The plan for Phase 10 is four biomes &times; ten room types = <strong>forty hand-built
+schematics</strong>, produced by a team of two or three people working in parallel with the code.
+Those rooms are the product. They are what a player actually looks at: pillars, mossy brick,
+a glowstone panel in the ceiling, a staircase that turns.
+</p>
+
+<figure class="fig">
+  <img src="img/room-interior.jpg" alt="Inside a generated dungeon: a mossy stone-brick room lit from the ceiling, opening onto a corridor">
+  <figcaption>Ground level inside a generated dungeon. Nothing you can see here was generated —
+  the room is a schematic. What was generated is that this room is <em>here</em>, at
+  <em>this</em> angle, connected to <em>that</em> corridor.</figcaption>
+</figure>
+
+<p>
+Given that constraint, "generate the rooms" is not merely a different technique; it discards the
+entire asset pipeline. The two standard techniques were considered and both were eliminated:
+</p>
+
+<table>
+  <thead><tr><th style="width:26%">Approach</th><th>Why it was rejected</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Cellular automata</b></td>
+      <td>Produces organic, cave-like negative space. Genuinely good at caves. It cannot produce
+      a <em>room</em> — a bounded space with deliberate walls, a doorway in a specific place, and
+      decoration a person authored.</td>
+    </tr>
+    <tr>
+      <td><b>Binary space partitioning</b></td>
+      <td>Recursively splits a rectangle into rectangles and connects them with corridors. It
+      produces rooms, but only rectangles of sizes the algorithm chose. A hand-drawn 33&times;33
+      boss arena does not fit into a cell the splitter invented.</td>
+    </tr>
+    <tr>
+      <td><b>Socket / jigsaw placement</b> &nbsp;&larr; chosen</td>
+      <td>Pieces carry connection points; the engine clamps piece to piece at those points. Piece
+      size is unconstrained, so a 9&times;25 corridor, a 17&times;17 hall and a 33&times;33 arena
+      coexist. This is what Mojang uses for villages, bastions, ancient cities and trial
+      chambers.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4.2 &nbsp;What "socket" means here</h2>
+
+<p>
+A socket in this engine is a <strong>door anchor</strong>: the base-centre block of a door
+opening, stored as a coordinate relative to the room's origin. A room is a schematic plus a
+list of these anchors. Placement is: take an unused anchor on an already-placed room, take an
+anchor on a candidate room, rotate the candidate so the two face each other, and translate it so
+the anchors line up one block apart.
+</p>
+
+<p>
+That is the entire idea. Chapters 6 through 8 are the arithmetic that makes it exact, Chapter 9
+is the collision test that free placement makes mandatory, and Chapters 10 through 12 are the
+policy layer that decides <em>which</em> room and <em>which</em> anchor.
+</p>
+
+<h2>4.3 &nbsp;The price of the choice</h2>
+
+<p>
+Free placement is not free. A fixed cell grid makes overlap <em>mathematically impossible</em>;
+anchor-based placement makes it not merely possible but likely, so a 3D collision test becomes a
+required step rather than an optimisation. The original design did use a cell grid inside the
+dungeon and it was abandoned. Chapter 5 is the postmortem of that decision.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>The rooms are the product and they are hand-built; the algorithm exists to arrange them.</li>
+    <li>Cellular automata give caves, BSP gives rectangles the algorithm chose. Neither accepts a
+        hand-drawn room.</li>
+    <li>Socket/jigsaw placement accepts pieces of any size, which is what lets a corridor, a hall
+        and an arena live in one dungeon.</li>
+    <li>The cost is that collision testing becomes mandatory.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 5</span>Two grids, and why conflating them breaks everything</h1>
+
+<p class="lead">
+There are two things in this project called a grid. They are unrelated, they solve different
+problems, and one of them was deleted. Getting them confused is the fastest way to misread the
+whole engine.
+</p>
+
+<h2>5.1 &nbsp;The instance slot grid — alive and well</h2>
+
+<p>
+Two parties must never share geometry. The solution is a dedicated void world divided into fixed
+512-block squares; one live dungeon occupies one square. The mapping from slot index to position
+is deterministic:
+</p>
+
+@@CODE java|!GridSlotManager: the entire position calculation.@@
+public GridSlot slotAt(int index) {
+    int col = index % columns;
+    int row = index / columns;
+    return new GridSlot(index, col * slotSize, baseY, row * slotSize, slotSize);
+}
+@@END@@
+
+<p>
+Two properties follow, and both are used later. Overlap between instances becomes impossible by
+construction, and — because position is a pure function of the index — Phase 7 only ever has to
+store the <em>index</em> in the database, never a coordinate.
+</p>
+
+<h2>5.2 &nbsp;The layout inside a dungeon — deleted</h2>
+
+<p>
+The original design had a second grid <em>inside</em> the slot: rooms would sit on cells of a
+fixed size. It was abandoned for three reasons, in ascending order of importance.
+</p>
+
+<dl>
+  <dt>Rooms would have had to be one size.</dt>
+  <dd>A cell grid forces every room to be a cell, or an exact multiple of one. That kills the
+  9&times;25 corridor and the 33&times;33 arena in the same breath.</dd>
+
+  <dt>Rotation would have been searched for rather than computed.</dt>
+  <dd>Under a cell scheme the candidate pool gets narrowed — "rooms with a west-facing door" —
+  and then a rotation is looked for. Under anchor placement the required rotation is a single
+  arithmetic expression (Chapter 6), which means <strong>every room is a candidate for every
+  connection</strong>.</dd>
+
+  <dt>Straight lines would have needed a separate fix.</dt>
+  <dd>On a cell grid, chaining north repeatedly produces a corridor drawn with a ruler. With
+  anchors, doors sit at arbitrary offsets in their walls, so each connection introduces a lateral
+  shift, and the shifts accumulate into a layout that curves on its own (Chapter 11).</dd>
+</dl>
+
+<div class="warn">
+  <span class="tag">The rule that vanished with the cell grid</span>
+  <p>
+    The old design required room side lengths to be <strong>odd</strong> (17, 33). On an even
+    side there is no true centre block, so the rotation centre shifts by half a block and a
+    rotated room lands one block off its cell. Anchor placement removed the need: placement is
+    computed from the anchor, not from the bounding box, so a room may be asymmetric about its
+    own origin. This was verified with a purpose-built room, <code>test_even</code>
+    (10 wide &times; 16 long, origin at <code>(5,0,8)</code>, therefore asymmetric on
+    <em>both</em> axes), and all twelve combinations of its three doors against all four
+    directions landed exactly on target. <strong>The map team can be told side lengths are
+    free.</strong>
+  </p>
+</div>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 250" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <text x="16" y="20" font-size="11" font-weight="700" fill="#171512">Layer 1 — instance slot grid (kept)</text>
+  <text x="380" y="20" font-size="11" font-weight="700" fill="#171512">Layer 2 — inside a slot (anchor placement)</text>
+
+  <!-- slot grid -->
+  <g stroke="#c9c2b6" fill="none">
+    <rect x="16" y="34" width="60" height="60"/><rect x="76" y="34" width="60" height="60"/>
+    <rect x="136" y="34" width="60" height="60"/><rect x="196" y="34" width="60" height="60"/>
+    <rect x="16" y="94" width="60" height="60"/><rect x="76" y="94" width="60" height="60"/>
+    <rect x="136" y="94" width="60" height="60"/><rect x="196" y="94" width="60" height="60"/>
+    <rect x="16" y="154" width="60" height="60"/><rect x="76" y="154" width="60" height="60"/>
+    <rect x="136" y="154" width="60" height="60"/><rect x="196" y="154" width="60" height="60"/>
+  </g>
+  <rect x="16" y="34" width="60" height="60" fill="#b8791f" opacity=".16"/>
+  <rect x="136" y="94" width="60" height="60" fill="#b8791f" opacity=".16"/>
+  <text x="46" y="68" text-anchor="middle" font-size="9" fill="#8a5a11">#0</text>
+  <text x="166" y="128" text-anchor="middle" font-size="9" fill="#8a5a11">#6</text>
+  <text x="16" y="232" font-size="9" fill="#6d675f">512 blocks each · index → position is deterministic</text>
+  <text x="16" y="244" font-size="9" fill="#6d675f">a released index goes back into a pool, smallest first</text>
+
+  <!-- anchor layout -->
+  <g stroke="#171512" fill="#faf7f1">
+    <rect x="392" y="60" width="70" height="46"/>
+    <rect x="470" y="72" width="42" height="88"/>
+    <rect x="520" y="96" width="86" height="52"/>
+    <rect x="560" y="156" width="58" height="58"/>
+    <rect x="392" y="120" width="54" height="40"/>
+  </g>
+  <g fill="#b8791f">
+    <rect x="462" y="80" width="8" height="6"/><rect x="512" y="116" width="8" height="6"/>
+    <rect x="446" y="136" width="24" height="6"/><rect x="580" y="148" width="6" height="8"/>
+  </g>
+  <text x="392" y="234" font-size="9" fill="#6d675f">no cells · rooms clamp at door anchors · sizes free</text>
+  <text x="392" y="246" font-size="9" fill="#6d675f">collision testing therefore mandatory</text>
+</svg>
+</div>
+<figcaption>Two grids. The left one keeps parties apart and still exists. The right one is not a
+grid at all any more.</figcaption>
+</figure>
+
+<h2>5.3 &nbsp;Slot size is a configuration hazard</h2>
+
+<p>
+<code>dungeon-world.slot-size</code> defaults to 512 and must exceed the footprint of the largest
+dungeon the engine can produce. Set it too small and two instances bleed into each other's
+blocks. Worse, changing it after the world has content shifts the entire slot geometry, so
+existing structures end up straddling new boundaries. The safe procedure is to change it only on
+a world that is about to be reset — which, since <code>reset-on-start</code> defaults to true,
+is every restart anyway.
+</p>
+
+<div class="note">
+  <span class="tag">release() does not clear blocks</span>
+  <p>
+    <code>GridSlotManager.release(index)</code> is <strong>bookkeeping only</strong>. It returns
+    the index to the free pool; the blocks stay where they are. Clearing is
+    <code>InstanceManager.close</code>'s job, and it wipes <em>then</em> releases — in that order,
+    for a reason covered in Chapter 21. The raw <code>/tdungeons free</code> command still leaves
+    blocks behind, deliberately, because it exists for the manual <code>paste</code> and
+    <code>connect</code> test commands.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Slot grid: 512-block squares, one per instance, index → position deterministic. Kept.</li>
+    <li>Cell grid inside a dungeon: deleted. It forced one room size, made rotation a search, and
+        drew straight corridors.</li>
+    <li>The odd-side-length rule died with it and was proven unnecessary by
+        <code>test_even</code>.</li>
+    <li><code>release()</code> is accounting, not cleanup.</li>
+  </ul>
+</div>

@@ -67,6 +67,7 @@ Tam liste `anahedef.md`'de. Sessizce ihlal edilmesi en kolay olanlar:
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1          # derle -> run\plugins\
 powershell -ExecutionPolicy Bypass -File scripts\server.ps1         # Paper 1.21.8 baslat
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1  # generation geometrisi (sunucusuz)
+python scripts\handbook\build.py                                    # docs/ el kitabi PDF'i
 ```
 
 `generation` paketi saf Java — yerleştirme matematiği sunucu açmadan test edilebiliyor.

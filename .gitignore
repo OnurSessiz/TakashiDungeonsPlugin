@@ -140,3 +140,6 @@ $RECYCLE.BIN/
 # Proje bellegi (AI Yonergeleri) repoda tutulmuyor -- yerel calisma notlari.
 # Bu klasorun public karsiligi: docs/ (bkz. docs/generation.md).
 AI Yönergeleri/
+
+# Handbook PDF ara ciktilari (book.html, pass1/2.pdf, olceklenmis gorseller)
+scripts/handbook/out/

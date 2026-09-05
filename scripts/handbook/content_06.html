@@ -1,0 +1,490 @@
+<h1><span class="chapnum">Chapter 12</span>Graph generation: path first, boss last</h1>
+
+<p class="lead">
+This is the chapter where the engine stops being geometry and starts being game design.
+<code>DungeonGenerator</code> decides how long the dungeon is, guarantees that length, grows side
+branches off it, and only then places the boss. The <em>ordering</em> of those steps was chosen
+by measurement, and changing it back reintroduces two specific, measured bugs.
+</p>
+
+<h2>12.1 &nbsp;Size, room count, path length</h2>
+
+<table>
+  <thead><tr><th>Size</th><th class="num">Target rooms</th><th class="num">Critical path length</th></tr></thead>
+  <tbody>
+    <tr><td><code>small</code></td><td class="num">3&ndash;6</td><td class="num">2&ndash;4</td></tr>
+    <tr><td><code>medium</code></td><td class="num">7&ndash;12</td><td class="num">5&ndash;8</td></tr>
+    <tr><td><code>large</code></td><td class="num">13&ndash;20</td><td class="num">8&ndash;13</td></tr>
+  </tbody>
+</table>
+
+@@CODE java|DungeonSize — the count is drawn from a range, the path is a function of it.@@
+/** Draws a target room count for this size. */
+public int pickRoomCount(RandomGenerator random) {
+    return minRooms + random.nextInt(maxRooms - minRooms + 1);
+}
+
+/**
+ * The critical path's target length: round(target × 0.65), minimum 2.
+ *
+ * The length INCLUDES the entrance and the boss. The minimum of 2 guarantees they are
+ * always separate rooms; at 1 the boss would be the entrance itself.
+ *
+ * The 65% ratio: roughly two thirds of the rooms sit on the mandatory path and one third on
+ * side branches. Give side branches too much and the dungeon feels wide but shallow; too
+ * little and it becomes a single corridor.
+ */
+public static int criticalPathLength(int targetRooms) {
+    return Math.max(2, Math.round(targetRooms * 0.65f));
+}
+@@END@@
+
+<p>
+The room count is drawn rather than fixed so that two players choosing "medium" do not get
+dungeons of identical length. The range is kept narrow so the word "medium" keeps meaning
+something.
+</p>
+
+<h2>12.2 &nbsp;The five phases of generation</h2>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 340" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <defs><marker id="ar6" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 z" fill="#8a8278"/></marker></defs>
+
+  <!-- stage 1 -->
+  <text x="18" y="20" font-size="10.5" font-weight="700" fill="#171512">1 — entrance at the slot centre, R=0</text>
+  <rect x="80" y="34" width="40" height="30" fill="#f4b13c" stroke="#171512" stroke-width="1.3"/>
+  <text x="100" y="53" text-anchor="middle" font-size="8.6" font-weight="700" fill="#171512">ENT</text>
+
+  <!-- stage 2 -->
+  <text x="18" y="96" font-size="10.5" font-weight="700" fill="#171512">2 — critical path grows to round(target × 0.65) − 1 rooms</text>
+  <g stroke="#171512" stroke-width="1.3">
+    <rect x="80" y="110" width="40" height="30" fill="#f4b13c"/>
+    <rect x="134" y="110" width="40" height="30" fill="#faf7f1"/>
+    <rect x="188" y="110" width="40" height="30" fill="#faf7f1"/>
+    <rect x="242" y="104" width="40" height="42" fill="#faf7f1"/>
+    <rect x="296" y="110" width="40" height="30" fill="#faf7f1"/>
+  </g>
+  <g stroke="#4e8c63" stroke-width="2">
+    <path d="M120,125 L134,125"/><path d="M174,125 L188,125"/><path d="M228,125 L242,125"/><path d="M282,125 L296,125"/>
+  </g>
+  <text x="356" y="122" font-size="9" fill="#33684a">single-door templates are</text>
+  <text x="356" y="134" font-size="9" fill="#33684a">excluded from this pool</text>
+
+  <!-- stage 3 -->
+  <text x="18" y="176" font-size="10.5" font-weight="700" fill="#171512">3 — side branches fill the remaining quota, breadth first, ONE room held back</text>
+  <g stroke="#171512" stroke-width="1.3">
+    <rect x="80" y="192" width="40" height="30" fill="#f4b13c"/>
+    <rect x="134" y="192" width="40" height="30" fill="#faf7f1"/>
+    <rect x="188" y="192" width="40" height="30" fill="#faf7f1"/>
+    <rect x="242" y="186" width="40" height="42" fill="#faf7f1"/>
+    <rect x="296" y="192" width="40" height="30" fill="#faf7f1"/>
+    <rect x="134" y="240" width="40" height="30" fill="#f4efe5"/>
+    <rect x="242" y="240" width="40" height="30" fill="#f4efe5"/>
+    <rect x="188" y="150" width="40" height="26" fill="#f4efe5"/>
+  </g>
+  <g stroke="#4e8c63" stroke-width="2">
+    <path d="M120,207 L134,207"/><path d="M174,207 L188,207"/><path d="M228,207 L242,207"/><path d="M282,207 L296,207"/>
+  </g>
+  <g stroke="#8a8278" stroke-width="1.4" stroke-dasharray="3 2">
+    <path d="M154,222 L154,240"/><path d="M262,228 L262,240"/><path d="M208,192 L208,176"/>
+  </g>
+
+  <!-- stage 4 -->
+  <text x="18" y="296" font-size="10.5" font-weight="700" fill="#171512">4 — boss attached to the DEEPEST open door; every door tried in depth order</text>
+  <g stroke="#171512" stroke-width="1.3">
+    <rect x="80" y="308" width="34" height="26" fill="#f4b13c"/>
+    <rect x="126" y="308" width="34" height="26" fill="#faf7f1"/>
+    <rect x="172" y="308" width="34" height="26" fill="#faf7f1"/>
+    <rect x="218" y="308" width="34" height="26" fill="#faf7f1"/>
+    <rect x="264" y="308" width="34" height="26" fill="#faf7f1"/>
+    <rect x="310" y="296" width="52" height="44" fill="#fdf3ef" stroke="#d4633a" stroke-width="1.6"/>
+  </g>
+  <text x="336" y="322" text-anchor="middle" font-size="8.6" font-weight="700" fill="#a8431f">BOSS</text>
+  <text x="386" y="316" font-size="9" fill="#3d3a36">not random — an ASSIGNMENT</text>
+  <text x="386" y="329" font-size="9" fill="#3d3a36">the first door that seats wins</text>
+</svg>
+</div>
+<figcaption>Phases 1&ndash;4. Phase 5 is the retry: if the path fell short, the entire attempt is
+discarded.</figcaption>
+</figure>
+
+<h2>12.3 &nbsp;Why the path is built first</h2>
+
+<p>
+Scatter rooms at random and then declare the furthest one the boss, and you have no control over
+how far the boss is from the entrance. Some dungeons would end after two rooms and others after
+fifteen. Building the path first <strong>puts a floor under playtime</strong>. The slogan for the
+whole design is one line: <em>randomness for variety, skeleton for guarantees.</em>
+</p>
+
+<h2>12.4 &nbsp;The branching-process measurement</h2>
+
+<p>
+Phase 1C used a naive strategy — fill every open door until you reach the target. It does not
+reach the target. Over 2,000 seeds with a 12-room goal in a 512 slot:
+</p>
+
+<table>
+  <thead><tr><th>Measurement</th><th class="num">Result</th></tr></thead>
+  <tbody>
+    <tr><td>Reached the target</td><td class="num"><b>70.8%</b></td></tr>
+    <tr><td>Stalled</td><td class="num">584 runs</td></tr>
+    <tr><td>&hellip; of which actually had a DEAD door</td><td class="num">only 81</td></tr>
+    <tr><td>Stopped at exactly <b>2 rooms</b></td><td class="num"><b>204</b> (10.2%)</td></tr>
+  </tbody>
+</table>
+
+<p>
+So <strong>86% of the stalls were not collisions</strong>. They were the door frontier running
+dry. This is a branching process going extinct: each placement consumes one door and adds
+<code>(doors − 1)</code>, a net change of <code>(doors − 2)</code>. With the test room set the
+expected net change is <code>+0.373</code> per room — positive, but starting from a single-door
+root the probability of early extinction is high.
+</p>
+
+<div class="why">
+  <span class="tag">The 10.2% is not a coincidence</span>
+  <p>
+    <code>test_deadend</code>'s draw probability is 10.17%. The root, <code>test_entrance</code>,
+    has one door; if the first template drawn is a dead end, the frontier is empty immediately and
+    the dungeon ends at two rooms. The number in the measurement <em>is</em> the draw probability.
+  </p>
+</div>
+
+<h3>The fix is in the pool, not in the room set</h3>
+
+<p>
+"Require the entrance room to have at least two doors" is the intuitive fix, and the measurement
+shows it is the wrong diagnosis. Over 3,000 seeds:
+</p>
+
+<table>
+  <thead><tr><th class="num">Entrance doors</th><th>Normal pool</th><th class="num">Reached the target</th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td>full</td><td class="num">70.0%</td></tr>
+    <tr><td class="num">1</td><td><b>single-door rooms filtered out</b></td><td class="num"><b>97.3%</b></td></tr>
+    <tr><td class="num">2</td><td>full</td><td class="num">92.1%</td></tr>
+    <tr><td class="num">2</td><td>single-door rooms filtered out</td><td class="num">99.8%</td></tr>
+    <tr><td class="num">4</td><td>full</td><td class="num">99.2%</td></tr>
+  </tbody>
+  <caption>The pool filter alone suffices even with a one-door entrance. A two-door entrance helps
+  less and would constrain four biomes' entrance designs — so the map team is <b>not</b> given a
+  rule about entrance door count. It stays a gameplay decision.</caption>
+</table>
+
+<p>
+Hence <code>RoomLibrary.branchingPool()</code>: the normal pool minus single-door templates, used
+only while building the critical path. Dead ends remain allowed on side branches, where ending is
+exactly what you want. <strong>The same room is a problem in one pool and a feature in the
+other.</strong>
+</p>
+
+<h2>12.5 &nbsp;Side branches before the boss — the ordering that was measured</h2>
+
+<p>
+In the first implementation the boss attached to the end of the path <em>before</em> side branches
+grew. Two bugs were measured and both disappeared when the order was swapped.
+</p>
+
+<div class="warn">
+  <span class="tag">Bug 1 — small dungeons could not produce 3 rooms</span>
+  <p>
+    <code>round(3 × 0.65) = 2</code>, so the path is entrance + boss. The entrance
+    (<code>test_entrance</code>, one door) spends its only door on the boss, and the boss is
+    terminal, so <strong>no open door remains</strong> for a side branch. The third room cannot be
+    placed, generation restarts and lands on a different target. Measured: across 800 seeds a
+    <code>small</code> target of 3 <em>never once</em> came out — always 4 to 6.
+  </p>
+</div>
+
+<div class="warn">
+  <span class="tag">Bug 2 — bossless dungeons</span>
+  <p>
+    Attaching first, the boss tried exactly one door. If a 33&times;33 room collided there, the
+    dungeon came out <strong>with no boss at all</strong> — 4 times in 2,000 medium generations,
+    7 times in 2,000 large. A bossless dungeon gives the player nothing to aim at.
+  </p>
+</div>
+
+<table>
+  <thead><tr><th></th><th class="num">Old order</th><th class="num">New order</th></tr></thead>
+  <tbody>
+    <tr><td>small: path complete</td><td class="num">99.0%</td><td class="num"><b>100%</b></td></tr>
+    <tr><td>small: rooms complete</td><td class="num">87.5%</td><td class="num"><b>100%</b></td></tr>
+    <tr><td>small: average attempts</td><td class="num">3.16</td><td class="num"><b>1.17</b></td></tr>
+    <tr><td>medium: generations with a warning</td><td class="num">0.1%</td><td class="num"><b>0%</b></td></tr>
+    <tr><td>bossless out of 2,000 medium</td><td class="num">4</td><td class="num"><b>0</b></td></tr>
+  </tbody>
+</table>
+
+<h2>12.6 &nbsp;The boss is assigned, not drawn</h2>
+
+@@CODE java|!DungeonGenerator.attachBoss — depth-descending, first fit wins.@@
+/**
+ * Attaches the boss room to the open door furthest from the entrance.
+ *
+ * Doors are tried in DESCENDING depth order and the first one that seats wins. The boss
+ * therefore goes as far away as possible, and a single door colliding no longer produces a
+ * bossless dungeon.
+ */
+private int attachBoss(DungeonLayout layout, RoomPlacer placer, RandomGenerator random) {
+    List<OpenDoor> doors = new ArrayList<>(layout.openDoors());
+    doors.sort((a, b) -> Integer.compare(
+            layout.node(b.nodeId()).depth(), layout.node(a.nodeId()).depth()));
+
+    for (OpenDoor door : doors) {
+        if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
+            continue;
+        }
+        RoomPlacer.Attempt placed = placer.fill(layout, door, library.bosses());
+        if (placed.success()) {
+            return placed.placed().id();
+        }
+        // When fill() fails it has already marked the door DEAD — it won't be tried again.
+    }
+    return -1;
+}
+@@END@@
+
+<h2>12.7 &nbsp;Side branches: breadth first, full pool</h2>
+
+@@CODE java|growBranches. The queue is a FIFO, and that choice matters.@@
+private void growBranches(DungeonLayout layout, RoomPlacer placer,
+                          RandomGenerator random, int targetRooms, int bossNodeId) {
+    Deque<OpenDoor> queue = new ArrayDeque<>();
+    for (LayoutNode node : layout.nodes()) {
+        if (node.id() != bossNodeId) {
+            queue.addAll(node.openDoors());
+        }
+    }
+
+    while (layout.size() < targetRooms && !queue.isEmpty()) {
+        OpenDoor door = queue.poll();
+        if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
+            continue;
+        }
+        RoomPlacer.Attempt placed = placer.fill(layout, door, library.normalPool());
+        if (placed.success()) {
+            queue.addAll(placed.placed().openDoors());
+        }
+    }
+}
+@@END@@
+
+<p>
+Breadth first, because depth first would produce one long tail and the layout would tangle
+against itself quickly. The quota passed in is <code>targetRooms − 1</code>: one room is held
+back for the boss.
+</p>
+
+<p>
+This is also where the maze feeling comes from. When the critical path enters a room, that room's
+other doors are left unused. Branching starts from those, so a player walks in and sees three
+exits — one to the boss, two to loot — and does not know which is which.
+</p>
+
+<h2>12.8 &nbsp;Stalling means retrying, and a short dungeon is never silent</h2>
+
+@@CODE java|The retry loop. The best attempt is kept, and the result carries a warning.@@
+Result best = null;
+for (int attempt = 0; attempt < maxAttempts; attempt++) {
+    // The attempt seed is DERIVED from the master seed, so the whole generation stays
+    // reproducible from a single seed. If a retry drew a fresh random seed, bringing
+    // back "that broken dungeon" would be impossible.
+    Result candidate = attemptOnce(bounds, origin, size, seed, attempt);
+    if (candidate.perfect()) {
+        return candidate;
+    }
+    if (best == null || isBetter(candidate, best)) {
+        best = candidate;
+    }
+}
+return best;
+
+/** A longer path wins; on a tie, more rooms wins. */
+private static boolean isBetter(Result a, Result b) {
+    if (a.pathLength() != b.pathLength()) {
+        return a.pathLength() > b.pathLength();
+    }
+    return a.rooms() > b.rooms();
+}
+@@END@@
+
+<p>
+<code>generation.max-attempts</code> defaults to 8. If every attempt stalls, the best one is used
+and the result is reported <strong>with a warning</strong>. The promise made to the player is that
+choosing "medium" produces a medium dungeon; silently handing over a small one breaks it without
+telling anyone.
+</p>
+
+<h2>12.9 &nbsp;Out-of-the-box fallbacks</h2>
+
+<p>
+Three places where the generator degrades rather than failing, all of them because a fresh
+installation may not have a complete room set:
+</p>
+
+<table class="small">
+  <thead><tr><th style="width:34%">Missing</th><th>Behaviour</th></tr></thead>
+  <tbody>
+    <tr><td>No multi-door normal rooms</td><td><code>branchingPool()</code> is empty, so the path
+      falls back to the full normal pool. The path guarantee weakens; a dungeon still comes out.</td></tr>
+    <tr><td>No entrance template</td><td>An entrance is picked from the normal pool.</td></tr>
+    <tr><td>No boss template</td><td>Generation completes and the result carries the warning
+      "no boss room template — the dungeon was generated without one".</td></tr>
+  </tbody>
+</table>
+
+<h2>12.10 &nbsp;Measured guarantees</h2>
+
+<table>
+  <thead><tr><th>Size</th><th class="num">Path complete</th><th class="num">Rooms complete</th><th class="num">Warned</th><th class="num">Avg. attempts</th></tr></thead>
+  <tbody>
+    <tr><td><code>small</code></td><td class="num">100%</td><td class="num">100%</td><td class="num">0%</td><td class="num">1.17</td></tr>
+    <tr><td><code>medium</code></td><td class="num">100%</td><td class="num">100%</td><td class="num">0%</td><td class="num">1.30</td></tr>
+    <tr><td><code>large</code></td><td class="num">99.9%</td><td class="num">100%</td><td class="num">0.1%</td><td class="num">1.64</td></tr>
+  </tbody>
+  <caption>3&times;1000 generations. Phase 1C's naive strategy scored 70% under the same
+  conditions.</caption>
+</table>
+
+<h2>12.11 &nbsp;The Result record is a complete description of a dungeon</h2>
+
+<p>
+<code>DungeonGenerator.Result</code> carries the layout, the size, the targets, the achieved path
+length, the boss node id, the attempts used, the seed and any warning. The important consequence
+is stated in the code itself: <strong>to reproduce a dungeon you need the slot index, the theme,
+the size and the seed — four values.</strong> Phase 7 writes four columns, not a serialised
+layout.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Path length is <code>round(rooms × 0.65)</code>, minimum 2, entrance and boss included.</li>
+    <li>Path first, because that is what guarantees playtime. Randomness for variety, skeleton for
+        guarantees.</li>
+    <li>Stalls are branching-process extinction, not collisions. Filtering single-door rooms out
+        of the path pool takes 70% to 97%.</li>
+    <li>Side branches grow <em>before</em> the boss, and that order fixed two measured bugs.</li>
+    <li>The boss is assigned to the deepest open door, trying all of them in depth order.</li>
+    <li>A stall retries with a derived seed; the best attempt is used and warned about.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 13</span>Randomness, and a trap that would have been silent</h1>
+
+<p class="lead">
+<code>Seeds</code> is seventy lines and does almost nothing: it mixes a number and hands it to a
+generator. It exists as its own class because of a measurement, and because without it every
+small dungeon in the game would have been the same size — quietly, and forever.
+</p>
+
+<h2>13.1 &nbsp;The measurement</h2>
+
+<p>
+<code>java.util.Random</code> is a linear congruential generator whose first output is a direct
+function of the seed's high bits. Adjacent seeds therefore produce adjacent internal state. This
+was measured directly:
+</p>
+
+@@CODE text|!new Random(seed).nextInt(4) over consecutive seeds.@@
+seed = 1..40:
+  2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+
+distribution over 4000 consecutive seeds:   [0, 0, 1857, 2143]
+                                             ^^^^^^
+                                             0 and 1 NEVER appear
+@@END@@
+
+<h2>13.2 &nbsp;Why this would have mattered, concretely</h2>
+
+<p>
+A <code>small</code> dungeon's room count is drawn from the 3&ndash;6 range, and that draw is the
+<em>first</em> call on the generator. If the first draw is constant across consecutive seeds,
+every small dungeon comes out the same size and the promise of a range is void.
+</p>
+
+<div class="warn">
+  <span class="tag">And it really would have happened</span>
+  <p>
+    In Phase 7 instances get written to a database, and the natural things to seed with are an
+    incrementing id or <code>System.currentTimeMillis()</code> — <strong>both consecutive</strong>.
+    The failure would also have been silent: dungeons still generate, they just always come out
+    the same size. Nobody files a bug report for "the variety feels a bit low".
+  </p>
+</div>
+
+<h2>13.3 &nbsp;The fix</h2>
+
+@@CODE java|!Seeds — splitmix64 mixing, then SplittableRandom.@@
+/**
+ * The splitmix64 final mixing step — spreads a 1-bit input difference across half the output.
+ *
+ * The constants come from the reference splitmix64 implementation and must not be changed;
+ * the quality of the mixing depends on these multipliers.
+ */
+public static long mix(long seed) {
+    long z = seed + 0x9E3779B97F4A7C15L;
+    z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+    z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+    return z ^ (z >>> 31);
+}
+
+/** Builds a randomness source from a seed — consecutive seeds give independent streams. */
+public static RandomGenerator from(long seed) {
+    return new SplittableRandom(mix(seed));
+}
+
+/**
+ * The n-th derivative of the same master seed — used for retries.
+ *
+ * The derivation is deterministic too, so the whole generation stays reproducible from a
+ * single seed. If a retry drew a fresh random seed instead, bringing back "that broken
+ * dungeon" would be impossible.
+ */
+public static RandomGenerator derive(long seed, int index) {
+    return new SplittableRandom(mix(seed + index * 0x9E3779B97F4A7C15L));
+}
+@@END@@
+
+<p>
+The same measurement after mixing gives <code>[977, 1010, 973, 1040]</code> — uniform. Two
+properties are preserved that matter as much as the uniformity:
+</p>
+
+<dl>
+  <dt>Reproducibility.</dt>
+  <dd>The mixing is deterministic, so the same seed still gives the same dungeon. Procedural
+  generation that cannot be reproduced cannot be debugged: without a seed there is no way to bring
+  back "that broken dungeon".</dd>
+  <dt>Independent derivatives.</dt>
+  <dd><code>derive(seed, n)</code> gives retry <em>n</em> its own stream, still deterministically.
+  Phase 3B uses the same function per room — <code>Seeds.derive(dungeonSeed, nodeId)</code> — so
+  a room's contents do not shift because a different room happened to be populated first.</dd>
+</dl>
+
+<div class="why">
+  <span class="tag">Where else this pattern shows up</span>
+  <p>
+    <code>derive</code> is the project's general answer to "I need a sub-stream that is stable
+    under reordering". Anything keyed by a stable identifier — retry index, node id, and in future
+    a chest position — can have its own reproducible randomness without threading a single
+    generator through the call graph in a fixed order.
+  </p>
+</div>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li><code>new Random(seed)</code> is correlated across consecutive seeds; two of four values
+        never appeared in 4,000 draws.</li>
+    <li>Phase 7 will seed from an id or a timestamp — both consecutive — so the trap was real,
+        not theoretical.</li>
+    <li>splitmix64 mixing plus <code>SplittableRandom</code> fixes it while preserving
+        reproducibility.</li>
+    <li><code>derive(seed, n)</code> gives stable, independent sub-streams keyed by anything.</li>
+  </ul>
+</div>

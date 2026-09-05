@@ -1,0 +1,544 @@
+<h1><span class="chapnum">Chapter 27</span>The registry: mobs.yml, addressing, and classes as pool tags</h1>
+
+<p class="lead">
+Seventeen mob definitions ship in the jar and all of them are vanilla. This chapter covers why
+they live in their own file, how a definition names its mob, and the decision that keeps a
+configured number and an in-game number the same number.
+</p>
+
+<h2>27.1 &nbsp;mobs.yml is a separate file, and that is a Phase 9 decision</h2>
+
+<div class="why">
+  <span class="tag">Comments do not survive a program rewriting a file</span>
+  <p>
+    In Phase 9 a GUI editor will <strong>write</strong> this file. A file rewritten by a program
+    loses its comments. If the mob set lived in <code>config.yml</code>, every explanatory comment
+    in that file would be deleted the first time somebody saved from the GUI. So the mob set has
+    its own file, and <code>config.yml</code>'s documentation survives.
+  </p>
+</div>
+
+<h2>27.2 &nbsp;Addressing is <code>provider:key</code></h2>
+
+@@CODE yaml|Two forms of address. The second disables itself when MythicMobs is absent.@@
+mob: vanilla:ZOMBIE               # vanilla entity registry — always works
+mob: mythicmobs:SkeletalKnight    # MythicMobs — THIS ENTRY is disabled if not installed
+@@END@@
+
+<p>
+If the provider is missing, or the provider does not recognise the key, that entry is
+<strong>disabled with its reason</strong>: one line in the console and a red block in
+<code>/tdungeons mob list</code>.
+</p>
+
+<div class="warn">
+  <span class="tag">It never silently falls back to vanilla</span>
+  <p>
+    A silent fallback produces the bug "why is the boss a normal zombie", and that bug comes back
+    weeks later disguised as a balance complaint. Meanwhile the out-of-the-box guarantee is met a
+    different way: <strong>the bundled set is entirely vanilla</strong>, so all seventeen
+    definitions work on a server with no mob plugin at all.
+  </p>
+</div>
+
+<h2>27.3 &nbsp;A class is a pool tag, not a multiplier</h2>
+
+@@CODE java|!MobClass — the decision, and its parallel elsewhere in the codebase.@@
+/**
+ * A class does NOT scale anything. It answers one question — "which pool may this mob be drawn
+ * from" — and the stats come from the definition's own ranges.
+ *
+ * The alternative, giving each class a stat multiplier, was rejected for the same reason
+ * generation.md §5.4 keeps room weight on the template: an operator who writes
+ * health: [40, 50] and sees 120 in game has no way to find out where the number came from.
+ * One number, one place.
+ */
+public enum MobClass {
+    WEAK, NORMAL, STRONG, SUPER_STRONG,
+    /**
+     * Drawn only for the boss room, and never by the ordinary room spawner — a boss that can
+     * turn up in a corridor is not a boss.
+     */
+    BOSS
+}
+@@END@@
+
+<p>
+This is the same decision as Chapter 10's "weight belongs to the template", applied to a different
+system. Both are instances of one principle: <strong>a number the operator writes must be the
+number that happens</strong>, unless something they can also see changes it.
+</p>
+
+<p>
+Difficulty is the one thing in this system that genuinely <em>is</em> a multiplier — and it is
+visible, global, and named in the same file.
+</p>
+
+<h2>27.4 &nbsp;A definition</h2>
+
+@@CODE yaml|Three of the seventeen bundled definitions.@@
+  vindicator_enforcer:
+    mob: vanilla:VINDICATOR
+    class: strong
+    weight: 90
+    health: [38, 46]
+    damage: [7, 9]
+    name: "<gray>Balta Ustası</gray>"
+
+  ravager_bull:
+    mob: vanilla:RAVAGER
+    class: super_strong
+    weight: 60
+    health: [90, 110]
+    damage: [9, 12]
+    speed: 0.28
+    name: "<red>Yıkıcı</red>"
+
+  bone_lord:
+    mob: vanilla:WITHER_SKELETON
+    class: boss
+    weight: 100
+    health: [220, 260]
+    damage: [12, 15]
+    speed: 0.26
+    name: "<dark_red><bold>Kemik Lordu</bold></dark_red>"
+@@END@@
+
+<p>
+<code>weight</code> means exactly what it means for room templates and what it will mean for loot:
+a share within the same pool. 200 comes up twice as often as 100. Stats may be a single number or
+a <code>[min, max]</code> range. An unwritten stat leaves the entity's natural value alone.
+</p>
+
+<h2>27.5 &nbsp;What the dungeon world implies for mob choice</h2>
+
+<p>
+The bundled set is shaped by three properties of the world it spawns into, and these are worth
+knowing before adding to it:
+</p>
+
+<dl>
+  <dt><code>Environment.NORMAL</code></dt>
+  <dd>Piglins and piglin brutes <strong>zombify</strong> here, so neither is in the default set.</dd>
+  <dt><code>mobGriefing</code> is off</dt>
+  <dd>A creeper explosion does not break blocks, so creepers cannot punch a hole in a room. This is
+  what makes them usable at all.</dd>
+  <dt>The daylight cycle is off and rooms are sealed</dt>
+  <dd>There is no sky light, so zombies and skeletons do not burn. A room schematic with an open
+  ceiling changes that.</dd>
+</dl>
+
+<h2>27.6 &nbsp;Commands and the enable log</h2>
+
+@@CODE text|The mob commands, and what a healthy startup looks like.@@
+/tdungeons mob list [class]
+/tdungeons mob info <id>
+/tdungeons mob spawn <id> [difficulty]
+/tdungeons mob providers
+/tdungeons reload
+
+enable log:  17 mob (weak=3, normal=5, strong=4, super_strong=2, boss=3)
+@@END@@
+
+<p>
+<code>/tdungeons reload</code> re-reads the mob registry, and it does so <strong>before</strong>
+the WorldEdit check — a server with no WorldEdit must still be able to fix a typo in
+<code>mobs.yml</code> without a restart.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li><code>mobs.yml</code> is separate because Phase 9's GUI will rewrite it and comments do
+        not survive that.</li>
+    <li>Addressing is <code>provider:key</code>; a bad address disables that entry with a reason
+        and never falls back silently.</li>
+    <li>A class is a pool tag. Only difficulty multiplies anything.</li>
+    <li>The bundled set is entirely vanilla, which is how the out-of-the-box guarantee is met.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 28</span>Stats, difficulty and the health ordering bug everyone hits</h1>
+
+<p class="lead">
+<code>MobService</code> turns a definition into a mob standing in the world. It is a short class
+with a strict order of operations, and one line in it is the difference between a working boss and
+a boss that dies in three hits.
+</p>
+
+<h2>28.1 &nbsp;The order: spawn, stats, equipment, name</h2>
+
+@@CODE java|MobService.spawn — the whole flow.@@
+LivingEntity entity = provider.spawn(definition.mobKey(), location);
+if (entity == null) {
+    return null;
+}
+
+if (definition.baby() && entity instanceof Ageable ageable) {
+    ageable.setBaby();
+}
+
+if (definition.resolveStatOverride(provider)) {
+    DifficultyScaling scaling = registry.scaling(difficulty);
+    applyStats(entity, definition, scaling, random);
+    applyArmor(entity, scaling, random);
+}
+applyName(entity, definition);
+applyDungeonBehaviour(entity);
+return entity;
+@@END@@
+
+<div class="warn">
+  <span class="tag">Max health and current health are two different values</span>
+  <p>
+    Raising <code>MAX_HEALTH</code> does <strong>not</strong> raise current health. A mob given 200
+    max health walks out of the spawner on 20 and dies in three hits. This is the single most
+    common way a stat system looks broken, and the fix is one line — heal the entity after setting
+    the attribute.
+  </p>
+</div>
+
+@@CODE java|!applyStats — health is written last among the stats, then the entity is healed.@@
+private void applyStats(LivingEntity entity, MobDefinition definition,
+                        DifficultyScaling scaling, RandomGenerator random) {
+    if (definition.damage() != null) {
+        set(entity, Attribute.ATTACK_DAMAGE,
+                definition.damage().roll(random) * scaling.damage());
+    }
+    if (definition.speed() != null) {
+        set(entity, Attribute.MOVEMENT_SPEED,
+                definition.speed().roll(random) * scaling.speed());
+    }
+    if (definition.health() != null) {
+        double max = definition.health().roll(random) * scaling.health();
+        if (set(entity, Attribute.MAX_HEALTH, max)) {
+            // Max health and current health are separate values. Without this line every mob
+            // arrives at whatever health its species starts with, and a 200-hp boss dies like
+            // a zombie.
+            entity.setHealth(Math.min(max, entity.getAttribute(Attribute.MAX_HEALTH).getValue()));
+        }
+    }
+}
+@@END@@
+
+<p>
+The attribute writer returns <code>false</code> when the species has no such attribute — a slime
+has no attack damage attribute — and refusing quietly is correct there. The definition is not
+wrong; the attribute simply does not exist on that species.
+</p>
+
+<h2>28.2 &nbsp;statOverride is the whole contract</h2>
+
+<div class="quote">
+  <span class="tag">From the class comment</span>
+  <p>
+    "When it is off, this class touches nothing but the name — no attributes, no armour. That is
+    not a limitation to work around; it is the promise made to every mob plugin the server has
+    installed. <strong>Difficulty scaling rides on the same flag, because a multiplier applied to
+    somebody else's carefully written boss is still an override.</strong>"
+  </p>
+</div>
+
+<h2>28.3 &nbsp;Three multipliers, not one</h2>
+
+@@CODE java|DifficultyScaling — why speed is not scaled like health.@@
+/**
+ * Scaling speed the way health is scaled turns a hard dungeon into a track meet: at 2.2×
+ * movement speed nothing can be kited, fled from, or fought with a bow, and the fight stops
+ * being a fight. Health tolerates a large multiplier, damage a moderate one, speed almost none
+ * — so they are three separate numbers and the defaults reflect that.
+ */
+public record DifficultyScaling(double health, double damage, double speed,
+                                ArmorTier armor, double armorChance) { }
+@@END@@
+
+<table>
+  <thead><tr><th>Difficulty</th><th class="num">Health</th><th class="num">Damage</th><th class="num">Speed</th><th>Armour</th><th class="num">Chance</th></tr></thead>
+  <tbody>
+    <tr><td><code>easy</code></td><td class="num">1.0</td><td class="num">1.0</td><td class="num">1.0</td><td>none</td><td class="num">&mdash;</td></tr>
+    <tr><td><code>medium</code></td><td class="num">1.5</td><td class="num">1.25</td><td class="num">1.05</td><td>leather</td><td class="num">0.35</td></tr>
+    <tr><td><code>hard</code></td><td class="num">2.2</td><td class="num">1.6</td><td class="num">&mdash;</td><td>&mdash;</td><td class="num">&mdash;</td></tr>
+  </tbody>
+  <caption>The shape is what matters: health takes the big multiplier, damage a moderate one,
+  speed barely moves.</caption>
+</table>
+
+<p>
+The numbers are not hard-coded in the enum. <code>Difficulty</code> is just a name; the values live
+in <code>mobs.yml</code>. An enum constant with a literal 2.5 in it is a number nobody can tune
+without recompiling, and "everything is configurable" is a project rule.
+</p>
+
+<h2>28.4 &nbsp;Armour is the visible half of difficulty</h2>
+
+@@CODE java|ArmorTier — readability first, damage reduction second.@@
+/**
+ * A hard dungeon whose only difference is a bigger health number is a longer fight, not a
+ * harder one — and the player cannot see it. Armour is the half of difficulty that is VISIBLE
+ * BEFORE THE FIRST HIT: a mob in diamond reads as dangerous across a room. That readability is
+ * the point; the damage reduction is a side effect.
+ */
+@@END@@
+
+<p>
+<code>armor-chance</code> is deliberately not 1.0. At 100% every skeleton in the dungeon is dressed
+identically and the armour reads as a <em>uniform</em>. At 35% it reads as <em>danger</em>.
+</p>
+
+<div class="why">
+  <span class="tag">Drop chance is zero, and that is a loot-system decision</span>
+  <p>
+    Loot is Phase 4's system and comes from a table the operator writes. Armour that falls off a
+    mob would be a second, invisible loot source that nobody configured and that
+    <strong>scales with difficulty</strong> — exactly the leak that makes a hard dungeon the most
+    profitable place to farm iron.
+  </p>
+</div>
+
+<h2>28.5 &nbsp;Ranges, rolled per spawn</h2>
+
+@@CODE java|StatRange — why a range rather than a number.@@
+/**
+ * Two zombies in the same room with the same health bar read as copies of one object. A range
+ * costs nothing and makes a group of mobs look like a group of individuals. The range is also
+ * the unit phase 9's GUI will edit — two sliders, not a text field.
+ *
+ * A single number in YAML is accepted and becomes a zero-width range, so an operator who does
+ * not want variance never has to write [20, 20].
+ */
+@@END@@
+
+<p>
+Parsing <strong>throws</strong> on a malformed value rather than falling back to a default, and the
+error message names the file and the field. A mistyped stat produces a mob that is wrong in a way
+nobody notices until a player complains it hits too hard.
+</p>
+
+<h2>28.6 &nbsp;Dungeon behaviour</h2>
+
+<dl>
+  <dt>Mobs do not despawn.</dt>
+  <dd><code>setRemoveWhenFarAway(false)</code>. A room that empties itself reads as a generation
+  bug.</dd>
+  <dt>Mobs do not pick up items.</dt>
+  <dd>A mob that collects loot deletes the player's reward.</dd>
+  <dt>Spawning is main-thread only, and the check is here.</dt>
+  <dd><code>MobService.spawn</code> asserts <code>isPrimaryThread()</code> itself rather than
+  trusting callers, because Phase 3B populates rooms downstream of a FAWE chain — a mistake that is
+  easy to make once and hard to see afterwards.</dd>
+</dl>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Provider spawns, then stats, then equipment, then name. Health is set last among the stats
+        and the entity is healed afterwards.</li>
+    <li><code>statOverride: false</code> means <em>nothing</em> is touched but the name — difficulty
+        included.</li>
+    <li>Three multipliers because speed cannot be scaled like health without ending the fight.</li>
+    <li>Armour is difficulty you can see; its drop chance is zero so it does not become an
+        unconfigured loot source.</li>
+    <li>Stats are ranges rolled per spawn; parsing throws rather than defaulting.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 29</span>Finding somewhere to stand: ring seed and flood fill</h1>
+
+<p class="lead">
+Nothing about mob placement is written into a room's <code>.yml</code>. The engine finds standing
+positions at runtime, and the two-step search it uses is the reason a sealed alcove never receives
+a mob the player cannot reach.
+</p>
+
+<h2>29.1 &nbsp;Two steps, two different jobs</h2>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <!-- L shaped room with alcove -->
+  <text x="20" y="18" font-size="10.5" font-weight="700" fill="#171512">An L-shaped hall with a sealed alcove</text>
+
+  <!-- bounding box -->
+  <rect x="30" y="30" width="260" height="240" fill="none" stroke="#c9c2b6" stroke-dasharray="4 3"/>
+  <text x="34" y="286" font-size="8.6" fill="#6d675f">bounding box</text>
+
+  <!-- walkable L -->
+  <path d="M50,50 L270,50 L270,140 L150,140 L150,250 L50,250 z" fill="#f4efe5" stroke="#171512" stroke-width="1.5"/>
+  <!-- sealed alcove -->
+  <rect x="190" y="180" width="70" height="60" fill="#fdf3ef" stroke="#d4633a" stroke-width="1.5"/>
+  <text x="225" y="214" text-anchor="middle" font-size="8.4" fill="#a8431f">sealed</text>
+  <text x="225" y="226" text-anchor="middle" font-size="8.4" fill="#a8431f">alcove</text>
+
+  <!-- box centre -->
+  <circle cx="160" cy="150" r="4" fill="#6d675f"/>
+  <text x="168" y="146" font-size="8.4" fill="#6d675f">box centre — lands on a wall</text>
+
+  <!-- rings -->
+  <rect x="140" y="130" width="40" height="40" fill="none" stroke="#b8791f" stroke-dasharray="2 2"/>
+  <rect x="120" y="110" width="80" height="80" fill="none" stroke="#b8791f" stroke-dasharray="2 2"/>
+  <circle cx="130" cy="120" r="4" fill="#b8791f"/>
+  <text x="86" y="112" font-size="8.4" fill="#8a5a11">seed found</text>
+
+  <!-- fill dots -->
+  <g fill="#4e8c63">
+    <circle cx="100" cy="90" r="3.5"/><circle cx="170" cy="90" r="3.5"/><circle cx="240" cy="90" r="3.5"/>
+    <circle cx="100" cy="160" r="3.5"/><circle cx="100" cy="220" r="3.5"/><circle cx="130" cy="190" r="3.5"/>
+    <circle cx="215" cy="120" r="3.5"/>
+  </g>
+
+  <g font-size="9.5" fill="#3d3a36">
+    <rect x="320" y="34" width="362" height="106" rx="6" fill="#fff" stroke="#c9c2b6"/>
+    <text x="334" y="54" font-size="10" font-weight="700" fill="#171512">Step 1 — seed: square rings outward from the centre</text>
+    <text x="334" y="72">Try the centre column, then the perimeter of the 3×3 ring, then 5×5,</text>
+    <text x="334" y="86">until a column a mob can stand on turns up.</text>
+    <text x="334" y="106" fill="#6d675f">Deterministic, cheap, biased to the middle of the room. The ring's</text>
+    <text x="334" y="120" fill="#6d675f">starting side is rotated by a seeded amount — otherwise every room's</text>
+    <text x="334" y="134" fill="#6d675f">seed lands on the same side and a party notices the pattern.</text>
+
+    <rect x="320" y="150" width="362" height="130" rx="6" fill="#f3f7f4" stroke="#4e8c63"/>
+    <text x="334" y="170" font-size="10" font-weight="700" fill="#33684a">Step 2 — spread: breadth-first flood fill from the seed</text>
+    <text x="334" y="188">Walk the walkable surface; take points in the order reached.</text>
+    <text x="334" y="210" font-weight="700" fill="#171512">Why not more rings?</text>
+    <text x="334" y="226">A ring at radius 6 crosses walls as if they were not there. It can put</text>
+    <text x="334" y="240">a mob in the sealed alcove — a mob the player never meets.</text>
+    <text x="334" y="260" fill="#33684a">The fill reaches only what can be WALKED to, so the alcove is excluded</text>
+    <text x="334" y="274" fill="#33684a">with no separate reachability test, and BFS keeps "outward from centre".</text>
+  </g>
+</svg>
+</div>
+<figcaption>Rings assume the walkable area is a blob centred on the box. Rooms are not required to
+be rectangles.</figcaption>
+</figure>
+
+<h2>29.2 &nbsp;Three constants, each with a stated reason</h2>
+
+@@CODE java|RoomSpawnFinder's tuning constants.@@
+/**
+ * How much clear space a mob needs above the block it stands on.
+ *
+ * Two blocks is the vanilla mob envelope. A ravager is taller, but requiring three would rule
+ * out every low-ceilinged corridor, and a mob that spawns slightly clipped settles itself; one
+ * that never spawns leaves an empty room.
+ */
+static final int HEADROOM = 2;
+
+/**
+ * Minimum distance between two chosen points, in blocks.
+ *
+ * Without it the fill hands the second mob the cell next to the first, and the group reads as
+ * one mob with a rendering fault rather than as a group. Three blocks is the smallest gap that
+ * still looks deliberate in a nine-wide room.
+ */
+static final int MIN_SPACING = 3;
+
+/**
+ * How far a neighbouring column's floor may sit above or below this one and still count as
+ * connected.
+ *
+ * One block: stairs, slabs and a raised podium stay walkable, while the floor above stays a
+ * separate storey. Allowing two would merge a mezzanine into the ground floor and let a mob
+ * spawn on a balcony the fill had no business reaching.
+ */
+static final int STEP_TOLERANCE = 1;
+@@END@@
+
+<p>
+There is a fourth rule that is not a constant: <strong>no diagonal steps</strong>. Two blocks
+meeting at a corner would let the fill squeeze between them and cross a wall the player cannot.
+</p>
+
+<h2>29.3 &nbsp;survey() and spread() are separate on purpose</h2>
+
+@@CODE java|The split, and why the surface list's SIZE is itself an answer.@@
+/**
+ * Every column of the room that can be walked to from the centre, in breadth-first order.
+ *
+ * Separate from spread because the SIZE of this list is itself an answer: phase 3B sizes a
+ * room's mob count by how much floor it actually has, and a cross-shaped room has far less
+ * walkable floor than its bounding box suggests. Surveying once and using the result twice is
+ * also cheaper than measuring the room and then searching it.
+ */
+public List<Vec3i> survey(Aabb box, RandomGenerator random) { ... }
+
+/**
+ * Takes up to count points from a surveyed surface, keeping them apart.
+ *
+ * A short list is information rather than failure: a room whose floor is mostly furniture
+ * genuinely has fewer places to put a mob, and reporting three where five were asked for is
+ * more useful than quietly stacking two of them on one block.
+ */
+public List<Vec3i> spread(List<Vec3i> surface, int count) { ... }
+@@END@@
+
+<div class="why">
+  <span class="tag">Breadth-first is not an implementation detail</span>
+  <p>
+    It is what makes a <em>prefix</em> of the result mean "fill outward from the middle". A
+    depth-first walk would run down one corridor and put every mob in it while the rest of the hall
+    stayed empty.
+  </p>
+</div>
+
+<h2>29.4 &nbsp;The seed starts from the box centre, not the origin</h2>
+
+<p>
+Because anchor-based placement dropped the odd-edge rule (Chapter 5), a room may sit
+asymmetrically around its origin — and then "origin" is off to one side rather than in the middle.
+The seed search uses the <em>bounding box</em> centre.
+</p>
+
+<p>
+The ring's starting side is rotated by a seeded amount. With a fixed start, every room's seed lands
+on the same side of centre whenever the centre itself is blocked, and a party walking through
+twenty rooms notices the pattern. The rotation removes the tell while keeping the dungeon
+reproducible.
+</p>
+
+<h2>29.5 &nbsp;ColumnProbe: the purity boundary again</h2>
+
+@@CODE java|The entire interface. Two methods, and one of them exists for a subtle reason.@@
+public interface ColumnProbe {
+
+    /** Whether a mob can stand ON this block. */
+    boolean isFloor(int x, int y, int z);
+
+    /**
+     * Whether this block is empty enough for a mob to occupy.
+     *
+     * Separate from !isFloor: a block can be neither floor nor free space. Water is not solid,
+     * so it is not floor, but a mob standing in it has not been placed on land — and lava is
+     * the same test with a worse outcome.
+     */
+    boolean isClear(int x, int y, int z);
+}
+@@END@@
+
+<div class="quote">
+  <span class="tag">The justification, in the code's own words</span>
+  <p>
+    "Geometry that is wrong only on unusual room shapes is exactly the kind a server test does not
+    catch: <strong>every room still gets its mobs, they are simply in the wrong places.</strong>"
+  </p>
+</div>
+
+<p>
+<code>WorldColumnProbe</code> is the one-line Bukkit implementation.
+<code>scripts/geo-probe/SpawnProbe.java</code> implements the same two methods over hand-drawn room
+shapes and asserts <strong>22 checks</strong>: an L-shaped hall, a narrow corridor, a room with a
+closed centre, a two-storey room, a sealed alcove the fill must not reach, minimum spacing, same
+seed producing the same result, and a floorless room.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Ring search finds a seed; flood fill spreads from it. Rings alone would place mobs behind
+        walls.</li>
+    <li>Headroom 2, spacing 3, step tolerance 1, no diagonals — each with a stated failure it
+        prevents.</li>
+    <li><code>survey</code> and <code>spread</code> are separate because the surface's size is what
+        sizes the room's mob count.</li>
+    <li>Breadth-first ordering is what makes "take the first N" mean "fill from the middle".</li>
+    <li><code>ColumnProbe</code> keeps the whole search testable without a server.</li>
+  </ul>
+</div>

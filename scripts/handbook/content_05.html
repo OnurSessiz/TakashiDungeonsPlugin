@@ -1,0 +1,391 @@
+<h1><span class="chapnum">Chapter 10</span>Candidate selection and who owns the weight</h1>
+
+<p class="lead">
+Every room template carries a <code>weight</code> that a server owner edits in YAML. This chapter
+is about a decision that looks like a detail and is not: does that weight belong to the
+<em>template</em>, or to the <code>(template &times; door)</code> pair the placer actually draws?
+Getting it wrong does not merely shift the distribution — it <strong>inverts the ordering the
+mapper wrote</strong>.
+</p>
+
+<h2>10.1 &nbsp;Two-stage selection</h2>
+
+@@CODE text|The selection procedure, in full.@@
+1) Draw a TEMPLATE      — weighted random, removed from the pool (no replacement)
+2) Choose a DOOR        — that template's doors are ordered, then tried one by one
+3) If none fit          — the template is out of the pool; go back to 1
+4) If the pool empties  — the door is marked DEAD  ->  it gets plugged
+@@END@@
+
+<p>
+Stage one is weighted. Stage two is not — it is a shuffle with a bias applied afterwards
+(Chapter 11). Keeping the weight strictly in stage one is the entire point.
+</p>
+
+<h2>10.2 &nbsp;The measurement that settled it</h2>
+
+<p>
+A candidate is a pair, so a four-door room produces four candidates. If the weight belonged to
+the pair, that room would count its weight <strong>four times</strong>. Here is what that does to
+the actual test room set:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Room</th><th class="num">Doors</th><th class="num">Weight</th><th class="num">If weight were on the pair</th><th class="num">Weight on the template (chosen)</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>test_corridor</code></td><td class="num">2</td><td class="num"><b>150</b></td><td class="num">21.4%</td><td class="num"><b>25.4%</b></td></tr>
+    <tr><td><code>test_corner</code></td><td class="num">2</td><td class="num">120</td><td class="num">17.1%</td><td class="num">20.3%</td></tr>
+    <tr><td><code>test_cross</code></td><td class="num">4</td><td class="num">100</td><td class="num"><b>28.6%</b></td><td class="num">16.9%</td></tr>
+    <tr><td><code>test_even</code></td><td class="num">3</td><td class="num">80</td><td class="num">17.1%</td><td class="num">13.6%</td></tr>
+    <tr><td><code>test_long</code></td><td class="num">2</td><td class="num">80</td><td class="num">11.4%</td><td class="num">13.6%</td></tr>
+    <tr><td><code>test_deadend</code></td><td class="num">1</td><td class="num">60</td><td class="num"><b>4.3%</b></td><td class="num">10.2%</td></tr>
+  </tbody>
+  <caption>The mapper gave the corridor 150 and the cross 100. Under pair ownership the cross
+  (28.6%) would <em>outrank</em> the corridor (21.4%). The configuration would mean the opposite
+  of what it says.</caption>
+</table>
+
+<div class="warn">
+  <span class="tag">And the distortion compounds</span>
+  <p>
+    The more multi-door rooms get placed, the more open doors appear; every open door again
+    favours multi-door rooms. In a twenty-room dungeon this is not a one-off skew, it is a
+    growing one.
+  </p>
+</div>
+
+<h3>The user-facing argument, which is the decisive one</h3>
+
+<p>
+<code>weight</code> is edited by server owners in a YAML file. The expectation "if I write 200 it
+comes up twice as often as 100" has to hold. Door count silently overriding it would be a bug
+nobody could diagnose, <strong>because the cause is written down nowhere</strong> — a room's door
+count is a property of the schematic, not of the configuration file the owner is looking at.
+</p>
+
+<h3>The counter-argument, and why it does not win</h3>
+
+<p>
+A four-door room genuinely <em>is</em> more useful to the engine: it answers more geometric
+situations and it keeps the graph growing. That is true. But it is a <strong>separate
+concern</strong> and must not be conflated with the mapper's weight. If branching should be
+encouraged, that gets its own explicit, switchable configuration knob. The turn bias in
+Chapter 11 follows exactly this pattern: it is a coefficient in the candidate <em>ordering</em>,
+not something buried inside the weight.
+</p>
+
+<h2>10.3 &nbsp;The draw itself</h2>
+
+@@CODE java|!RoomLibrary.drawWeighted — cumulative scan, and removal from the pool.@@
+/**
+ * Draws a template by weight and REMOVES it from the pool (no replacement).
+ *
+ * No replacement is essential for backing off: if every door of a template collides, that
+ * template must be out, otherwise we would keep drawing the same candidate and retrying
+ * forever.
+ *
+ * @param pool a MUTABLE copy of the pool being worked on
+ */
+public static RoomTemplate drawWeighted(List<RoomTemplate> pool, RandomGenerator random) {
+    if (pool.isEmpty()) {
+        return null;
+    }
+    long total = 0;
+    for (RoomTemplate t : pool) {
+        total += t.weight();
+    }
+    // RoomMetadata already guarantees a positive weight; this is defence in depth.
+    if (total <= 0) {
+        return pool.remove(random.nextInt(pool.size()));
+    }
+    long roll = random.nextLong(total);
+    long cumulative = 0;
+    for (int i = 0; i < pool.size(); i++) {
+        cumulative += pool.get(i).weight();
+        if (roll < cumulative) {
+            return pool.remove(i);
+        }
+    }
+    return pool.remove(pool.size() - 1);   // integer maths, so this should be unreachable
+}
+@@END@@
+
+<div class="trap">
+  <span class="tag">Template ORDER affects generation</span>
+  <p>
+    <code>drawWeighted</code> scans cumulative weights, so <strong>the same seed with a different
+    template order produces a different dungeon</strong>. On a server the order comes from
+    <code>SchematicService.list()</code>, which sorts filenames — so it is alphabetical and
+    stable. The practical consequence: <em>when the map team adds a new room, every seed's output
+    changes.</em> That is expected behaviour, but it is also the answer to "why did the same seed
+    give me a different dungeon". <code>scripts/geo-probe/Rooms.java</code> keeps its rooms in
+    alphabetical order for the same reason — so the probes can predict what the server will
+    build.
+  </p>
+</div>
+
+<h2>10.4 &nbsp;Three pools, not one</h2>
+
+<p>
+<code>RoomLibrary</code> partitions the templates on construction. Rooms with no doors are
+discarded outright — they cannot be attached to anything, and keeping them would only produce
+wasted attempts.
+</p>
+
+<table>
+  <thead><tr><th style="width:26%">Pool</th><th>Contents</th><th style="width:32%">Used by</th></tr></thead>
+  <tbody>
+    <tr><td><code>normalPool()</code></td><td>Every <code>NORMAL</code> template with at least one door</td><td>Side branches (Chapter 12)</td></tr>
+    <tr><td><code>branchingPool()</code></td><td><code>normalPool()</code> minus the single-door rooms</td><td>The critical path (Chapter 12)</td></tr>
+    <tr><td><code>entrances()</code> / <code>bosses()</code></td><td>Templates typed <code>entrance</code> / <code>boss</code></td><td>Assigned, never drawn from the normal pool</td></tr>
+  </tbody>
+</table>
+
+<div class="why">
+  <span class="tag">Why entrance and boss are excluded from the normal pool</span>
+  <p>
+    Both are <em>assigned</em> during graph generation, not selected. If a boss template stayed
+    in the ordinary pool, a boss room could materialise in the middle of a dungeon — and the room
+    that is supposed to be the destination becomes a room you pass through.
+  </p>
+</div>
+
+<p>
+The library also knows how to explain itself when it cannot work, which matters on a fresh
+installation:
+</p>
+
+@@CODE java|RoomLibrary.describeProblem — the message an operator actually sees.@@
+public String describeProblem() {
+    if (isUsable()) {
+        return null;
+    }
+    if (all.isEmpty()) {
+        return "no room templates loaded (use /tdungeons gen to create test rooms)";
+    }
+    long doorless = all.stream().filter(t -> t.doorCount() == 0).count();
+    return "no 'normal' room with doors — " + all.size() + " templates loaded, "
+            + doorless + " of them doorless, the rest entrance/boss";
+}
+@@END@@
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li>Selection is two-stage: weighted template draw, then door ordering.</li>
+    <li>Weight belongs to the <em>template</em>. On the pair it would invert the ordering the
+        mapper wrote, and the distortion compounds across a dungeon.</li>
+    <li>Draws are without replacement so that backing off terminates.</li>
+    <li>Template order affects output; it is alphabetical and stable, and adding a room changes
+        every seed.</li>
+    <li>Three pools: normal, branching (no single-door rooms), and the assigned
+        entrance/boss sets.</li>
+  </ul>
+</div>
+
+<h1><span class="chapnum">Chapter 11</span>Backing off, dead doors and the turn bias</h1>
+
+<p class="lead">
+<code>RoomPlacer</code> is where selection, geometry and collision meet. It answers "may it seat,
+and which room should be chosen" — and it contains the mechanism that stops a generated dungeon
+from looking like it was drawn with a ruler.
+</p>
+
+<h2>11.1 &nbsp;fill(): the whole attempt loop</h2>
+
+@@CODE java|RoomPlacer.fill. Note that the pool passed in is never mutated — a copy is made.@@
+public Attempt fill(DungeonLayout layout, OpenDoor door, List<RoomTemplate> pool) {
+    List<RoomTemplate> remaining = new ArrayList<>(pool);
+    LayoutNode parent = layout.node(door.nodeId());
+    int tried = 0;
+    String lastReason = "candidate pool was empty";
+
+    RoomTemplate template;
+    while ((template = RoomLibrary.drawWeighted(remaining, random)) != null) {
+        for (int childDoor : orderDoors(template, door.outward())) {
+            tried++;
+            PlacedRoom candidate = template.attachTo(childDoor, door.anchor(), door.outward());
+            String reason = layout.rejectReason(candidate.bounds());
+            if (reason != null) {
+                lastReason = template.name() + " door#" + childDoor + ": " + reason;
+                continue;
+            }
+            LayoutNode child = layout.add(candidate, parent.depth() + 1);
+            layout.link(parent.id(), door.doorIndex(), child.id(), childDoor);
+            return new Attempt(child, childDoor, tried, null);
+        }
+    }
+
+    layout.markDead(door.nodeId(), door.doorIndex());
+    return new Attempt(null, -1, tried, lastReason);
+}
+@@END@@
+
+<p>Three properties of this loop are deliberate:</p>
+
+<dl>
+  <dt>The caller's pool is copied.</dt>
+  <dd>Draws remove elements, so operating on the caller's list would silently shrink the library
+  across calls.</dd>
+  <dt>The <em>first</em> candidate that fits wins.</dt>
+  <dd>There is no scoring pass over all candidates. The randomness is in the draw order, not in a
+  fitness comparison — which keeps generation cheap and reproducible.</dd>
+  <dt>A failed door is marked DEAD and never retried.</dt>
+  <dd>Retrying later would mean the outcome depends on how many rooms were placed in between,
+  which is a different kind of order dependence from the one Chapter 8 eliminated, and just as
+  hard to debug.</dd>
+</dl>
+
+<p>
+Scale is not a concern. The largest dungeon is twenty rooms and the pool is a few dozen
+templates; the worst case is a few hundred box comparisons for an entire dungeon.
+</p>
+
+<h2>11.2 &nbsp;Two mechanisms break up straight lines</h2>
+
+<h3>Door offsets — the real engine</h3>
+
+<p>
+If every door sat in the middle of its wall, rooms chained northwards would line up like beads on
+a wire. They do not, because anchors are arbitrary. If room A's north door is 5 blocks right of
+centre and room B's south door is 3 blocks left of centre, B seats <strong>8 blocks laterally
+offset</strong> from A. Those offsets accumulate along a chain and the layout curves on its own,
+with no code doing anything about it.
+</p>
+
+<figure class="fig">
+<div class="svgbox">
+<svg viewBox="0 0 700 240" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial, sans-serif">
+  <text x="20" y="18" font-size="10.5" font-weight="700" fill="#171512">Doors centred — a ruler</text>
+  <g fill="#faf7f1" stroke="#171512" stroke-width="1.2">
+    <rect x="110" y="176" width="70" height="46"/>
+    <rect x="110" y="124" width="70" height="46"/>
+    <rect x="110" y="72" width="70" height="46"/>
+    <rect x="110" y="20" width="70" height="46"/>
+  </g>
+  <g fill="#b8791f">
+    <rect x="138" y="172" width="14" height="4"/><rect x="138" y="120" width="14" height="4"/><rect x="138" y="68" width="14" height="4"/>
+  </g>
+
+  <text x="300" y="18" font-size="10.5" font-weight="700" fill="#171512">Doors offset — the layout curves by itself</text>
+  <g fill="#faf7f1" stroke="#171512" stroke-width="1.2">
+    <rect x="330" y="176" width="70" height="46"/>
+    <rect x="374" y="124" width="70" height="46"/>
+    <rect x="356" y="72" width="86" height="46"/>
+    <rect x="424" y="20" width="70" height="46"/>
+  </g>
+  <g fill="#b8791f">
+    <rect x="382" y="172" width="14" height="4"/><rect x="392" y="120" width="14" height="4"/><rect x="430" y="68" width="14" height="4"/>
+  </g>
+  <path d="M365,199 L409,147 L399,95 L459,43" stroke="#d4633a" stroke-width="1.4" stroke-dasharray="4 3" fill="none"/>
+  <text x="520" y="120" font-size="9.4" fill="#3d3a36">Each connection adds a lateral</text>
+  <text x="520" y="134" font-size="9.4" fill="#3d3a36">shift equal to the sum of the</text>
+  <text x="520" y="148" font-size="9.4" fill="#3d3a36">two doors' offsets from centre.</text>
+  <text x="520" y="168" font-size="9.4" font-weight="700" fill="#b8791f">No code produces this.</text>
+  <text x="520" y="182" font-size="9.4" font-weight="700" fill="#b8791f">It is a property of anchors.</text>
+</svg>
+</div>
+<figcaption>Why abandoning the cell grid paid for itself twice: free room sizes, and free
+meander.</figcaption>
+</figure>
+
+<h3>Turn bias — the explicit knob</h3>
+
+<p>
+On top of that, options that continue in the parent's direction are penalised. A door option
+counts as <strong>straight</strong> when, connecting through it, some <em>other</em> door of the
+room would point along the parent's outward direction — meaning the chain would carry on in the
+same heading.
+</p>
+
+@@CODE java|RoomPlacer.orderDoors — shuffle, then a stable partition.@@
+private List<Integer> orderDoors(RoomTemplate template, Direction parentOutward) {
+    int count = template.doorCount();
+    List<Integer> order = new ArrayList<>(count);
+    for (int i = 0; i < count; i++) {
+        order.add(i);
+    }
+    Collections.shuffle(order, shuffleRandom);
+
+    if (turnBias <= 1.0 || count < 2) {
+        return order;
+    }
+    // Stable partition: turning options in front, straight ones behind; the shuffled order
+    // is preserved within each group.
+    List<Integer> turning = new ArrayList<>(count);
+    List<Integer> straight = new ArrayList<>(count);
+    for (int index : order) {
+        (continuesStraight(template, index, parentOutward) ? straight : turning).add(index);
+    }
+    // The penalty is not absolute: the larger turnBias gets, the smaller the chance a
+    // straight option jumps back to the front.
+    if (!turning.isEmpty() && !straight.isEmpty() && random.nextDouble() < 1.0 / turnBias) {
+        turning.addAll(0, straight);
+        return turning;
+    }
+    turning.addAll(straight);
+    return turning;
+}
+@@END@@
+
+<p>
+The default is <code>generation.turn-bias: 2.0</code>, which means a straight option still jumps
+to the front half the time. <code>1.0</code> disables the penalty entirely; larger values make
+turns dominate.
+</p>
+
+<div class="why">
+  <span class="tag">Why the bias lives in door selection, not template selection</span>
+  <p>
+    Because touching the template stage would corrupt the meaning of <code>weight</code> — the
+    thing Chapter 10 just went to some trouble to protect. Which door the child connects through
+    determines its orientation, and therefore where its remaining doors will point. The bias
+    belongs there.
+  </p>
+  <p>
+    In a room with two opposite doors — a corridor — <em>both</em> options are straight, so the
+    penalty has no effect. That is an honest outcome rather than a bug: that room continues
+    straight no matter what you do to the ordering. The real mechanism is the door offsets above.
+  </p>
+</div>
+
+<h2>11.3 &nbsp;One shuffle source, kept for a reason</h2>
+
+@@CODE java|A small detail with a large consequence.@@
+/**
+ * Collections.shuffle wants the legacy java.util.Random. A single instance is kept:
+ * creating a new one per call would give different results from the same seed and make
+ * generation non-reproducible — which would make it undebuggable.
+ */
+private final java.util.Random shuffleRandom;
+@@END@@
+
+<h2>11.4 &nbsp;What a DEAD door means downstream</h2>
+
+<p>
+A DEAD door is a door that was tried and for which every candidate either collided or overran
+the slot. It is not an error. The graph carries on; the door gets sealed by
+<code>DoorPlugger</code> at the end (Chapter 14). From the player's perspective it is
+indistinguishable from a wall — which is precisely the intent.
+</p>
+
+<p>
+The distinction between OPEN and DEAD is preserved in the plug target record only for reporting.
+An OPEN door is one the side-branch quota never reached; a DEAD one is one that was tried and
+failed. If a dungeon comes out sparse, the ratio between those two numbers tells you whether the
+generator ran out of quota or ran out of space.
+</p>
+
+<div class="summary">
+  <span class="tag">Chapter summary</span>
+  <ul>
+    <li><code>fill()</code> draws templates until one of its doors seats; first fit wins.</li>
+    <li>A failed door becomes DEAD permanently — retrying later would reintroduce order
+        dependence.</li>
+    <li>Door offsets are what actually breaks up straight lines; the turn bias is a secondary,
+        configurable nudge applied at door-selection time.</li>
+    <li>The shuffle source is a single instance so that a seed reproduces exactly.</li>
+  </ul>
+</div>
