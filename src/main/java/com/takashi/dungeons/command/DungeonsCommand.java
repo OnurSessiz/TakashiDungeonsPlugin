@@ -11,6 +11,12 @@ import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.instance.DungeonInstance;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.mob.Difficulty;
+import com.takashi.dungeons.mob.MobClass;
+import com.takashi.dungeons.mob.MobDefinition;
+import com.takashi.dungeons.mob.MobProvider;
+import com.takashi.dungeons.mob.MobRegistry;
+import com.takashi.dungeons.mob.MobService;
 import com.takashi.dungeons.portal.DungeonPortal;
 import com.takashi.dungeons.portal.PortalKind;
 import com.takashi.dungeons.portal.PortalManager;
@@ -33,6 +39,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -61,9 +68,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "slots", "free", "reload", "hud", "extract");
+                    "portal", "mob", "slots", "free", "reload", "hud", "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
+
+    private static final List<String> MOB_ACTIONS =
+            List.of("list", "info", "spawn", "providers", "reload");
+
+    private static final List<String> DIFFICULTIES = List.of("easy", "medium", "hard");
 
     private static final List<String> SIZES = List.of("small", "medium", "large");
 
@@ -105,6 +117,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "leave" -> leave(sender);
             case "close" -> close(sender, label, args);
             case "portal" -> portal(sender, label, args);
+            case "mob" -> mob(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -686,6 +699,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             plugin.getHudService().reload();
             sender.sendMessage(Component.text("HUD yeniden yüklendi.", NamedTextColor.GREEN));
         }
+        // Mobs reload here too, and for the same reason: mobs.yml has no WorldEdit dependency, so
+        // a server without it must still be able to fix a typo in its mob set without a restart.
+        if (plugin.getMobRegistry() != null) {
+            mobReload(sender);
+        }
 
         SchematicService service = requireSchematics(sender);
         RoomTemplateStore store = plugin.getTemplateStore();
@@ -1201,6 +1219,196 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         return service;
     }
 
+    // ------------------------------------------------------------------ mob
+
+    private void mob(CommandSender sender, String label, String[] args) {
+        String action = args.length < 2 ? "list" : args[1].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "list" -> mobList(sender, args);
+            case "info" -> mobInfo(sender, label, args);
+            case "spawn" -> mobSpawn(sender, label, args);
+            case "providers" -> mobProviders(sender);
+            case "reload" -> mobReload(sender);
+            default -> sender.sendMessage(Component.text("Kullanım: /" + label + " mob <"
+                    + String.join("|", MOB_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * The catalogue, grouped by class, with the disabled entries and their reasons underneath.
+     *
+     * <p>The disabled block is not an afterthought — it is the whole diagnostic. An operator whose
+     * MythicMobs boss never turns up needs one place that says why, and a count without reasons
+     * ("3 devre dışı") tells them something is wrong without telling them what.
+     */
+    private void mobList(CommandSender sender, String[] args) {
+        MobRegistry registry = plugin.getMobRegistry();
+        MobClass filter = args.length >= 3 ? MobClass.parse(args[2]) : null;
+        if (args.length >= 3 && filter == null) {
+            sender.sendMessage(Component.text("Bilinmeyen sınıf: " + args[2] + " — geçerli: "
+                    + "weak, normal, strong, super_strong, boss", NamedTextColor.RED));
+            return;
+        }
+
+        if (registry.loadError() != null) {
+            sender.sendMessage(Component.text(registry.loadError(), NamedTextColor.RED));
+        }
+        sender.sendMessage(Component.text("Mob kaydı — " + registry.definitions().size()
+                + " kullanılabilir, varsayılan zorluk: " + registry.defaultDifficulty(),
+                NamedTextColor.GOLD));
+
+        for (MobClass mobClass : MobClass.values()) {
+            if (filter != null && filter != mobClass) {
+                continue;
+            }
+            List<MobDefinition> pool = registry.pool(mobClass);
+            sender.sendMessage(Component.text("  " + mobClass.key() + " (" + pool.size() + ")",
+                    NamedTextColor.AQUA));
+            for (MobDefinition definition : pool) {
+                sender.sendMessage(Component.text("    " + definition.id() + " — "
+                        + definition.address() + "  w=" + definition.weight()
+                        + statSummary(definition), NamedTextColor.GRAY));
+            }
+        }
+
+        List<MobRegistry.Disabled> disabled = registry.disabled();
+        if (!disabled.isEmpty()) {
+            sender.sendMessage(Component.text("  devre dışı (" + disabled.size() + "):",
+                    NamedTextColor.RED));
+            for (MobRegistry.Disabled entry : disabled) {
+                sender.sendMessage(Component.text("    " + entry.id() + " (" + entry.address()
+                        + ") — " + entry.reason(), NamedTextColor.DARK_RED));
+            }
+        }
+    }
+
+    private String statSummary(MobDefinition definition) {
+        StringBuilder text = new StringBuilder();
+        if (definition.health() != null) {
+            text.append("  hp=").append(definition.health());
+        }
+        if (definition.damage() != null) {
+            text.append("  dmg=").append(definition.damage());
+        }
+        if (definition.speed() != null) {
+            text.append("  spd=").append(definition.speed());
+        }
+        return text.toString();
+    }
+
+    private void mobInfo(CommandSender sender, String label, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Kullanım: /" + label + " mob info <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        MobRegistry registry = plugin.getMobRegistry();
+        MobDefinition definition = registry.definition(args[2]);
+        if (definition == null) {
+            sender.sendMessage(Component.text("Böyle bir mob yok: " + args[2]
+                    + " — /" + label + " mob list", NamedTextColor.RED));
+            return;
+        }
+        MobProvider provider = registry.provider(definition.providerId());
+        boolean override = provider != null && definition.resolveStatOverride(provider);
+
+        sender.sendMessage(Component.text(definition.id(), NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  adres: " + definition.address(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  sınıf: " + definition.mobClass()
+                + "   ağırlık: " + definition.weight(), NamedTextColor.GRAY));
+        // The resolved value AND where it came from: the difference between "you wrote false" and
+        // "MythicMobs definitions default to false" is what an operator is actually asking.
+        sender.sendMessage(Component.text("  statOverride: " + override
+                + (definition.statOverride() == null
+                        ? " (sağlayıcı varsayılanı)" : " (dosyada yazılı)"), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  statlar:" + (definition.hasStats()
+                ? statSummary(definition) : " yok — mob'un doğal değerleri"), NamedTextColor.GRAY));
+        if (definition.hasStats() && !override) {
+            sender.sendMessage(Component.text("  ! statOverride kapalı — yukarıdaki statlar "
+                    + "UYGULANMAYACAK.", NamedTextColor.YELLOW));
+        }
+        for (Difficulty difficulty : Difficulty.values()) {
+            sender.sendMessage(Component.text("  " + difficulty.key() + ": "
+                    + registry.scaling(difficulty), NamedTextColor.DARK_GRAY));
+        }
+    }
+
+    /**
+     * Spawns one mob where the player is looking — the 3A acceptance test.
+     *
+     * <p>Aimed at a block rather than dropped at the player's feet: a boss that materialises
+     * inside you is hard to look at, and the point of this command is to look at it.
+     */
+    private void mobSpawn(CommandSender sender, String label, String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Kullanım: /" + label
+                    + " mob spawn <id> [easy|medium|hard]", NamedTextColor.RED));
+            return;
+        }
+        MobService service = plugin.getMobService();
+        MobRegistry registry = plugin.getMobRegistry();
+        MobDefinition definition = registry.definition(args[2]);
+        if (definition == null) {
+            sender.sendMessage(Component.text("Böyle bir mob yok: " + args[2]
+                    + " — /" + label + " mob list", NamedTextColor.RED));
+            return;
+        }
+        Difficulty difficulty = registry.defaultDifficulty();
+        if (args.length >= 4) {
+            difficulty = Difficulty.parse(args[3]);
+            if (difficulty == null) {
+                sender.sendMessage(Component.text("Bilinmeyen zorluk: " + args[3]
+                        + " — geçerli: easy, medium, hard", NamedTextColor.RED));
+                return;
+            }
+        }
+
+        var targetBlock = player.getTargetBlockExact(8);
+        Location where = targetBlock == null
+                ? player.getLocation() : targetBlock.getLocation().add(0.5, 1, 0.5);
+
+        LivingEntity entity = service.spawn(definition, where, difficulty, new Random());
+        if (entity == null) {
+            sender.sendMessage(Component.text("Doğurulamadı — sağlayıcı reddetti. Konsola bak.",
+                    NamedTextColor.RED));
+            return;
+        }
+        sender.sendMessage(Component.text(definition.id() + " doğdu (" + difficulty.key()
+                + ") — can " + round(entity.getHealth()) + "/"
+                + round(entity.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH) == null
+                        ? entity.getHealth()
+                        : entity.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH).getValue()),
+                NamedTextColor.GREEN));
+    }
+
+    private String round(double value) {
+        return String.valueOf(Math.round(value * 10) / 10.0);
+    }
+
+    private void mobProviders(CommandSender sender) {
+        sender.sendMessage(Component.text("Mob sağlayıcıları:", NamedTextColor.GOLD));
+        for (MobProvider provider : plugin.getMobRegistry().providers()) {
+            boolean up = provider.isAvailable();
+            sender.sendMessage(Component.text("  " + provider.id() + " — " + provider.displayName()
+                    + ": " + (up ? provider.knownKeys().size() + " mob" : "yok")
+                    + "   statOverride varsayılanı: " + provider.defaultStatOverride(),
+                    up ? NamedTextColor.GRAY : NamedTextColor.DARK_GRAY));
+        }
+    }
+
+    private void mobReload(CommandSender sender) {
+        MobRegistry registry = plugin.getMobRegistry();
+        registry.load();
+        sender.sendMessage(Component.text("mobs.yml yeniden yüklendi — "
+                + registry.definitions().size() + " mob"
+                + (registry.disabled().isEmpty() ? "" : ", " + registry.disabled().size()
+                        + " devre dışı"), NamedTextColor.GREEN));
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String label, @NotNull String[] args) {
@@ -1267,6 +1475,25 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             String prefix = args[3].toLowerCase(Locale.ROOT);
             return (service == null ? List.<String>of() : service.themes()).stream()
                     .filter(t -> t.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+        }
+        if (sub.equals("mob")) {
+            String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
+            if (args.length == 2) {
+                return MOB_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+            }
+            String action = args[1].toLowerCase(Locale.ROOT);
+            if (args.length == 3 && (action.equals("info") || action.equals("spawn"))) {
+                return plugin.getMobRegistry().definitions().stream().map(MobDefinition::id)
+                        .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+            }
+            if (args.length == 3 && action.equals("list")) {
+                return Arrays.stream(MobClass.values()).map(MobClass::key)
+                        .filter(k -> k.startsWith(prefix)).toList();
+            }
+            if (args.length == 4 && action.equals("spawn")) {
+                return DIFFICULTIES.stream().filter(d -> d.startsWith(prefix)).toList();
+            }
+            return List.of();
         }
         if (args.length == 2 && sub.equals("extract")) {
             return List.of("force").stream()

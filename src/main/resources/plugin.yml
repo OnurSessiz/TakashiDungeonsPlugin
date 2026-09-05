@@ -15,7 +15,7 @@ softdepend:
 commands:
   tdungeons:
     description: TakashiDungeons administration command
-    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|instances|enter|leave|close|portal|slots|free|hud>
+    usage: /tdungeons <version|status|world|list|rooms|room|weights|gen|paste|connect|dungeon|instances|enter|leave|close|portal|mob|slots|free|hud>
     aliases: [td, takashidungeons]
     permission: takashidungeons.admin
   hud:

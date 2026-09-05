@@ -1,0 +1,238 @@
+# TakashiDungeons — mob kaydı
+#
+# Bu dosya config.yml'den AYRI. Sebep: FAZ 9'da GUI editör bu dosyayı YAZACAK, ve bir programın
+# yeniden yazdığı dosyada yorumlar kalmaz. config.yml'deki açıklamaların hayatta kalması için
+# mob seti kendi dosyasında duruyor.
+#
+# Değişiklikten sonra: /tdungeons reload
+#
+# ---------------------------------------------------------------------------------------------
+# ADRESLEME:  mob: <sağlayıcı>:<anahtar>
+#
+#   vanilla:ZOMBIE            → vanilla entity registry (her zaman çalışır)
+#   mythicmobs:SkeletalKnight → MythicMobs (kurulu değilse bu GİRDİ DEVRE DIŞI kalır)
+#
+# Sağlayıcı yoksa girdi sessizce vanilla'ya DÜŞMEZ; devre dışı kalır ve sebebi hem konsola hem
+# /tdungeons mob list'e düşer. Sessiz fallback "boss neden normal zombi çıktı" hatasını üretir ve
+# o hata haftalar sonra denge şikâyeti olarak geri gelir.
+#
+# Aşağıdaki set tamamen VANILLA — hiçbir mob plugin'i olmayan bir sunucuda eksiksiz çalışır.
+# ---------------------------------------------------------------------------------------------
+#
+# SINIF (class):  weak | normal | strong | super_strong | boss
+#
+# Sınıf bir ÇARPAN DEĞİL, bir HAVUZ ETİKETİ. "Hangi havuzdan çekilebilir" sorusunu cevaplıyor;
+# statlar mob'un kendi aralığından geliyor. Sınıfa da çarpan koysaydık yazdığın health: [40, 50]
+# oyunda 120 çıkardı ve nereden çıktığı görünmezdi.
+#
+# boss sınıfı SADECE boss odasında kullanılır — koridorda çıkabilen şey boss değildir.
+#
+# AĞIRLIK (weight): aynı havuz içindeki çekiliş payı. Oda şablonlarındaki ve (FAZ 4) loot'taki
+# ile aynı anlam: 200 ağırlıklı bir mob, 100 ağırlıklı birinin iki katı sıklıkta çıkar.
+#
+# STATLAR: tek sayı ya da [min, max] aralığı. Aralık her spawn'da yeniden atılıyor — aynı odadaki
+# iki zombi birbirinin kopyası gibi durmasın diye. Yazılmayan stat mob'un doğal değerinde kalır.
+#   health → maksimum can (vanilla zombi: 20)
+#   damage → vuruş hasarı (vanilla zombi: 3)
+#   speed  → hareket hızı (vanilla zombi: 0.23) — küçük sayılar, dikkatli oyna
+#
+# statOverride: YAZILMAZSA sağlayıcı karar verir — vanilla'da true, MythicMobs'ta false.
+#   true  → yukarıdaki statlar ve zorluk çarpanı uygulanır
+#   false → mob'un kendi plugin'inin statları KORUNUR (anahedef.md §4)
+#
+# ---------------------------------------------------------------------------------------------
+# DUNGEON DÜNYASI HAKKINDA BİLİNMESİ GEREKENLER (mob seçerken)
+#   - Dünya Environment.NORMAL. PIGLIN ve PIGLIN_BRUTE burada zombileşir — bu yüzden sette yok.
+#   - mobGriefing kapalı: creeper patlaması blok kırmaz, odayı delmez.
+#   - Gün döngüsü kapalı, saat öğlende sabit. Odalar kapalı olduğu için gökyüzü ışığı yok;
+#     zombi/iskelet yanmıyor. Tavanı açık bir oda schematic'i yaparsan bu değişir.
+# ---------------------------------------------------------------------------------------------
+
+# Hangi zorlukla üretileceği söylenmemiş dungeon'lar bunu kullanır.
+default-difficulty: medium
+
+# Zorluk çarpanları. Sınıfın aksine bunlar GERÇEKTEN çarpan — ama üçü ayrı, çünkü hız canla aynı
+# oranda ölçeklenirse dungeon bir koşu yarışına döner: 2.2× hızda hiçbir şeyden kaçılamaz, hiçbir
+# şey kite edilemez ve dövüş dövüş olmaktan çıkar. Can büyük çarpanı kaldırır, hasar orta, hız
+# neredeyse hiç.
+#
+# Zırh zorluğun GÖRÜNEN yarısı: elmas zırhlı bir mob odanın öbür ucundan tehlikeli okunur. Hasar
+# azalması yan etki, asıl mesele okunabilirlik.
+#
+# Zorluk çarpanı da statOverride'a tabidir — başkasının yazdığı boss'a çarpan uygulamak da
+# ezmektir.
+difficulty:
+  easy:
+    health: 1.0
+    damage: 1.0
+    speed: 1.0
+    armor: none
+  medium:
+    health: 1.5
+    damage: 1.25
+    speed: 1.05
+    armor: leather
+    # Herkese zırh verilmiyor: %35'te zırh "tehlike", %100'de "üniforma" gibi okunuyor.
+    armor-chance: 0.35
+  hard:
+    health: 2.2
+    damage: 1.6
+    speed: 1.1
+    armor: iron
+    armor-chance: 0.6
+
+mobs:
+
+  # ----------------------------------------------------------------------------- weak
+  # Giriş odaları ve sığ derinlik. Oyuncuyu ölçmek için değil, dungeon'ın canlı olduğunu
+  # göstermek için varlar.
+
+  crypt_zombie:
+    mob: vanilla:ZOMBIE
+    class: weak
+    weight: 150
+    health: [16, 22]
+    damage: [2, 3]
+
+  crypt_skeleton:
+    mob: vanilla:SKELETON
+    class: weak
+    weight: 120
+    health: [16, 20]
+    damage: [2, 3]
+
+  cave_spider_scout:
+    mob: vanilla:CAVE_SPIDER
+    class: weak
+    weight: 80
+    health: [12, 16]
+    damage: [2, 2]
+    # Örümcek zaten hızlı; hıza dokunmuyoruz.
+
+  # ----------------------------------------------------------------------------- normal
+  # Dungeon'ın gövdesi. Oyuncunun çoğu vaktini bunlarla geçirmesi bekleniyor.
+
+  husk_raider:
+    mob: vanilla:HUSK
+    class: normal
+    weight: 130
+    health: [24, 32]
+    damage: [4, 5]
+
+  stray_archer:
+    mob: vanilla:STRAY
+    class: normal
+    weight: 110
+    health: [22, 28]
+    damage: [3, 4]
+
+  drowned_guard:
+    mob: vanilla:DROWNED
+    class: normal
+    weight: 90
+    health: [26, 34]
+    damage: [4, 6]
+
+  witch_acolyte:
+    mob: vanilla:WITCH
+    class: normal
+    weight: 60
+    health: [26, 30]
+
+  spider_broodling:
+    mob: vanilla:SPIDER
+    class: normal
+    weight: 80
+    health: [20, 26]
+    damage: [3, 4]
+
+  # ----------------------------------------------------------------------------- strong
+  # Derin odalar ve yan dalların sonu. Tek başına oyuncuyu zorlamalı.
+
+  wither_skeleton_guard:
+    mob: vanilla:WITHER_SKELETON
+    class: strong
+    weight: 100
+    health: [40, 50]
+    damage: [6, 8]
+    name: "<gray>Kül Muhafızı</gray>"
+
+  vindicator_enforcer:
+    mob: vanilla:VINDICATOR
+    class: strong
+    weight: 90
+    health: [38, 46]
+    damage: [7, 9]
+    name: "<gray>Balta Ustası</gray>"
+
+  blaze_sentry:
+    mob: vanilla:BLAZE
+    class: strong
+    weight: 55
+    health: [30, 36]
+    name: "<gold>Alev Nöbetçisi</gold>"
+
+  enderman_stalker:
+    mob: vanilla:ENDERMAN
+    class: strong
+    weight: 45
+    health: [45, 55]
+    damage: [6, 8]
+
+  # ----------------------------------------------------------------------------- super_strong
+  # Nadir. Bir odada birden fazlası çıkarsa bu bir hata, bir zorluk ayarı değil — dağılımı
+  # FAZ 3B belirliyor.
+
+  evoker_warlock:
+    mob: vanilla:EVOKER
+    class: super_strong
+    weight: 70
+    health: [70, 85]
+    name: "<dark_purple>Büyücü</dark_purple>"
+
+  ravager_bull:
+    mob: vanilla:RAVAGER
+    class: super_strong
+    weight: 60
+    health: [90, 110]
+    damage: [9, 12]
+    speed: 0.28
+    name: "<red>Yıkıcı</red>"
+
+  # ----------------------------------------------------------------------------- boss
+  # Sadece boss odasında. Sayılar bilerek yüksek: boss odası dungeon'ın sonu, aşılması gereken
+  # duvar o.
+
+  bone_lord:
+    mob: vanilla:WITHER_SKELETON
+    class: boss
+    weight: 100
+    health: [220, 260]
+    damage: [12, 15]
+    speed: 0.26
+    name: "<dark_red><bold>Kemik Lordu</bold></dark_red>"
+
+  ravager_warlord:
+    mob: vanilla:RAVAGER
+    class: boss
+    weight: 90
+    health: [280, 340]
+    damage: [14, 18]
+    speed: 0.3
+    name: "<dark_red><bold>Savaş Yıkıcısı</bold></dark_red>"
+
+  arch_evoker:
+    mob: vanilla:EVOKER
+    class: boss
+    weight: 70
+    health: [200, 240]
+    name: "<dark_red><bold>Baş Büyücü</bold></dark_red>"
+
+  # ----------------------------------------------------------------------------- örnek: MythicMobs
+  # MythicMobs kurulu değilse bu girdi devre dışı kalır ve sebebi loglanır — set bozulmaz.
+  # statOverride yazılmadığı için MythicMobs'un kendi statları KORUNUR.
+  #
+  # mythic_knight:
+  #   mob: mythicmobs:SkeletalKnight
+  #   class: strong
+  #   weight: 100

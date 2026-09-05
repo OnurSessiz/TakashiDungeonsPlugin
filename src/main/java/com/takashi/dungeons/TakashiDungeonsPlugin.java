@@ -6,6 +6,10 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.mob.MobRegistry;
+import com.takashi.dungeons.mob.MobService;
+import com.takashi.dungeons.mob.MythicMobsProvider;
+import com.takashi.dungeons.mob.VanillaMobProvider;
 import com.takashi.dungeons.portal.PortalListener;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.schematic.BundledRooms;
@@ -54,6 +58,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private HudService hudService;
     private InstanceManager instanceManager;
     private PortalManager portalManager;
+    private MobRegistry mobRegistry;
+    private MobService mobService;
 
     @Override
     public void onEnable() {
@@ -69,6 +75,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
         setupWorld();
         setupSchematics();
+        setupMobs();
         setupInstances();
         setupPortals();
         setupHud();
@@ -162,6 +169,23 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         regionCleaner = new RegionCleaner(this, async);
         getLogger().info("Schematic servisi hazır — paste modu: "
                 + (async ? "async (FAWE)" : "senkron (main thread)"));
+    }
+
+    /**
+     * The mob catalogue and the service that spawns from it.
+     *
+     * <p>Built before the instance layer and unconditionally: {@link VanillaMobProvider} has no
+     * external dependency, so a server with no mob plugin at all still gets a full set. The
+     * MythicMobs provider is registered even when MythicMobs is absent — it reports its own
+     * absence, which is what lets {@code mobs.yml} say "MythicMobs kurulu değil" instead of
+     * "bilinmeyen sağlayıcı".
+     */
+    private void setupMobs() {
+        mobRegistry = new MobRegistry(this);
+        mobRegistry.register(new VanillaMobProvider());
+        mobRegistry.register(new MythicMobsProvider(this));
+        mobRegistry.load();
+        mobService = new MobService(this, mobRegistry);
     }
 
     /**
@@ -296,5 +320,15 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The entrance objects standing in the world. Always built. */
     public PortalManager getPortalManager() {
         return portalManager;
+    }
+
+    /** The mob catalogue. Always built — the vanilla provider has no external dependency. */
+    public MobRegistry getMobRegistry() {
+        return mobRegistry;
+    }
+
+    /** Spawns mobs from the catalogue. Always built. */
+    public MobService getMobService() {
+        return mobService;
     }
 }
