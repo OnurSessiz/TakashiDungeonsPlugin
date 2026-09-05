@@ -51,6 +51,47 @@
 # Hangi zorlukla üretileceği söylenmemiş dungeon'lar bunu kullanır.
 default-difficulty: medium
 
+# ---------------------------------------------------------------------------------------------
+# ODALARA YERLEŞTİRME
+#
+# KAÇ MOB → odanın YÜRÜNEBİLİR SÜTUN sayısı / density. Oda büyüklüğü oyuncunun gördüğü şey:
+# boş duran büyük salon da tıklım duran koridor da hata gibi okunur, ve ikisi de odanın ne kadar
+# derinde olduğunu bilmekle düzelmez. Derinlik odada NE olduğunu değiştiriyor, kaç tane olduğunu
+# değil.
+#
+# "Yürünebilir sütun", kutunun alanı değil: haç şeklinde bir odanın kutusu çoğunlukla duvardır ve
+# kutuya göre ölçmek haçın dört koluna bir salon dolusu mob koyardı. Sayım odanın merkezinden
+# yürüyerek ulaşılabilen zemine bakıyor — duvar ardındaki mühürlü niş sayılmıyor, oraya mob da
+# konmuyor.
+#
+# HANGİ SINIF → odanın ORANSAL derinliği (depth / maxDepth). Mutlak eşikte 4 odalık bir small
+# dungeon baştan sona weak kalırdı; "small" kısa demek, zararsız demek değil.
+# ---------------------------------------------------------------------------------------------
+spawn:
+  # Kaç yürünebilir bloğa bir mob. Büyütmek odaları seyreltir.
+  density: 45
+
+  # Oda başına alt ve üst sınır. min, zemini olan odalar için geçerli: zemini hiç olmayan bir oda
+  # boş kalır, içine bir mob sıkıştırılmaz.
+  min-per-room: 1
+  max-per-room: 8
+
+  # Giriş odasına mob konsun mu. Varsayılan KAPALI: oyuncu oraya ışınlanıyor ve dövüşün ortasına
+  # düşmemeli, ayrıca party orada toplanıyor. Boss odası bu listede yok — o FAZ 3C'nin işi.
+  entrance: false
+
+  # Derinlik bantları. until = depth/maxDepth üst sınırı (dahil), classes = o bantta hangi
+  # sınıftan ne oranda çekileceği. Ağırlık anlamı her yerde aynı: 70/30 demek 70'e 30 demek.
+  bands:
+    - until: 0.25
+      classes: { weak: 70, normal: 30 }
+    - until: 0.55
+      classes: { weak: 25, normal: 60, strong: 15 }
+    - until: 0.80
+      classes: { normal: 45, strong: 45, super_strong: 10 }
+    - until: 1.00
+      classes: { normal: 20, strong: 55, super_strong: 25 }
+
 # Zorluk çarpanları. Sınıfın aksine bunlar GERÇEKTEN çarpan — ama üçü ayrı, çünkü hız canla aynı
 # oranda ölçeklenirse dungeon bir koşu yarışına döner: 2.2× hızda hiçbir şeyden kaçılamaz, hiçbir
 # şey kite edilemez ve dövüş dövüş olmaktan çıkar. Can büyük çarpanı kaldırır, hasar orta, hız

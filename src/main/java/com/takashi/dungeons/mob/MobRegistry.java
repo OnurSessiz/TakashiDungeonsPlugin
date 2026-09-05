@@ -53,6 +53,9 @@ public final class MobRegistry {
 
     private Difficulty defaultDifficulty = Difficulty.MEDIUM;
 
+    /** How rooms are filled — the {@code spawn:} block. Never null; falls back to the defaults. */
+    private SpawnRules spawnRules = SpawnRules.DEFAULT;
+
     /** Problems that stopped the file being read at all — shown by {@code /tdungeons mob list}. */
     private @Nullable String loadError;
 
@@ -92,6 +95,7 @@ public final class MobRegistry {
         pools.clear();
         scalings.clear();
         disabled.clear();
+        spawnRules = SpawnRules.DEFAULT;
         loadError = null;
 
         for (MobProvider provider : providers.values()) {
@@ -113,6 +117,7 @@ public final class MobRegistry {
 
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
         readDifficulties(yaml.getConfigurationSection("difficulty"));
+        spawnRules = SpawnRules.parse(yaml.getConfigurationSection("spawn"));
 
         Difficulty parsed = Difficulty.parse(yaml.getString("default-difficulty", "medium"));
         if (parsed == null) {
@@ -252,6 +257,11 @@ public final class MobRegistry {
 
     public Difficulty defaultDifficulty() {
         return defaultDifficulty;
+    }
+
+    /** How rooms are filled — density, per-room bounds and the depth bands. */
+    public SpawnRules spawnRules() {
+        return spawnRules;
     }
 
     /**

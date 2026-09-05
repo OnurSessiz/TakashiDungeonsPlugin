@@ -6,6 +6,7 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.mob.MobPopulator;
 import com.takashi.dungeons.mob.MobRegistry;
 import com.takashi.dungeons.mob.MobService;
 import com.takashi.dungeons.mob.MythicMobsProvider;
@@ -60,6 +61,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private PortalManager portalManager;
     private MobRegistry mobRegistry;
     private MobService mobService;
+    private MobPopulator mobPopulator;
 
     @Override
     public void onEnable() {
@@ -186,6 +188,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         mobRegistry.register(new MythicMobsProvider(this));
         mobRegistry.load();
         mobService = new MobService(this, mobRegistry);
+        mobPopulator = new MobPopulator(this);
     }
 
     /**
@@ -330,5 +333,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Spawns mobs from the catalogue. Always built. */
     public MobService getMobService() {
         return mobService;
+    }
+
+    /** Fills a generated dungeon's rooms with mobs. Always built. */
+    public MobPopulator getMobPopulator() {
+        return mobPopulator;
     }
 }

@@ -136,6 +136,7 @@ public final class InstanceManager {
                 .thenCompose(result -> paste(service, world, result).thenApply(ms -> result))
                 .thenCompose(result -> plug(world, result, doPlug)
                         .thenApply(report -> register(slot, theme, result, report, world)))
+                .thenCompose(instance -> populate(instance, world))
                 .whenComplete((instance, error) -> {
                     if (error != null) {
                         // Nothing was registered, so there is nothing to tear down — but the slot
@@ -176,6 +177,37 @@ public final class InstanceManager {
         return plugger.plugAll(world, result.plugTargets());
     }
 
+    /**
+     * Fills the rooms with mobs, on the main thread, <b>before the future completes</b>.
+     *
+     * <p>The ordering is the point: whoever asked for this dungeon opens the door the moment the
+     * future resolves. Populating afterwards would let a player walk into an empty hall and watch
+     * mobs blink into existence around them. A tick's pause before the door opens is invisible;
+     * a room that fills up behind you is not.
+     *
+     * <p>A failure here never fails the instance. A dungeon with no mobs is a disappointing
+     * dungeon; a dungeon that failed to generate is a held slot and a player standing at a portal
+     * being told nothing.
+     */
+    private CompletableFuture<DungeonInstance> populate(DungeonInstance instance, World world) {
+        CompletableFuture<DungeonInstance> done = new CompletableFuture<>();
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            try {
+                var report = plugin.getMobPopulator().populate(instance, world,
+                        plugin.getMobRegistry().defaultDifficulty());
+                plugin.getLogger().info("Mob yerleştirildi: instance#" + instance.id() + " — "
+                        + report.spawned() + " mob, " + report.roomsPopulated() + " oda"
+                        + (report.refused() == 0 ? "" : ", " + report.refused() + " reddedildi")
+                        + (report.roomsShortOfSpace() == 0 ? ""
+                                : ", " + report.roomsShortOfSpace() + " odada yer yetmedi"));
+            } catch (RuntimeException error) {
+                plugin.getLogger().warning("Mob yerleştirme başarısız (" + instance + "): " + error);
+            }
+            done.complete(instance);
+        });
+        return done;
+    }
+
     private synchronized DungeonInstance register(GridSlot slot, String theme,
                                                   DungeonGenerator.Result result,
                                                   DoorPlugger.Report plugReport, World world) {
@@ -185,6 +217,10 @@ public final class InstanceManager {
         instance.advanceTo(InstanceState.ACTIVE);
         instance.bossBar(createBossBar(instance));
         instances.put(instance.id(), instance);
+        // Logged because an instance opening and closing is the one thing an operator cannot see
+        // from outside: the dungeon world is not somewhere anybody is standing. Without these two
+        // lines a console log shows portals being born and nothing they lead to.
+        plugin.getLogger().info("Instance açıldı: " + instance);
         return instance;
     }
 
@@ -531,8 +567,12 @@ public final class InstanceManager {
                     unregister(instance);
                     instance.advanceTo(InstanceState.CLOSED);
                     notifyClosed(instance);
-                    return new CloseReport(instance.id(), counts[0], counts[1], counts[2], chunks,
-                            System.currentTimeMillis() - start);
+                    CloseReport report = new CloseReport(instance.id(), counts[0], counts[1],
+                            counts[2], chunks, System.currentTimeMillis() - start);
+                    plugin.getLogger().info("Instance kapandı: instance#" + report.id()
+                            + " — " + report.playersEvicted() + " oyuncu, "
+                            + report.blocksCleared() + " blok, " + report.millis() + "ms");
+                    return report;
                 }));
     }
 
