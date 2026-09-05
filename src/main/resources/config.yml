@@ -70,17 +70,20 @@ generation:
 instance:
   # Bir dungeon ne kadar ayakta kalır. Süre dolunca içerideki herkes girdiği yere ışınlanır
   # ve dungeon silinir — bloklar dahil.
-  duration-seconds: 1800
+  # TEST DEĞERİ — yayın öncesi 1800'e geri alınacak.
+  duration-seconds: 300
 
   # İçinde kimse kalmayınca kaç saniye sonra kapansın. 0 = kapanmasın, süresini doldursun.
   #
   # Sayaç ancak dungeon'a BİR KEZ girildikten sonra işlemeye başlar: operatörün üretip
   # bakmakta olduğu, hiç girilmemiş bir dungeon bu yüzden ayağının altından silinmez.
-  empty-timeout-seconds: 300
+  # TEST DEĞERİ — yayın öncesi 300'e geri alınacak.
+  empty-timeout-seconds: 60
 
   # Kalan süre uyarıları, saniye cinsinden. Her eşik bir kez duyurulur ve sadece içeride
   # oyuncu varken. Boş bırakılırsa uyarı çıkmaz.
-  warn-seconds: [300, 60, 10]
+  # TEST DEĞERİ — 5 dakikalık süreye göre. Yayın öncesi [300, 60, 10]'a geri alınacak.
+  warn-seconds: [120, 60, 10]
 
   boss-bar:
     # Ekranın üstünde kalan süreyi gösteren çubuk. Kapatılırsa süre sistemi aynen çalışır,
