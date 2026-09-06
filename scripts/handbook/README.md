@@ -10,6 +10,25 @@ python scripts\handbook\build.py
 
 ---
 
+## Kapsam kararı — dil katmanı kitaba GİRMİYOR
+
+**Karar 2026-09-06 (Onur).** `Messages` / `lang/*.yml` katmanı ve komut çıktısının
+İngilizce'ye geçmesi (`FAZ 3#BONUS`) bu kitapta **anlatılmayacak**. Yeni bölüm açılmayacak,
+mevcut bölümlere de sıkıştırılmayacak.
+
+Kitap **üretim algoritmasını ve sistemlerin nasıl çalıştığını** anlatıyor; dil katmanı bir
+altyapı tercihi, o anlatının parçası değil. Anlatılacak yer `AI Yönergeleri/isleyis.md`
+(“Dil Katmanı”) ve operatör kılavuzu yazılırsa orası.
+
+Bunun bir bedeli var, bilerek kabul edildi: kitaptaki komut çıktısı örnekleri **Türkçe** ve kod
+artık öyle davranmıyor. O örnekler tazelenirse İngilizce hâlleriyle tazelenmeli — ama bu, dil
+katmanını anlatmak demek değil.
+
+> Kitabın **gerçekten** eksik olduğu yer ayrı bir konu: Part III, FAZ 3C'yi (boss odası, PDC
+> sahipliği, öldürme sinyali) hâlâ "kalan borç" diye anlatıyor. O güncellenmeli.
+
+---
+
 ## Dosyalar
 
 | Dosya | Ne |
