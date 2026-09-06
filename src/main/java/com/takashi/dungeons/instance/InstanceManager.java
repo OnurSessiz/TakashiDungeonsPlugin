@@ -9,6 +9,8 @@ import com.takashi.dungeons.generation.PlacedRoom;
 import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.generation.Vec3i;
+import com.takashi.dungeons.mob.DungeonMobTag;
+import com.takashi.dungeons.mob.MobKill;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
@@ -197,9 +199,18 @@ public final class InstanceManager {
                         plugin.getMobRegistry().defaultDifficulty());
                 plugin.getLogger().info("Mob yerleştirildi: instance#" + instance.id() + " — "
                         + report.spawned() + " mob, " + report.roomsPopulated() + " oda"
+                        + (report.hasBoss() ? ", boss: " + report.bossMob()
+                                + (report.guards() == 0 ? "" : " +" + report.guards() + " muhafız")
+                                : "")
                         + (report.refused() == 0 ? "" : ", " + report.refused() + " reddedildi")
                         + (report.roomsShortOfSpace() == 0 ? ""
                                 : ", " + report.roomsShortOfSpace() + " odada yer yetmedi"));
+                // A boss room that stayed empty is the difference between a dungeon and a walk;
+                // it gets its own line rather than a clause nobody reads to the end of.
+                if (report.bossProblem() != null) {
+                    plugin.getLogger().warning("instance#" + instance.id() + " boss'suz açıldı: "
+                            + report.bossProblem());
+                }
             } catch (RuntimeException error) {
                 plugin.getLogger().warning("Mob yerleştirme başarısız (" + instance + "): " + error);
             }
@@ -325,6 +336,61 @@ public final class InstanceManager {
         }
     }
 
+    // ------------------------------------------------------------------ clearing
+
+    /**
+     * The boss died — the dungeon is cleared.
+     *
+     * <p>Registered on {@code MobService.onKill} at enable rather than called from the mob layer,
+     * so the mob package publishes a fact and does not decide what a dungeon does about it. Phase
+     * 4's loot and phase 8's events subscribe to the same signal, alongside this and without
+     * touching it.
+     *
+     * <p>Ordinary kills are ignored here <b>on purpose</b>: they are the majority of the signal
+     * and this listener would run for every zombie in every instance. Whoever needs them (phase 4)
+     * registers their own handler.
+     */
+    public void onMobKilled(MobKill kill) {
+        if (!kill.boss()) {
+            return;
+        }
+        DungeonInstance instance = kill.instance();
+        if (!instance.isActive()) {
+            return;
+        }
+        long grace = plugin.getConfig().getLong("instance.clear-grace-seconds", 60) * 1000L;
+        if (!instance.markCleared(grace)) {
+            return;
+        }
+        // Every threshold longer than what is now left is suppressed. Without this, shortening the
+        // clock fires "closes in 5 minutes" and "closes in 1 minute" in the same tick, seconds
+        // after the player was told they had a minute to get out.
+        long remainingSeconds = instance.remainingMillis() / 1000L;
+        for (int threshold : plugin.getConfig().getIntegerList("instance.warn-seconds")) {
+            if (threshold >= remainingSeconds) {
+                instance.markWarned(threshold);
+            }
+        }
+        announceCleared(instance, kill);
+        plugin.getLogger().info("Instance temizlendi: instance#" + instance.id() + " — boss "
+                + (kill.definition() == null ? "?" : kill.definition().id()) + " öldürüldü"
+                + (kill.killer() == null ? "" : " (" + kill.killer().getName() + ")")
+                + ", kalan süre " + formatDuration(instance.remainingMillis()));
+    }
+
+    private void announceCleared(DungeonInstance instance, MobKill kill) {
+        Component name = kill.entity().customName() != null
+                ? kill.entity().customName()
+                : Component.text("Boss", NamedTextColor.DARK_RED);
+        broadcast(instance, Component.text("", NamedTextColor.GREEN)
+                .append(name)
+                .append(Component.text(" devrildi — dungeon temizlendi!", NamedTextColor.GREEN)));
+        broadcast(instance, Component.text("Çıkış için "
+                + formatDuration(instance.remainingMillis()) + " süren var.",
+                NamedTextColor.YELLOW));
+        updateBossBar(instance);
+    }
+
     // ------------------------------------------------------------------ boss bar
 
     private BossBar createBossBar(DungeonInstance instance) {
@@ -352,7 +418,11 @@ public final class InstanceManager {
                 (float) instance.remainingMillis() / instance.totalMillis()));
         bar.progress(fraction);
         bar.name(barTitle(instance));
-        BossBar.Color color = fraction <= 0.10f ? BossBar.Color.RED
+        // Green once the boss is down, whatever the fraction says. After a clear the bar is
+        // counting the way out, not the way to failure, and repainting it red at the end would
+        // tell the player they are losing something they have already won.
+        BossBar.Color color = instance.isCleared() ? BossBar.Color.GREEN
+                : fraction <= 0.10f ? BossBar.Color.RED
                 : fraction <= 0.25f ? BossBar.Color.YELLOW
                 : BossBar.Color.BLUE;
         if (bar.color() != color) {
@@ -361,8 +431,11 @@ public final class InstanceManager {
     }
 
     private Component barTitle(DungeonInstance instance) {
-        String format = plugin.getConfig().getString("instance.boss-bar.title",
-                "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>");
+        String format = instance.isCleared()
+                ? plugin.getConfig().getString("instance.boss-bar.cleared-title",
+                        "<green>Temizlendi</green> <dark_gray>|</dark_gray> <white><time></white>")
+                : plugin.getConfig().getString("instance.boss-bar.title",
+                        "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>");
         try {
             return MiniMessage.miniMessage().deserialize(format,
                     Placeholder.unparsed("time", formatDuration(instance.remainingMillis())),
@@ -555,7 +628,8 @@ public final class InstanceManager {
             // who walked in, or a player mid-fall.
             int home = instance.playerCount();
             sendEveryoneHome(instance);
-            return new int[]{home + evictPlayers(world, instance), removeEntities(world, instance)};
+            return new int[]{home + evictPlayers(world, instance),
+                    removeEntities(world, instance) + removeOwnedMobs(world, instance)};
         });
 
         return evicted
@@ -571,7 +645,9 @@ public final class InstanceManager {
                             counts[2], chunks, System.currentTimeMillis() - start);
                     plugin.getLogger().info("Instance kapandı: instance#" + report.id()
                             + " — " + report.playersEvicted() + " oyuncu, "
-                            + report.blocksCleared() + " blok, " + report.millis() + "ms");
+                            + report.entitiesRemoved() + " entity, "
+                            + report.blocksCleared() + " blok, " + report.millis() + "ms"
+                            + (instance.isCleared() ? " (boss öldürülmüştü)" : ""));
                     return report;
                 }));
     }
@@ -671,6 +747,39 @@ public final class InstanceManager {
         Collection<Entity> found = world.getNearbyEntities(region, e -> !(e instanceof Player));
         found.forEach(Entity::remove);
         return found.size();
+    }
+
+    /**
+     * Removes this instance's mobs wherever in the dungeon world they have got to.
+     *
+     * <p>The box sweep above is not enough, and the counter-example is in the default mob set: an
+     * <b>enderman</b> teleports up to 32 blocks and does it through walls. One that left the room
+     * union is outside the wiped volume and outside the swept box — and, if it crossed into a
+     * neighbouring slot, it is standing in somebody else's dungeon. The persistent tag is what
+     * makes it findable there; position cannot answer a question about ownership.
+     *
+     * <p>The two sweeps have different jobs and neither replaces the other: the box catches
+     * <i>anything</i> in the volume — dropped items, arrows, an operator's item frame — while this
+     * one catches <i>ours</i> anywhere. Scanning the whole world is affordable because it happens
+     * once per close and the dungeon world holds nothing but live instances.
+     */
+    private int removeOwnedMobs(World world, DungeonInstance instance) {
+        if (plugin.getMobService() == null) {
+            return 0;
+        }
+        DungeonMobTag tag = plugin.getMobService().tag();
+        int count = 0;
+        for (Entity entity : world.getEntities()) {
+            // isValid() screens out what the box sweep just removed — otherwise every mob that was
+            // where it belonged would be counted twice in the close report.
+            if (entity instanceof Player || !entity.isValid()
+                    || !tag.belongsTo(entity, instance.id())) {
+                continue;
+            }
+            entity.remove();
+            count++;
+        }
+        return count;
     }
 
     /**

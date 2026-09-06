@@ -11,6 +11,7 @@ import com.takashi.dungeons.instance.DungeonInstance;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.LivingEntity;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.random.RandomGenerator;
@@ -28,10 +29,12 @@ import java.util.random.RandomGenerator;
  *   <li><b>How hard</b> — the instance's difficulty, applied by {@link MobService}.</li>
  * </ul>
  *
- * <h2>Two rooms are skipped</h2>
- * The <b>entrance</b>, because a player is teleported into it and should not arrive mid-fight, and
- * because a party gathers there. The <b>boss room</b>, because it is phase 3C's job and a boss
- * drawn by the ordinary room spawner would be a boss standing among four zombies.
+ * <h2>The entrance is skipped; the boss room is filled separately</h2>
+ * The <b>entrance</b> gets nothing: a player is teleported into it and should not arrive
+ * mid-fight, and a party gathers there. The <b>boss room</b> is not skipped but goes down a
+ * different path ({@link #populateBoss}) — the rules above give the wrong answer for it in both
+ * halves, and a boss drawn by the ordinary room spawner would be a boss standing among four
+ * zombies.
  *
  * <h2>Reproducibility</h2>
  * Each room draws from {@code Seeds.derive(dungeonSeed, nodeId)}, so the same seed produces the
@@ -45,9 +48,18 @@ public final class MobPopulator {
      *
      * @param roomsShortOfSpace rooms that had fewer standing places than the density asked for;
      *                          not an error, but the number that explains a thin dungeon
+     * @param bossMob           the id of the boss that was placed, or {@code null} if none was
+     * @param guards            how many companions stand with it
+     * @param bossProblem       why there is no boss, in a sentence — {@code null} when there is
+     *                          one, or when the layout has no boss room to fill
      */
     public record Report(int roomsPopulated, int roomsSkipped, int spawned, int refused,
-                         int roomsShortOfSpace) {
+                         int roomsShortOfSpace, @Nullable String bossMob, int guards,
+                         @Nullable String bossProblem) {
+
+        public boolean hasBoss() {
+            return bossMob != null;
+        }
     }
 
     private final TakashiDungeonsPlugin plugin;
@@ -80,8 +92,20 @@ public final class MobPopulator {
         int refused = 0;
         int shortOfSpace = 0;
 
+        BossOutcome boss = BossOutcome.NONE;
+
         for (LayoutNode node : result.layout().nodes()) {
-            if (isSkipped(node, result, rules)) {
+            if (node.id() == result.bossNodeId()) {
+                boss = populateBoss(instance, world, difficulty, node, result, rules, finder);
+                spawned += boss.spawned();
+                if (boss.spawned() > 0) {
+                    populated++;
+                } else {
+                    skipped++;
+                }
+                continue;
+            }
+            if (isSkipped(node, rules)) {
                 skipped++;
                 continue;
             }
@@ -116,9 +140,8 @@ public final class MobPopulator {
                     refused++;
                     continue;
                 }
-                Location where = new Location(world, point.x() + 0.5, point.y() + 1,
-                        point.z() + 0.5);
-                LivingEntity entity = service.spawn(definition, where, difficulty, random);
+                LivingEntity entity = service.spawn(definition, standOn(world, point), difficulty,
+                        random, instance.id(), false);
                 if (entity == null) {
                     refused++;
                 } else {
@@ -132,20 +155,111 @@ public final class MobPopulator {
                 skipped++;
             }
         }
-        return new Report(populated, skipped, spawned, refused, shortOfSpace);
+        return new Report(populated, skipped, spawned, refused, shortOfSpace,
+                boss.mobId(), boss.guards(), boss.problem());
     }
 
     /**
-     * The entrance and the boss room are left alone; so is a room whose type says entrance even
-     * when the graph did not make it the root, because a mapper marked it as a place players
-     * arrive.
+     * The entrance is left alone; so is a room whose type says entrance even when the graph did
+     * not make it the root, because a mapper marked it as a place players arrive.
      */
-    private boolean isSkipped(LayoutNode node, DungeonGenerator.Result result, SpawnRules rules) {
-        if (node.id() == result.bossNodeId()) {
-            return true;
-        }
+    private boolean isSkipped(LayoutNode node, SpawnRules rules) {
         boolean entrance = node.id() == 0 || node.template().type() == RoomType.ENTRANCE;
         return entrance && !rules.entranceMobs();
+    }
+
+    // ------------------------------------------------------------------ the boss room
+
+    /**
+     * What came of the boss room.
+     *
+     * @param mobId   the boss's registry id, or {@code null} if none was placed
+     * @param guards  companions actually spawned
+     * @param problem the sentence explaining an absent boss, or {@code null}
+     */
+    private record BossOutcome(@Nullable String mobId, int guards, @Nullable String problem) {
+
+        /** No boss room in the layout — not a problem, just nothing to do. */
+        static final BossOutcome NONE = new BossOutcome(null, 0, null);
+
+        static BossOutcome failed(String problem) {
+            return new BossOutcome(null, 0, problem);
+        }
+
+        int spawned() {
+            return (mobId == null ? 0 : 1) + guards;
+        }
+    }
+
+    /**
+     * Fills the boss room: one boss on the room's centre-most standing place, and a small, fixed
+     * retinue around it.
+     *
+     * <h2>The boss stands on the seed, not on a random point</h2>
+     * {@link RoomSpawnFinder#survey} returns the walkable surface in breadth-first order from a
+     * seed found by walking rings outward from the centre of the box — so its <b>first element is
+     * the standable column nearest the middle of the room</b>, already computed. That is where a
+     * boss belongs: the player comes through a door and the room's occupant is in front of them,
+     * not behind a pillar in a corner. Nothing extra is measured to get it.
+     *
+     * <p>The guards follow from the same list through {@link RoomSpawnFinder#spread}, which is why
+     * they end up ringing the boss at the minimum spacing rather than clustered on one side.
+     *
+     * <h2>No fallback when the boss pool is empty</h2>
+     * The room is left empty and the reason is reported. Drawing a {@code super_strong} instead
+     * would be the silent redirection {@code MobRegistry} refuses on principle: an operator who
+     * emptied the boss pool would find out weeks later, through a complaint that the last room
+     * feels like the one before it.
+     */
+    private BossOutcome populateBoss(DungeonInstance instance, World world, Difficulty difficulty,
+                                     LayoutNode node, DungeonGenerator.Result result,
+                                     SpawnRules rules, RoomSpawnFinder finder) {
+        SpawnRules.Boss bossRules = rules.boss();
+        if (!bossRules.enabled()) {
+            return BossOutcome.failed("boss yerleştirme kapalı (spawn.boss.enabled)");
+        }
+        MobRegistry registry = plugin.getMobRegistry();
+        MobService service = plugin.getMobService();
+
+        loadChunks(world, node.bounds());
+        RandomGenerator random = Seeds.derive(result.seed(), node.id());
+        List<Vec3i> surface = finder.survey(node.bounds(), random);
+        if (surface.isEmpty()) {
+            return BossOutcome.failed("boss odasında durulabilecek yer bulunamadı");
+        }
+
+        MobDefinition definition = registry.pick(MobClass.BOSS, random);
+        if (definition == null) {
+            return BossOutcome.failed("boss havuzu boş — mobs.yml'de 'class: boss' bir mob yok");
+        }
+        // One point for the boss plus one per guard, taken from the same spread so the minimum
+        // spacing holds between the boss and its retinue as well as among the guards.
+        List<Vec3i> points = finder.spread(surface, 1 + bossRules.guards());
+        LivingEntity boss = service.spawn(definition, standOn(world, points.get(0)), difficulty,
+                random, instance.id(), true);
+        if (boss == null) {
+            return BossOutcome.failed("boss doğurulamadı: " + definition.address());
+        }
+
+        int guards = 0;
+        for (int i = 1; i < points.size(); i++) {
+            MobDefinition guard = registry.pick(bossRules.guardClass(), random);
+            if (guard == null) {
+                // The guard class has no mobs in it. The boss is standing and the dungeon is
+                // finishable; that is the part that matters, so this is not a failure.
+                break;
+            }
+            if (service.spawn(guard, standOn(world, points.get(i)), difficulty, random,
+                    instance.id(), false) != null) {
+                guards++;
+            }
+        }
+        return new BossOutcome(definition.id(), guards, null);
+    }
+
+    /** The mob stands on top of the floor block, in the middle of it. */
+    private Location standOn(World world, Vec3i floor) {
+        return new Location(world, floor.x() + 0.5, floor.y() + 1, floor.z() + 0.5);
     }
 
     /** The deepest room in the layout; 0 when there is only an entrance. */

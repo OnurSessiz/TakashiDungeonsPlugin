@@ -85,6 +85,17 @@ instance:
   # TEST DEĞERİ — 5 dakikalık süreye göre. Yayın öncesi [300, 60, 10]'a geri alınacak.
   warn-seconds: [120, 60, 10]
 
+  # Boss öldürüldükten sonra dungeon kaç saniye daha ayakta kalır.
+  #
+  # Süre TAVAN, yenileme değil: 40 saniyesi kalmış bir dungeon boss ölünce 60 saniyeye ÇIKMAZ.
+  # Uzatılabilen bir sayaç sayaç değildir.
+  #
+  # 0 yazılırsa süre hiç kısalmaz, dungeon sadece "temizlendi" işaretlenir. Kısaltmanın sebebi
+  # şu: tam süre bırakılırsa boss'u öldürmek hiçbir şeyi değiştirmez, yani bir son değildir;
+  # anında kapatılırsa da party kazandığı anda odadan atılır ve dövüşün düşürdüğünü (FAZ 4'te
+  # loot o odaya konacak) toplayamaz.
+  clear-grace-seconds: 60
+
   boss-bar:
     # Ekranın üstünde kalan süreyi gösteren çubuk. Kapatılırsa süre sistemi aynen çalışır,
     # sadece görünmez olur.
@@ -94,6 +105,11 @@ instance:
     # Çubuk dolmuyor, BOŞALIYOR; rengi kalan orana göre kendisi değişiyor:
     # mavi -> %25 altında sarı -> %10 altında kırmızı.
     title: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
+
+    # Boss öldükten sonraki başlık. Çubuk bu noktada YEŞİL yanıyor ve kalan süreyi baştan
+    # doldurup boşaltıyor: artık kaybetmeye değil, çıkmaya kalan süreyi ölçüyor. Aynı
+    # yerine geçenler geçerli.
+    cleared-title: "<green>Temizlendi</green> <dark_gray>|</dark_gray> <white><time></white>"
 
 portal:
   # ---------------------------------------------------------------------------------------

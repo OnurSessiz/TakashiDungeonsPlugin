@@ -12,6 +12,9 @@ import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 import java.util.random.RandomGenerator;
 
 /**
@@ -28,32 +31,87 @@ import java.util.random.RandomGenerator;
  * a limitation to work around; it is the promise made to every mob plugin the server has
  * installed ({@code anahedef.md} §4). Difficulty scaling rides on the same flag, because a
  * multiplier applied to somebody else's carefully written boss is still an override.
+ *
+ * <p><b>The ownership tag is outside that contract.</b> It is written to every mob this class
+ * spawns for an instance, whatever the flag says, because it is not a stat: it is how the dungeon
+ * recognises its own mobs at teardown. Refusing to tag a MythicMobs boss would not protect it, it
+ * would leave it standing in the next party's dungeon.
  */
 public final class MobService {
 
     private final TakashiDungeonsPlugin plugin;
     private final MobRegistry registry;
+    private final DungeonMobTag tag;
+
+    /**
+     * Who wants to hear about a dungeon mob dying — phase 4's loot table, phase 8's event bridge,
+     * and today {@code InstanceManager}, which is how a dead boss becomes a cleared dungeon.
+     */
+    private final List<Consumer<MobKill>> killHandlers = new ArrayList<>();
 
     public MobService(TakashiDungeonsPlugin plugin, MobRegistry registry) {
         this.plugin = plugin;
         this.registry = registry;
+        this.tag = new DungeonMobTag(plugin);
     }
 
     public MobRegistry registry() {
         return registry;
     }
 
+    /** The instance-ownership mark carried by every mob this service spawns into a dungeon. */
+    public DungeonMobTag tag() {
+        return tag;
+    }
+
     /**
-     * Spawns a mob at the location.
+     * Registers a listener for "a dungeon mob died".
      *
-     * <p>Main thread only — entity creation is not thread safe and Bukkit will throw. The check is
-     * here rather than in the caller because phase 3B populates rooms from a paste chain that runs
-     * on FAWE's thread, and the mistake is easy to make once and hard to see afterwards.
+     * <p>Registration order is call order and a handler that throws does not stop the others; the
+     * same rule {@code InstanceManager.onClosed} follows, for the same reason — an addon's mistake
+     * must not cost the core its own bookkeeping.
+     */
+    public void onKill(Consumer<MobKill> handler) {
+        killHandlers.add(handler);
+    }
+
+    /** Publishes a kill to every registered handler. Called by {@link DungeonMobListener}. */
+    void fireKill(MobKill kill) {
+        for (Consumer<MobKill> handler : killHandlers) {
+            try {
+                handler.accept(kill);
+            } catch (RuntimeException error) {
+                plugin.getLogger().warning("Mob ölüm dinleyicisi hata verdi: " + error);
+            }
+        }
+    }
+
+    /**
+     * Spawns a mob that belongs to no instance — the command path.
      *
      * @return the spawned entity, or {@code null} if the provider refused
      */
     public @Nullable LivingEntity spawn(MobDefinition definition, Location location,
                                         Difficulty difficulty, RandomGenerator random) {
+        return spawn(definition, location, difficulty, random, DungeonMobTag.NO_INSTANCE, false);
+    }
+
+    /**
+     * Spawns a mob at the location and marks it as the instance's property.
+     *
+     * <p>Main thread only — entity creation is not thread safe and Bukkit will throw. The check is
+     * here rather than in the caller because phase 3B populates rooms from a paste chain that runs
+     * on FAWE's thread, and the mistake is easy to make once and hard to see afterwards.
+     *
+     * @param instanceId the owning instance, or {@link DungeonMobTag#NO_INSTANCE} for a mob the
+     *                   operator spawned by hand: it gets no tag, so no teardown claims it and no
+     *                   kill signal is raised for it
+     * @param boss       whether this is the boss room's boss
+     * @return the spawned entity, or {@code null} if the provider refused
+     */
+    public @Nullable LivingEntity spawn(MobDefinition definition, Location location,
+                                        Difficulty difficulty, RandomGenerator random,
+                                        int instanceId, boolean boss) {
         if (!plugin.getServer().isPrimaryThread()) {
             throw new IllegalStateException("Mob spawn'ı main thread'de yapılmalı: " + definition.id());
         }
@@ -77,6 +135,9 @@ public final class MobService {
         }
         applyName(entity, definition);
         applyDungeonBehaviour(entity);
+        if (instanceId != DungeonMobTag.NO_INSTANCE) {
+            tag.apply(entity, instanceId, definition, boss);
+        }
         return entity;
     }
 

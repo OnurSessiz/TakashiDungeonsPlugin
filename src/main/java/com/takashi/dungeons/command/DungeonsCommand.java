@@ -798,7 +798,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                             + InstanceManager.formatDuration(instance.remainingMillis()),
                             NamedTextColor.YELLOW))
                     .append(Component.text("  oyuncu " + instance.playerCount(),
-                            NamedTextColor.GRAY)));
+                            NamedTextColor.GRAY))
+                    .append(instance.isCleared()
+                            ? Component.text("  temizlendi", NamedTextColor.GREEN)
+                            : Component.empty()));
         }
         sender.sendMessage(Component.text("  /tdungeons enter <id> | leave | close <id|all>",
                 NamedTextColor.DARK_GRAY));

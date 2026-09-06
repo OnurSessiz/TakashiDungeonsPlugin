@@ -53,7 +53,21 @@ public final class DungeonInstance {
     private final DoorPlugger.Report plugReport;
     private final Aabb bounds;
     private final long createdAt;
-    private final long expiresAt;
+
+    /**
+     * When the dungeon dies. <b>Movable in one direction only:</b> killing the boss shortens it to
+     * a grace period, and nothing ever lengthens it. A timer a player can extend is not a timer.
+     */
+    private long expiresAt;
+
+    /**
+     * What the countdown bar measures itself against — {@link #createdAt}, until the boss dies and
+     * it becomes the moment of the kill.
+     *
+     * <p>Without it the bar would jump from "eighteen minutes left" to a sliver: the same number
+     * of pixels has to mean the whole grace period, or the player reads the clear as a punishment.
+     */
+    private long countdownFrom;
 
     /**
      * Who is inside, in the order they entered.
@@ -88,6 +102,17 @@ public final class DungeonInstance {
     private long emptySince = -1;
     private boolean everOccupied;
 
+    /**
+     * When the boss died, or {@code -1}.
+     *
+     * <p>Deliberately <b>not</b> an {@link InstanceState}. That enum is a one-way ladder whose
+     * transitions are checked by ordinal ({@code advanceTo}), and slotting a CLEARED rung between
+     * ACTIVE and CLOSING would mean an uncleared dungeon could never be closed. Being cleared is
+     * not a stage of the teardown — it is something true about a dungeon that is still fully
+     * alive.
+     */
+    private long clearedAt = -1;
+
     /** Warning thresholds already announced, so each one fires once. */
     private final Set<Integer> warningsSent = new LinkedHashSet<>();
 
@@ -101,6 +126,7 @@ public final class DungeonInstance {
         this.bounds = bounds;
         this.createdAt = System.currentTimeMillis();
         this.expiresAt = createdAt + durationMillis;
+        this.countdownFrom = createdAt;
         this.state = InstanceState.BUILDING;
     }
 
@@ -170,12 +196,58 @@ public final class DungeonInstance {
         return Math.max(0, expiresAt - System.currentTimeMillis());
     }
 
+    /** The span the countdown bar draws — the full duration, or the grace period once cleared. */
     public long totalMillis() {
-        return Math.max(1, expiresAt - createdAt);
+        return Math.max(1, expiresAt - countdownFrom);
     }
 
     public boolean isExpired() {
         return System.currentTimeMillis() >= expiresAt;
+    }
+
+    // ------------------------------------------------------------------ clearing
+
+    /** Whether the boss has been killed. */
+    public boolean isCleared() {
+        return clearedAt >= 0;
+    }
+
+    /** When the boss died, or {@code -1}. */
+    public long clearedAt() {
+        return clearedAt;
+    }
+
+    /**
+     * Records the boss's death and, if a grace period is configured, cuts the remaining time down
+     * to it.
+     *
+     * <h2>Why the timer moves at all</h2>
+     * Left at its full length, the boss is a thing that happens on the way to the same expiry —
+     * killing it changes nothing, so it is not an ending. Closed on the spot, the party is thrown
+     * out of the room the instant they win, before they can pick up what the fight dropped (phase
+     * 4 puts loot in that room). The grace period is the only answer that makes the kill both an
+     * ending and a reward.
+     *
+     * <p>The window is a <b>ceiling, not a replacement</b>: a dungeon with forty seconds left does
+     * not gain a minute by having its boss killed. {@code min} is what keeps this from becoming an
+     * extension mechanic.
+     *
+     * @param graceMillis how long the party may stay after the kill; {@code 0} or less leaves the
+     *                    remaining time untouched and only marks the dungeon cleared
+     * @return {@code false} if it was already cleared — the second boss death, or a double-fired
+     *         event, must not restart the window
+     */
+    synchronized boolean markCleared(long graceMillis) {
+        if (clearedAt >= 0) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        clearedAt = now;
+        if (graceMillis > 0) {
+            expiresAt = Math.min(expiresAt, now + graceMillis);
+            countdownFrom = now;
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------ occupancy

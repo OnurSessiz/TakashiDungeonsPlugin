@@ -31,9 +31,51 @@ import java.util.random.RandomGenerator;
  * @param maxPerRoom   ceiling on the count, so a great hall is not a mob farm
  * @param entranceMobs whether the entrance room is populated
  * @param bands        difficulty bands, in ascending order of {@link Band#until}
+ * @param boss         how the boss room is filled — none of the above applies to it
  */
 public record SpawnRules(int density, int minPerRoom, int maxPerRoom, boolean entranceMobs,
-                         List<Band> bands) {
+                         List<Band> bands, Boss boss) {
+
+    /**
+     * The boss room, which is filled by counting rather than by density.
+     *
+     * <p>Everything above sizes a room by its floor and picks a class by its depth. Applied to the
+     * boss room both rules give the wrong answer: a large boss hall would earn eight mobs, and the
+     * deepest band would draw them from {@code strong} and {@code super_strong} — a boss standing
+     * among a crowd, which is the one thing a boss room must not be. So the boss room gets an
+     * exact count of an exact class, and the boss itself is a single draw from the {@code boss}
+     * pool.
+     *
+     * @param enabled    whether a boss is placed at all; off leaves the room empty rather than
+     *                   handing it to the ordinary spawner
+     * @param guards     how many companions stand with the boss. Small on purpose — they are there
+     *                   to make the room read as defended, not to be the fight
+     * @param guardClass which pool the guards come from. Named explicitly rather than taken from
+     *                   the depth bands: the deepest band is a <i>mix</i>, and a boss room that
+     *                   sometimes has two weak zombies in it looks like the spawner leaked
+     */
+    public record Boss(boolean enabled, int guards, MobClass guardClass) {
+
+        public Boss {
+            guards = Math.max(0, guards);
+            guardClass = guardClass == null ? MobClass.STRONG : guardClass;
+        }
+
+        public static final Boss DEFAULT = new Boss(true, 2, MobClass.STRONG);
+
+        /** Reads the {@code spawn.boss:} block; an absent block means the defaults. */
+        public static Boss parse(ConfigurationSection section) {
+            if (section == null) {
+                return DEFAULT;
+            }
+            MobClass guardClass = MobClass.parse(
+                    section.getString("guard-class", DEFAULT.guardClass().key()));
+            return new Boss(
+                    section.getBoolean("enabled", DEFAULT.enabled()),
+                    section.getInt("guards", DEFAULT.guards()),
+                    guardClass == null ? DEFAULT.guardClass() : guardClass);
+        }
+    }
 
     /**
      * One depth band and the class mix drawn inside it.
@@ -79,13 +121,14 @@ public record SpawnRules(int density, int minPerRoom, int maxPerRoom, boolean en
             new Band(0.80, Map.of(MobClass.NORMAL, 45, MobClass.STRONG, 45,
                     MobClass.SUPER_STRONG, 10)),
             new Band(1.00, Map.of(MobClass.NORMAL, 20, MobClass.STRONG, 55,
-                    MobClass.SUPER_STRONG, 25))));
+                    MobClass.SUPER_STRONG, 25))), Boss.DEFAULT);
 
     public SpawnRules {
         density = Math.max(1, density);
         minPerRoom = Math.max(0, minPerRoom);
         maxPerRoom = Math.max(minPerRoom, maxPerRoom);
         bands = List.copyOf(bands);
+        boss = boss == null ? Boss.DEFAULT : boss;
     }
 
     /**
@@ -139,7 +182,8 @@ public record SpawnRules(int density, int minPerRoom, int maxPerRoom, boolean en
                 section.getInt("min-per-room", DEFAULT.minPerRoom()),
                 section.getInt("max-per-room", DEFAULT.maxPerRoom()),
                 section.getBoolean("entrance", DEFAULT.entranceMobs()),
-                bands.isEmpty() ? DEFAULT.bands() : bands);
+                bands.isEmpty() ? DEFAULT.bands() : bands,
+                Boss.parse(section.getConfigurationSection("boss")));
     }
 
     private static Band parseBand(Object entry) {

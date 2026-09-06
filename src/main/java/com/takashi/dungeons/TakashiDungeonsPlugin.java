@@ -6,6 +6,7 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.mob.DungeonMobListener;
 import com.takashi.dungeons.mob.MobPopulator;
 import com.takashi.dungeons.mob.MobRegistry;
 import com.takashi.dungeons.mob.MobService;
@@ -189,6 +190,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         mobRegistry.load();
         mobService = new MobService(this, mobRegistry);
         mobPopulator = new MobPopulator(this);
+        getServer().getPluginManager().registerEvents(new DungeonMobListener(this), this);
     }
 
     /**
@@ -199,6 +201,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private void setupInstances() {
         instanceManager = new InstanceManager(this);
         getServer().getPluginManager().registerEvents(new InstanceListener(this), this);
+        // The mob layer publishes kills; the instance layer decides that a dead boss means a
+        // cleared dungeon. Wired here rather than inside either one, so neither has to know the
+        // other exists — phase 4's loot and phase 8's events subscribe to the same signal.
+        mobService.onKill(instanceManager::onMobKilled);
         instanceManager.startClock();
     }
 

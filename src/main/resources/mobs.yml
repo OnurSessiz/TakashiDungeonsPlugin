@@ -77,8 +77,32 @@ spawn:
   max-per-room: 8
 
   # Giriş odasına mob konsun mu. Varsayılan KAPALI: oyuncu oraya ışınlanıyor ve dövüşün ortasına
-  # düşmemeli, ayrıca party orada toplanıyor. Boss odası bu listede yok — o FAZ 3C'nin işi.
+  # düşmemeli, ayrıca party orada toplanıyor.
   entrance: false
+
+  # BOSS ODASI — yukarıdaki kuralların HİÇBİRİ burada geçerli değil.
+  #
+  # Yoğunluk ve derinlik bandı boss odasına uygulansaydı: büyük bir boss salonu 8 mob hak ederdi
+  # ve en derin bant onları strong/super_strong karışımından çekerdi — kalabalığın içinde duran
+  # bir boss. Boss odası tam da bu olmamalı. Bu yüzden sayı ve sınıf burada TEK TEK yazılıyor.
+  #
+  # Boss odanın MERKEZİNE en yakın durulabilir sütuna konuyor (flood fill'in tohumu). Oyuncu
+  # kapıdan girdiğinde karşısında duruyor, köşede bir sütunun arkasında değil.
+  #
+  # Boss havuzu boşsa oda BOŞ kalıyor ve sebebi konsola düşüyor — super_strong'dan çekilmiyor.
+  # Sessiz ikame, operatörün haftalar sonra "son oda bir öncekinden farksız" diye fark edeceği
+  # türden bir hatadır.
+  boss:
+    # Kapatılırsa boss odası boş kalır. Sıradan oda spawner'ına DEVREDİLMEZ.
+    enabled: true
+
+    # Boss'un yanındaki muhafız sayısı. Bilerek küçük: odayı "korunuyor" gibi göstermek için
+    # varlar, dövüşün kendisi olmak için değil.
+    guards: 2
+
+    # Muhafızlar hangi havuzdan çekilsin. Derinlik bandından alınmıyor: en derin bant bir
+    # KARIŞIM, ve boss odasında bazen iki weak zombi çıkması spawner sızıntısı gibi görünür.
+    guard-class: strong
 
   # Derinlik bantları. until = depth/maxDepth üst sınırı (dahil), classes = o bantta hangi
   # sınıftan ne oranda çekileceği. Ağırlık anlamı her yerde aynı: 70/30 demek 70'e 30 demek.
@@ -222,7 +246,7 @@ mobs:
 
   # ----------------------------------------------------------------------------- super_strong
   # Nadir. Bir odada birden fazlası çıkarsa bu bir hata, bir zorluk ayarı değil — dağılımı
-  # FAZ 3B belirliyor.
+  # yukarıdaki derinlik bantları belirliyor.
 
   evoker_warlock:
     mob: vanilla:EVOKER
