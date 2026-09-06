@@ -25,7 +25,7 @@ import java.util.Collection;
  * constructed and reports {@code false} when the plugin is absent. Registering the provider only
  * when its plugin is present would push the same question into every call site, and the
  * <i>reason</i> a definition is disabled would be lost — the registry could only say "unknown
- * provider" where it should say "MythicMobs kurulu değil".
+ * provider" where it should say "MythicMobs is not installed".
  */
 public interface MobProvider {
 

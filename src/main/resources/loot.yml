@@ -1,0 +1,328 @@
+# TakashiDungeons - loot catalogue
+#
+# Separate from config.yml, exactly like mobs.yml, and for the same reason: phase 9's GUI editor
+# will WRITE this file, and a program that rewrites a file destroys the comments in it. Every
+# explanation below survives because loot lives in its own file.
+#
+# After editing:  /tdungeons loot reload   (or /tdungeons reload for everything)
+#
+# ===============================================================================================
+# CLASS (class):  common | uncommon | rare | ultra_rare | legendary
+#
+# A class is a POOL TAG, not a multiplier - the same rule mobs.yml states. It answers "which pool
+# may a draw take this from"; what the item actually is comes from its own entry below.
+#
+# WEIGHT (weight): the share inside that pool. Same meaning everywhere in this plugin: an item at
+# 200 turns up twice as often as one at 100. Only compared against others in the SAME class.
+#
+# Two weights, two questions, and they are not the same question:
+#   rarity: below decides WHICH CLASS a draw lands on
+#   weight: on an item decides WHICH ITEM within that class
+#
+# ===============================================================================================
+# RARITY - the class split of a single draw
+#
+# 1000-based rather than percentages so that adding a class or nudging one share does not force
+# every other number to be retyped. These are the defaults every table uses unless it writes its
+# own 'rarity:' block.
+rarity:
+  common: 600        # 60%
+  uncommon: 250      # 25%
+  rare: 100          # 10%
+  ultra_rare: 40     # 4%
+  legendary: 10      # 1%
+
+# ===============================================================================================
+# DIFFICULTY - and the one thing about it that is not obvious
+#
+# Multiplying EVERY class by the difficulty multiplier changes nothing at all: a draw normalises,
+# so 2.5x across the board is the same distribution it started with.
+#
+# So the multiplier is applied to RARE AND ABOVE ONLY, and the weight it adds is taken back out of
+# common. Uncommon is left alone and the total stays at 1000, so the shares still read against the
+# same denominator. At hard (2.5x):
+#
+#     rare       100 -> 250        uncommon  250 (untouched)
+#     ultra       40 -> 100        common    1000 - 375 - 250 = 375
+#     legendary   10 ->  25
+#                                  legendary 1% -> 2.5%,  common 60% -> 37.5%
+#
+# Common is the only source, and it can run out: a table written with no common weight has nothing
+# to move, so it is the same at every difficulty. That is allowed - a flat boss reward is a design
+# choice - and the console says which tables it applies to at startup, so nobody finds out by
+# comparing two runs.
+difficulty:
+  easy: 1.0
+  medium: 1.75
+  hard: 2.5
+
+# ===============================================================================================
+# TABLES - a named "roll some loot": how many draws, and how those draws lean
+#
+# One concept, several consumers. A room chest and a boss reward differ in how many draws they get
+# and how rare they lean, not in how a draw works, so both reference a table by name.
+#
+#   rolls   how many draws. A single number or a [min, max] range.
+#   rarity  optional - overrides the split above for this table only.
+#
+# A draw that lands on a class with no items in it produces NOTHING. It does not slide down to a
+# class that does have items: that would turn the 1% legendary roll a player just earned into a
+# loaf of bread, silently. The console warns at startup when a table draws a class the catalogue
+# cannot fill.
+tables:
+
+  # Ordinary rooms. Deliberately modest - the dungeon's income, not its reward.
+  room_chest:
+    rolls: [2, 4]
+
+  # The boss. More draws and a heavier lean than a room chest, and it still scales with difficulty:
+  #
+  #     easy 23% rare+   ->   medium 40%   ->   hard 58%      (room chest: 15 -> 26 -> 37.5)
+  #
+  # Where those numbers come from, and the trap in writing your own: common has to be able to PAY
+  # for the increase. At multiplier m the rare classes want (m - 1) x their total, and common is
+  # the only source. So keep
+  #
+  #     common  >=  (highest multiplier - 1)  x  (rare + ultra_rare + legendary)
+  #
+  # Below that line, common bottoms out at zero and every multiplier past that point produces the
+  # SAME table - medium and hard become identical and nothing says so in play. Here that line is
+  # 1.5 x 230 = 345, and common is 620, so hard applies in full with room to spare.
+  boss_chest:
+    rolls: [4, 6]
+    rarity:
+      common: 620
+      uncommon: 150
+      rare: 160
+      ultra_rare: 55
+      legendary: 15
+
+# ===============================================================================================
+# ITEMS
+#
+#   material          a Minecraft item id (DIAMOND_SWORD). An unknown one DISABLES the entry with
+#                     a reason on the console - it is never quietly replaced with something else.
+#   amount            stack size; a number or a [min, max] range, rolled per draw.
+#   name / lore       MiniMessage. Written here rather than in lang/ because an item name is not
+#                     the plugin speaking - it is content you authored, next to its weight.
+#   enchantments      id: level. Levels ABOVE the vanilla maximum are allowed on purpose: a
+#                     legendary capped at Sharpness V is not a legendary.
+#   unbreakable       ignores durability.
+#   glow              forces the enchantment glint on an item with no enchantment.
+#   custom-model-data resource-pack model id.
+#   hide              item flags to hide, e.g. [HIDE_ATTRIBUTES, HIDE_ENCHANTS].
+#   enabled: false    keeps an entry in the file without it being drawn.
+#
+# Everything below is vanilla, so a fresh install has a complete, working set with nothing
+# disabled - the same out-of-box guarantee mobs.yml makes (anahedef.md section 4).
+# ===============================================================================================
+items:
+
+  # ------------------------------------------------------------------------------- common
+  # What keeps a party going. Nobody remembers finding these; they would notice their absence.
+
+  bread_ration:
+    material: BREAD
+    class: common
+    weight: 150
+    amount: [2, 5]
+
+  cooked_meat:
+    material: COOKED_BEEF
+    class: common
+    weight: 120
+    amount: [1, 4]
+
+  torch_bundle:
+    material: TORCH
+    class: common
+    weight: 140
+    amount: [4, 12]
+
+  arrow_quiver:
+    material: ARROW
+    class: common
+    weight: 130
+    amount: [8, 24]
+
+  iron_nugget_pile:
+    material: IRON_NUGGET
+    class: common
+    weight: 90
+    amount: [3, 9]
+
+  coal_lump:
+    material: COAL
+    class: common
+    weight: 110
+    amount: [2, 6]
+
+  bone_pile:
+    material: BONE
+    class: common
+    weight: 80
+    amount: [1, 4]
+
+  # ------------------------------------------------------------------------------- uncommon
+  # Worth the detour into a side room.
+
+  iron_ingot_stash:
+    material: IRON_INGOT
+    class: uncommon
+    weight: 140
+    amount: [2, 5]
+
+  gold_ingot_stash:
+    material: GOLD_INGOT
+    class: uncommon
+    weight: 110
+    amount: [1, 4]
+
+  emerald_shard:
+    material: EMERALD
+    class: uncommon
+    weight: 90
+    amount: [1, 3]
+
+  ender_pearl_pouch:
+    material: ENDER_PEARL
+    class: uncommon
+    weight: 70
+    amount: [1, 2]
+
+  bottled_experience:
+    material: EXPERIENCE_BOTTLE
+    class: uncommon
+    weight: 85
+    amount: [2, 6]
+
+  golden_carrot_ration:
+    material: GOLDEN_CARROT
+    class: uncommon
+    weight: 75
+    amount: [2, 4]
+
+  # ------------------------------------------------------------------------------- rare
+  # The first tier a player tells someone else about.
+
+  diamond_cache:
+    material: DIAMOND
+    class: rare
+    weight: 120
+    amount: [1, 3]
+
+  crypt_blade:
+    material: IRON_SWORD
+    class: rare
+    weight: 100
+    name: "<aqua>Crypt Blade</aqua>"
+    lore:
+      - "<dark_gray>Carried out of a room nobody left.</dark_gray>"
+    enchantments:
+      sharpness: 3
+      unbreaking: 2
+    hide: [HIDE_ATTRIBUTES]
+
+  warden_plate:
+    material: IRON_CHESTPLATE
+    class: rare
+    weight: 90
+    name: "<aqua>Warden's Plate</aqua>"
+    enchantments:
+      protection: 3
+      unbreaking: 2
+    hide: [HIDE_ATTRIBUTES]
+
+  golden_apple_relic:
+    material: GOLDEN_APPLE
+    class: rare
+    weight: 80
+    amount: [1, 2]
+
+  tome_of_efficiency:
+    material: ENCHANTED_BOOK
+    class: rare
+    weight: 60
+    name: "<light_purple>Tome of the Delver</light_purple>"
+    enchantments:
+      efficiency: 4
+      fortune: 2
+
+  # ------------------------------------------------------------------------------- ultra rare
+  # Rare enough that a party stops walking to look at it.
+
+  diamond_greatsword:
+    material: DIAMOND_SWORD
+    class: ultra_rare
+    weight: 100
+    name: "<dark_aqua>Deepvein Greatsword</dark_aqua>"
+    lore:
+      - "<dark_gray>Cut from the seam the dungeon grew around.</dark_gray>"
+    enchantments:
+      sharpness: 5
+      looting: 2
+      unbreaking: 3
+    hide: [HIDE_ATTRIBUTES]
+
+  diamond_bulwark:
+    material: DIAMOND_CHESTPLATE
+    class: ultra_rare
+    weight: 90
+    name: "<dark_aqua>Deepvein Bulwark</dark_aqua>"
+    enchantments:
+      protection: 4
+      unbreaking: 3
+      thorns: 2
+    hide: [HIDE_ATTRIBUTES]
+
+  longshot_bow:
+    material: BOW
+    class: ultra_rare
+    weight: 80
+    name: "<dark_aqua>Longshot</dark_aqua>"
+    enchantments:
+      power: 5
+      infinity: 1
+      unbreaking: 3
+
+  netherite_scrap_cache:
+    material: NETHERITE_SCRAP
+    class: ultra_rare
+    weight: 60
+    amount: [1, 2]
+
+  # ------------------------------------------------------------------------------- legendary
+  # One percent. The point of the whole table is that these exist and are not guaranteed.
+
+  totem_of_the_depths:
+    material: TOTEM_OF_UNDYING
+    class: legendary
+    weight: 100
+    name: "<gold><bold>Totem of the Depths</bold></gold>"
+    lore:
+      - "<dark_gray>Something down here refuses to let go.</dark_gray>"
+
+  netherite_ingot_prize:
+    material: NETHERITE_INGOT
+    class: legendary
+    weight: 90
+
+  godly_apple:
+    material: ENCHANTED_GOLDEN_APPLE
+    class: legendary
+    weight: 70
+
+  bonelords_cleaver:
+    material: NETHERITE_AXE
+    class: legendary
+    weight: 60
+    name: "<gradient:#ff5555:#ffaa00><bold>Bonelord's Cleaver</bold></gradient>"
+    lore:
+      - "<dark_gray>Taken from the hands that made this place.</dark_gray>"
+      - "<dark_red>The dungeon remembers you now.</dark_red>"
+    unbreakable: true
+    enchantments:
+      sharpness: 7
+      looting: 3
+      fire_aspect: 2
+    hide: [HIDE_ATTRIBUTES, HIDE_UNBREAKABLE]

@@ -11,6 +11,12 @@ import com.takashi.dungeons.generation.RoomLibrary;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.instance.DungeonInstance;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.loot.ItemClass;
+import com.takashi.dungeons.loot.LootItem;
+import com.takashi.dungeons.loot.LootRegistry;
+import com.takashi.dungeons.loot.LootService;
+import com.takashi.dungeons.loot.LootTable;
+import com.takashi.dungeons.loot.RarityWeights;
 import com.takashi.dungeons.mob.Difficulty;
 import com.takashi.dungeons.mob.MobClass;
 import com.takashi.dungeons.mob.MobDefinition;
@@ -33,22 +39,27 @@ import com.takashi.dungeons.world.GridSlot;
 import com.takashi.dungeons.world.GridSlotManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 
@@ -59,21 +70,25 @@ import java.util.concurrent.CompletableFuture;
  * exist to trigger the generation chain (allocate a slot → load a schematic → paste) by hand
  * and check it. Player-facing dungeon commands (join/leave) arrive in phase 2.
  *
- * <p>Note: the messages this class sends are still Turkish. They are the operator-facing
- * message set and will be translated as a whole, together with the {@code messages.yml}
- * extraction, rather than piecemeal.
+ * <p>Everything this class prints is English and lives in the source rather than in
+ * {@code lang/}. That is deliberate ({@code isleyis.md} § Dil Katmanı): what it says is diagnostics
+ * — room lists, weight tables, closing reports — a player cannot run these commands, and a line
+ * quoted in a bug report has to be greppable in the source.
  */
 public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "mob", "slots", "free", "reload", "hud", "extract");
+                    "portal", "mob", "loot", "slots", "free", "reload", "hud", "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
     private static final List<String> MOB_ACTIONS =
             List.of("list", "info", "spawn", "providers", "reload");
+
+    private static final List<String> LOOT_ACTIONS =
+            List.of("list", "info", "tables", "roll", "give", "reload");
 
     private static final List<String> DIFFICULTIES = List.of("easy", "medium", "hard");
 
@@ -118,6 +133,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "close" -> close(sender, label, args);
             case "portal" -> portal(sender, label, args);
             case "mob" -> mob(sender, label, args);
+            case "loot" -> loot(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -711,6 +727,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         // a server without it must still be able to fix a typo in its mob set without a restart.
         if (plugin.getMobRegistry() != null) {
             mobReload(sender);
+        }
+        // Loot too, and for the third time the same reason: loot.yml has no WorldEdit dependency.
+        if (plugin.getLootRegistry() != null) {
+            lootReload(sender);
         }
 
         SchematicService service = requireSchematics(sender);
@@ -1420,6 +1440,285 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         + " disabled"), NamedTextColor.GREEN));
     }
 
+    // ------------------------------------------------------------------ loot
+
+    private void loot(CommandSender sender, String label, String[] args) {
+        String action = args.length < 2 ? "list" : args[1].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "list" -> lootList(sender, args);
+            case "info" -> lootInfo(sender, label, args);
+            case "tables" -> lootTables(sender);
+            case "roll" -> lootRoll(sender, label, args);
+            case "give" -> lootGive(sender, label, args);
+            case "reload" -> lootReload(sender);
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " loot <"
+                    + String.join("|", LOOT_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    /** The catalogue by class, with the disabled entries and their reasons underneath. */
+    private void lootList(CommandSender sender, String[] args) {
+        LootRegistry registry = plugin.getLootRegistry();
+        ItemClass filter = args.length >= 3 ? ItemClass.parse(args[2]) : null;
+        if (args.length >= 3 && filter == null) {
+            sender.sendMessage(Component.text("Unknown class: " + args[2] + " - valid: common, "
+                    + "uncommon, rare, ultra_rare, legendary", NamedTextColor.RED));
+            return;
+        }
+        if (registry.loadError() != null) {
+            sender.sendMessage(Component.text(registry.loadError(), NamedTextColor.RED));
+        }
+        sender.sendMessage(Component.text("Loot registry - " + registry.items().size()
+                + " usable items, " + registry.tables().size() + " tables", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  base rarity: " + registry.baseWeights(),
+                NamedTextColor.DARK_GRAY));
+
+        for (ItemClass itemClass : ItemClass.values()) {
+            if (filter != null && filter != itemClass) {
+                continue;
+            }
+            List<LootItem> pool = registry.pool(itemClass);
+            sender.sendMessage(Component.text("  " + itemClass.key() + " (" + pool.size() + ")",
+                    NamedTextColor.AQUA));
+            for (LootItem item : pool) {
+                sender.sendMessage(Component.text("    " + item.id() + " — " + item.material()
+                        + " ×" + item.amount() + "  w=" + item.weight()
+                        + (item.isCustomised() ? "  [custom]" : ""), NamedTextColor.GRAY));
+            }
+        }
+
+        List<LootRegistry.Disabled> disabled = registry.disabled();
+        if (!disabled.isEmpty()) {
+            sender.sendMessage(Component.text("  disabled (" + disabled.size() + "):",
+                    NamedTextColor.RED));
+            for (LootRegistry.Disabled entry : disabled) {
+                sender.sendMessage(Component.text("    " + entry.id() + " (" + entry.what() + ") — "
+                        + entry.reason(), NamedTextColor.DARK_RED));
+            }
+        }
+    }
+
+    private void lootInfo(CommandSender sender, String label, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /" + label + " loot info <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        LootRegistry registry = plugin.getLootRegistry();
+        LootItem item = registry.item(args[2]);
+        if (item == null) {
+            sender.sendMessage(Component.text("No such item: " + args[2] + " — /" + label
+                    + " loot list", NamedTextColor.RED));
+            return;
+        }
+        sender.sendMessage(Component.text(item.id(), NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  material: " + item.material() + " ×" + item.amount(),
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  class: " + item.itemClass() + "   weight: "
+                + item.weight() + poolShare(registry, item), NamedTextColor.GRAY));
+        if (item.displayName() != null) {
+            sender.sendMessage(Component.text("  name: ", NamedTextColor.GRAY)
+                    .append(MiniMessage.miniMessage().deserialize(item.displayName())));
+        }
+        for (String line : item.lore()) {
+            sender.sendMessage(Component.text("  lore: ", NamedTextColor.DARK_GRAY)
+                    .append(MiniMessage.miniMessage().deserialize(line)));
+        }
+        for (Map.Entry<Enchantment, Integer> entry : item.enchantments().entrySet()) {
+            sender.sendMessage(Component.text("  enchant: " + entry.getKey().getKey().getKey()
+                    + " " + entry.getValue(), NamedTextColor.DARK_GRAY));
+        }
+        if (item.unbreakable() || item.glow() || item.customModelData() != null
+                || !item.flags().isEmpty()) {
+            sender.sendMessage(Component.text("  flags:"
+                    + (item.unbreakable() ? " unbreakable" : "")
+                    + (item.glow() ? " glow" : "")
+                    + (item.customModelData() == null ? "" : " cmd=" + item.customModelData())
+                    + (item.flags().isEmpty() ? "" : " hide=" + item.flags()),
+                    NamedTextColor.DARK_GRAY));
+        }
+    }
+
+    /** How often this item comes up once its class has been drawn. */
+    private String poolShare(LootRegistry registry, LootItem item) {
+        int total = 0;
+        for (LootItem other : registry.pool(item.itemClass())) {
+            total += other.weight();
+        }
+        return total == 0 ? ""
+                : "  (" + Math.round(100.0 * item.weight() / total) + "% of its class)";
+    }
+
+    /**
+     * The tables, and what difficulty actually does to each one.
+     *
+     * <p>The per-difficulty rows are the point. "The multiplier is applied to rare and above and
+     * paid for out of common" is a sentence; three rows of numbers with the shares next to them is
+     * something an operator can check against what they meant.
+     */
+    private void lootTables(CommandSender sender) {
+        LootRegistry registry = plugin.getLootRegistry();
+        if (registry.tables().isEmpty()) {
+            sender.sendMessage(Component.text("No loot tables are defined - loot.yml has no "
+                    + "'tables:' block.", NamedTextColor.RED));
+            return;
+        }
+        for (LootTable table : registry.tables()) {
+            sender.sendMessage(Component.text(table.id() + "  rolls=" + table.rolls(),
+                    NamedTextColor.GOLD));
+            for (Difficulty difficulty : Difficulty.values()) {
+                double multiplier = registry.multiplier(difficulty);
+                RarityWeights weights = table.weightsFor(multiplier);
+                StringBuilder shares = new StringBuilder();
+                for (ItemClass itemClass : ItemClass.values()) {
+                    if (weights.weight(itemClass) == 0) {
+                        continue;
+                    }
+                    shares.append(shares.isEmpty() ? "" : "  ").append(itemClass.key()).append(' ')
+                            .append(weights.weight(itemClass)).append(" (")
+                            .append(percent(weights.share(itemClass))).append(')');
+                }
+                sender.sendMessage(Component.text("  " + difficulty.key() + " ×" + multiplier
+                        + ": " + shares, NamedTextColor.GRAY));
+            }
+        }
+    }
+
+    /**
+     * Rolls a table, once to see the items or many times to see the distribution.
+     *
+     * <p>The many-times form is the acceptance test for the weighting: a distribution that is eight
+     * percent off looks exactly like luck in play, and this is the only place it becomes a number
+     * an operator can compare against the table above.
+     */
+    private void lootRoll(CommandSender sender, String label, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /" + label
+                    + " loot roll <table> [easy|medium|hard] [count]", NamedTextColor.RED));
+            return;
+        }
+        LootRegistry registry = plugin.getLootRegistry();
+        LootTable table = registry.table(args[2]);
+        if (table == null) {
+            sender.sendMessage(Component.text("No such table: " + args[2] + " — /" + label
+                    + " loot tables", NamedTextColor.RED));
+            return;
+        }
+        Difficulty difficulty = args.length >= 4 ? Difficulty.parse(args[3]) : null;
+        if (args.length >= 4 && difficulty == null) {
+            sender.sendMessage(Component.text("Unknown difficulty: " + args[3]
+                    + " - valid: easy, medium, hard", NamedTextColor.RED));
+            return;
+        }
+        if (difficulty == null) {
+            difficulty = plugin.getMobRegistry().defaultDifficulty();
+        }
+        int count = 1;
+        if (args.length >= 5) {
+            try {
+                count = Math.clamp(Integer.parseInt(args[4]), 1, 100_000);
+            } catch (NumberFormatException error) {
+                sender.sendMessage(Component.text("The count must be a number: " + args[4],
+                        NamedTextColor.RED));
+                return;
+            }
+        }
+
+        LootService service = plugin.getLootService();
+        Random random = new Random();
+        if (count == 1) {
+            LootService.Roll roll = service.roll(table, difficulty, random);
+            sender.sendMessage(Component.text(table.id() + " @ " + difficulty.key() + " — "
+                    + roll.items().size() + " items"
+                    + (roll.empty() == 0 ? "" : ", " + roll.empty() + " empty draws"),
+                    NamedTextColor.GOLD));
+            for (LootService.Drawn drawn : roll.draws()) {
+                ItemStack stack = drawn.stack();
+                Component name = stack.getItemMeta() != null
+                        && stack.getItemMeta().hasDisplayName()
+                        ? stack.getItemMeta().displayName()
+                        : Component.text(stack.getType().toString());
+                sender.sendMessage(Component.text("  ×" + stack.getAmount() + " ", NamedTextColor.GRAY)
+                        .append(name)
+                        .append(Component.text("  " + drawn.item().id(), NamedTextColor.DARK_GRAY)));
+            }
+            return;
+        }
+
+        Map<ItemClass, Integer> byClass = new EnumMap<>(ItemClass.class);
+        int draws = 0;
+        int empty = 0;
+        for (int i = 0; i < count; i++) {
+            LootService.Roll roll = service.roll(table, difficulty, random);
+            empty += roll.empty();
+            draws += roll.draws().size() + roll.empty();
+            // Counted from what actually landed in the chest rather than from the class draw: an
+            // empty pool is exactly the difference between the two, and it is the thing worth
+            // seeing.
+            for (LootService.Drawn drawn : roll.draws()) {
+                byClass.merge(drawn.item().itemClass(), 1, Integer::sum);
+            }
+        }
+        RarityWeights expected = table.weightsFor(registry.multiplier(difficulty));
+        sender.sendMessage(Component.text(table.id() + " @ " + difficulty.key() + " — " + count
+                + " rolls, " + draws + " draws"
+                + (empty == 0 ? "" : ", " + empty + " empty (a class with no items)"),
+                NamedTextColor.GOLD));
+        int landed = draws - empty;
+        for (ItemClass itemClass : ItemClass.values()) {
+            int seen = byClass.getOrDefault(itemClass, 0);
+            if (seen == 0 && expected.weight(itemClass) == 0) {
+                continue;
+            }
+            sender.sendMessage(Component.text("  " + itemClass.key() + ": "
+                    + percent(landed == 0 ? 0 : (double) seen / landed) + " seen, "
+                    + percent(expected.share(itemClass)) + " expected  (" + seen + ")",
+                    NamedTextColor.GRAY));
+        }
+    }
+
+    private String percent(double share) {
+        return String.format(Locale.ROOT, "%.1f%%", share * 100);
+    }
+
+    /**
+     * Builds one catalogue entry for real and hands it over — the proof that what the file
+     * describes and what a chest would hold are the same item.
+     */
+    private void lootGive(CommandSender sender, String label, String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /" + label + " loot give <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        LootItem item = plugin.getLootRegistry().item(args[2]);
+        if (item == null) {
+            sender.sendMessage(Component.text("No such item: " + args[2] + " — /" + label
+                    + " loot list", NamedTextColor.RED));
+            return;
+        }
+        ItemStack stack = plugin.getLootService().build(item, new Random());
+        // Anything that does not fit goes on the floor rather than being deleted: this command
+        // exists to look at an item, and silently eating it would be a strange way to fail.
+        player.getInventory().addItem(stack).values()
+                .forEach(left -> player.getWorld().dropItem(player.getLocation(), left));
+        sender.sendMessage(Component.text("Gave " + item.id() + " ×" + stack.getAmount() + " ("
+                + item.itemClass() + ")", NamedTextColor.GREEN));
+    }
+
+    private void lootReload(CommandSender sender) {
+        LootRegistry registry = plugin.getLootRegistry();
+        registry.load();
+        sender.sendMessage(Component.text("loot.yml reloaded - " + registry.items().size()
+                + " items, " + registry.tables().size() + " tables"
+                + (registry.disabled().isEmpty() ? "" : ", " + registry.disabled().size()
+                        + " disabled"), NamedTextColor.GREEN));
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                       @NotNull String label, @NotNull String[] args) {
@@ -1502,6 +1801,29 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         .filter(k -> k.startsWith(prefix)).toList();
             }
             if (args.length == 4 && action.equals("spawn")) {
+                return DIFFICULTIES.stream().filter(d -> d.startsWith(prefix)).toList();
+            }
+            return List.of();
+        }
+        if (sub.equals("loot")) {
+            String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
+            if (args.length == 2) {
+                return LOOT_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+            }
+            String action = args[1].toLowerCase(Locale.ROOT);
+            if (args.length == 3 && (action.equals("info") || action.equals("give"))) {
+                return plugin.getLootRegistry().items().stream().map(LootItem::id)
+                        .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+            }
+            if (args.length == 3 && action.equals("list")) {
+                return Arrays.stream(ItemClass.values()).map(ItemClass::key)
+                        .filter(k -> k.startsWith(prefix)).toList();
+            }
+            if (args.length == 3 && action.equals("roll")) {
+                return plugin.getLootRegistry().tables().stream().map(LootTable::id)
+                        .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+            }
+            if (args.length == 4 && action.equals("roll")) {
                 return DIFFICULTIES.stream().filter(d -> d.startsWith(prefix)).toList();
             }
             return List.of();

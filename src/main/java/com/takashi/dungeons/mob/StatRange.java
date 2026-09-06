@@ -64,7 +64,7 @@ public record StatRange(double min, double max) {
         if (raw instanceof List<?> list) {
             if (list.size() != 2) {
                 throw new IllegalArgumentException(where + ": a range must hold exactly 2 numbers "
-                        + "([min, max]) — bulunan: " + list.size());
+                        + "([min, max]) - found: " + list.size());
             }
             double min = number(list.get(0), where, "min");
             double max = number(list.get(1), where, "max");
@@ -74,7 +74,7 @@ public record StatRange(double min, double max) {
             return new StatRange(min, max);
         }
         throw new IllegalArgumentException(where + ": expected a number or a [min, max] list - "
-                + "bulunan: " + raw);
+                + "found: " + raw);
     }
 
     private static double number(Object value, String where, String field) {
@@ -87,7 +87,7 @@ public record StatRange(double min, double max) {
     private static double requireFinite(double value, String where) {
         if (!Double.isFinite(value) || value < 0) {
             throw new IllegalArgumentException(where + ": must be a finite, non-negative number "
-                    + "— bulunan: " + value);
+                    + "- found: " + value);
         }
         return value;
     }

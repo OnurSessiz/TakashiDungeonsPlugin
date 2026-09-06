@@ -6,6 +6,8 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.loot.LootRegistry;
+import com.takashi.dungeons.loot.LootService;
 import com.takashi.dungeons.mob.DungeonMobListener;
 import com.takashi.dungeons.mob.MobPopulator;
 import com.takashi.dungeons.mob.MobRegistry;
@@ -64,6 +66,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private MobRegistry mobRegistry;
     private MobService mobService;
     private MobPopulator mobPopulator;
+    private LootRegistry lootRegistry;
+    private LootService lootService;
     private Messages messages;
 
     @Override
@@ -85,6 +89,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupWorld();
         setupSchematics();
         setupMobs();
+        setupLoot();
         setupInstances();
         setupPortals();
         setupHud();
@@ -186,8 +191,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
      * <p>Built before the instance layer and unconditionally: {@link VanillaMobProvider} has no
      * external dependency, so a server with no mob plugin at all still gets a full set. The
      * MythicMobs provider is registered even when MythicMobs is absent — it reports its own
-     * absence, which is what lets {@code mobs.yml} say "MythicMobs kurulu değil" instead of
-     * "bilinmeyen sağlayıcı".
+     * absence, which is what lets {@code mobs.yml} say "MythicMobs is not installed" instead of
+     * "unknown provider".
      */
     private void setupMobs() {
         mobRegistry = new MobRegistry(this);
@@ -197,6 +202,20 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         mobService = new MobService(this, mobRegistry);
         mobPopulator = new MobPopulator(this);
         getServer().getPluginManager().registerEvents(new DungeonMobListener(this), this);
+    }
+
+    /**
+     * The loot catalogue and the service that builds items from it.
+     *
+     * <p>Built after the mob layer because loot reads the mob system's {@link
+     * com.takashi.dungeons.mob.Difficulty} scale, and before the instance layer because phase 4B
+     * fills chests in the same pass that populates a new dungeon's rooms. No external dependency:
+     * an entirely vanilla {@code loot.yml} ships in the jar.
+     */
+    private void setupLoot() {
+        lootRegistry = new LootRegistry(this);
+        lootRegistry.load();
+        lootService = new LootService(lootRegistry);
     }
 
     /**
@@ -350,6 +369,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Fills a generated dungeon's rooms with mobs. Always built. */
     public MobPopulator getMobPopulator() {
         return mobPopulator;
+    }
+
+    /** The loot catalogue. Always built — the shipped {@code loot.yml} is entirely vanilla. */
+    public LootRegistry getLootRegistry() {
+        return lootRegistry;
+    }
+
+    /** Rolls tables and builds the items they name. Always built. */
+    public LootService getLootService() {
+        return lootService;
     }
 
     /** Every word a player reads. Built first, before anything can need one. */

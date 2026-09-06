@@ -1,9 +1,10 @@
 # geo-probe — server-free tests for the generation package
 
-Regression cover for phase 1B (geometry), 1C (selection + collision), 1D (graph generation) and
-3B (spawn search). **No server needed**, and it runs in seconds — possible because the
-`generation` package is deliberately pure Java, and because `RoomSpawnFinder` reads the world only
-through the `ColumnProbe` interface. **133 checks** in total.
+Regression cover for phase 1B (geometry), 1C (selection + collision), 1D (graph generation),
+3B (spawn search) and 4A (loot draw). **No server needed**, and it runs in seconds — possible
+because the `generation` package is deliberately pure Java, because `RoomSpawnFinder` reads the
+world only through the `ColumnProbe` interface, and because the loot rarity arithmetic is kept
+apart from the Bukkit types it feeds. **205 checks** in total.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
@@ -18,7 +19,8 @@ powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 | `GeoProbe.java` | **1B — 53 checks:** rotation, `align`, wall derivation, collision rules, 48 placement combinations | on every change to the `generation` package |
 | `GenProbe.java` | **1C — 28 checks:** weight distribution over 200,000 draws, pool filtering, backing off, consistency across 500 seeds, DEAD doors, reproducibility | same |
 | `DungeonProbe.java` | **1D — 31 checks:** critical path guarantee (3×1000 generations), boss assignment, size ranges, plug coverage, consecutive-seed independence, out-of-the-box fallbacks | same |
-| `SpawnProbe.java` | **3B — 21 checks:** the spawn search over hand-drawn ASCII rooms — L-shaped hall, corridor, blocked centre, two-storey, and a **sealed alcove the flood fill must not reach** | on every change to `RoomSpawnFinder` |
+| `SpawnProbe.java` | **3B — 22 checks:** the spawn search over hand-drawn ASCII rooms — L-shaped hall, corridor, blocked centre, two-storey, and a **sealed alcove the flood fill must not reach** | on every change to `RoomSpawnFinder` |
+| `LootProbe.java` | **4A — 71 checks:** the rarity split and what difficulty does to it — the worked example from `isleyis.md` checked number for number, 200,000 draws against the declared weights at three multipliers, and the edge where common runs out and the increase has to be scaled back | on every change to `RarityWeights`, `CountRange` or `LootTable` |
 | `Rooms.java` | The shared test room set — in **alphabetical order**, matching `SchematicService.list()` on the server | (library) |
 | `RotProbe.java` | Measures the sign of WorldEdit's `AffineTransform().rotateY(-degrees)` | only when the WorldEdit version changes |
 

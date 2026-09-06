@@ -5,7 +5,7 @@
 ![Paper 1.21.8](https://img.shields.io/badge/Paper-1.21.8-0d1117?style=flat-square)
 ![Java 21](https://img.shields.io/badge/Java-21-0d1117?style=flat-square)
 ![License GPLv3](https://img.shields.io/badge/license-GPLv3-0d1117?style=flat-square)
-![Status: Phase 1 complete](https://img.shields.io/badge/status-phase%201%20complete-0d1117?style=flat-square)
+![Status: Phase 3 complete](https://img.shields.io/badge/status-phase%203%20complete-0d1117?style=flat-square)
 
 ![Takashi's Dungeons key art: the logo over a torchlit dungeon room with an open archive book and crossed swords](docs/images/key-art.webp)
 
@@ -28,8 +28,8 @@ share geometry.
 
 ## Where the project is
 
-Phase 1 — the generation core — is finished and verified on a live server. Today you can run
-one command and walk through a complete, sealed, connected dungeon:
+Phases 1, 2 and 3 are finished and verified on a live server. Today you can run one command and
+walk through a complete, sealed, connected dungeon — and something in it will try to stop you:
 
 ```
 /tdungeons dungeon medium 12345
@@ -39,10 +39,13 @@ one command and walk through a complete, sealed, connected dungeon:
 
 *Ground level: a room, and the corridor through to the next one.*
 
-Same seed, same dungeon, every time. **Phase 2 is finished too:** a generated dungeon is a
-tracked instance with a life of its own. It counts down on a boss bar, sends everyone back where
-they came from when the time runs out, and deletes itself — blocks included. `/tp` and `/tpa`
-do not work inside one, admins excepted.
+Same seed, same dungeon, every time — **and the same mobs**, because every room derives its own
+random stream from the dungeon seed.
+
+**Phase 2 — the instance lifecycle.** A generated dungeon is a tracked instance with a life of
+its own. It counts down on a boss bar, sends everyone back where they came from when the time
+runs out, and deletes itself — blocks included. `/tp` and `/tpa` do not work inside one, admins
+excepted.
 
 Players get in by right-clicking an entrance that stands in the world — currently a placeholder
 built from an amethyst block, a slowly turning amethyst shard and a floating label. One spawns
@@ -55,11 +58,20 @@ next refresh hour.
 /tdungeons close <id|all>
 ```
 
-What it does **not** have yet: mobs, loot, parties and persistence — phases 3 through 7.
+**Phase 3 — mobs.** Rooms are populated from a catalogue you write, scaled by difficulty, and
+the boss room ends the dungeon: killing the boss marks the instance cleared and drops the clock
+to a short exit grace. Every mob carries an ownership tag so a crash cannot leave one standing
+in the next party's dungeon.
 
-So: free, open source, and genuinely usable already — if what you want is layout generation.
-Wait for phase 2 before putting it in front of players. Issues and questions are welcome
-either way; it is being built in public on purpose.
+**Phase 4 — loot — is in progress.** The catalogue, the weighted draw and the difficulty rule
+are done and tested (4A). Chests (4B) and drop tables (4C) are next, so loot does not yet appear
+in a dungeon.
+
+What it does **not** have yet: chests, drop tables, parties and persistence — the rest of
+phase 4, then 5 through 7.
+
+So: free, open source, and genuinely playable as a generator with mobs. Issues and questions are
+welcome; it is being built in public on purpose.
 
 ---
 
@@ -164,6 +176,81 @@ after the paste.
 
 ---
 
+## What fills a dungeon
+
+### Mobs
+
+The plugin does not create mobs. It registers existing ones — vanilla today, MythicMobs where
+it is installed — and spawns from a catalogue in `mobs.yml`:
+
+```yaml
+crypt_zombie:
+  mob: vanilla:ZOMBIE      # <provider>:<key>, always explicit
+  class: weak              # weak | normal | strong | super_strong | boss
+  weight: 150
+  health: [16, 22]         # rolled per spawn, so a group looks like individuals
+  damage: [2, 3]
+```
+
+**A missing provider disables the entry and says why.** It never falls back to a vanilla zombie:
+a boss that quietly became an ordinary mob because MythicMobs failed to load looks like a balance
+bug, not a missing plugin, and nobody traces that back three weeks later. The shipped catalogue
+is entirely vanilla, so a server with no mob plugin at all has a complete set with nothing
+disabled.
+
+**A class is a pool tag, not a multiplier.** It answers "which pool may this be drawn from"; the
+numbers come from the entry's own ranges. Give a class a stat multiplier and the `health: [40,
+50]` you wrote shows up as 120 in game with nothing to point at. Difficulty *is* a multiplier —
+three of them, because scaling speed the way health scales turns a hard dungeon into a track meet
+where nothing can be kited or fled from.
+
+Where the mobs go is measured, never authored:
+
+- **How many** — the room's *walkable columns* divided by a density, not its bounding-box area. A
+  cross-shaped room's box is mostly wall, and sizing by the box puts a hall's worth of mobs in
+  the four arms of a cross.
+- **Which class** — the room's *relative* depth, `depth / maxDepth`. On absolute thresholds a
+  four-room `small` dungeon would be weak mobs end to end; `small` means short, not harmless.
+- **Where exactly** — square rings outward from the room's centre to find a seed, then a flood
+  fill from it. The fill only reaches what can be walked to, so a **sealed alcove behind a wall**
+  is excluded without a separate reachability test — and the map team never measures a spawn
+  point, for the same reason they never write a door's facing.
+
+The boss room ignores all three. Its count and class are written out explicitly, and the boss
+stands on the flood fill's seed — the standable column nearest the middle of the room, already
+computed — so the player comes through the door and it is in front of them, not behind a pillar.
+If the boss pool is empty the room is left **empty** and the console says so; drawing a
+`super_strong` instead is the silent substitution this project refuses everywhere.
+
+### Loot
+
+Rarity is weighted, 1000-based, and the difficulty rule is the part worth reading:
+
+| | common | uncommon | rare | ultra rare | legendary |
+|---|---|---|---|---|---|
+| base | 600 | 250 | 100 | 40 | 10 |
+| hard (×2.5) | **375** | 250 | 250 | 100 | 25 |
+
+Multiplying *every* class by the multiplier changes nothing at all — a draw normalises, so ×2.5
+across the board is the distribution you started with. So the multiplier is applied to **rare and
+above only, and the weight it adds is taken back out of common.** Legendary goes 1% → 2.5%;
+common goes 60% → 37.5%; the total stays at 1000 so the shares still read against one
+denominator.
+
+That rule has an edge that cost a rewrite of the shipped defaults: **common is the only source
+and it can run out.** A table needs `common >= (multiplier - 1) × (rare + ultra + legendary)` for
+the multiplier to apply in full. Below that line common bottoms out at zero and every multiplier
+past it produces the *same table* — medium and hard become the identical reward and nothing in
+play says so. The first `boss_chest` written here did exactly that. The fix was two-part: correct
+the numbers, and make the registry **warn at load** with the difficulty it caps at and the common
+value it needs. A comment would not have caught it, because a comment did not catch it.
+
+A draw that lands on a class with no items in it produces **nothing** — it does not slide down to
+a class that does. Sliding would turn the 1% legendary a player just earned into a loaf of bread,
+silently, at the worst possible moment.
+
+---
+
 ## Building and running
 
 ```powershell
@@ -199,17 +286,26 @@ not, so a clean install cannot generate a full dungeon yet.
 ## Tests that don't need a server
 
 The `generation` package is deliberately pure Java — no Bukkit types, no WorldEdit types — so
-the placement mathematics can be tested offline, in seconds:
+the placement mathematics can be tested offline, in seconds. The spawn search and the loot draw
+are held to the same rule: the first reads the world only through a `ColumnProbe` interface, the
+second keeps its arithmetic apart from the Bukkit types it feeds.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-**112 checks**, split across geometry (53), candidate selection and collision (28), and graph
-generation (31). They cover rotation round-trips, wall derivation on square, rectangular and
-asymmetric rooms, weight distribution over 200,000 draws, dead-door marking, seed
-reproducibility, plug coverage, and the out-of-box fallbacks — generating with no boss room,
-no entrance room, no rooms at all, and only single-door rooms.
+**205 checks**, split across geometry (53), candidate selection and collision (28), graph
+generation (31), the spawn search (22) and the loot draw (71). They cover rotation round-trips,
+wall derivation on square, rectangular and asymmetric rooms, weight distribution over 200,000
+draws, dead-door marking, seed reproducibility, plug coverage, and the out-of-box fallbacks —
+generating with no boss room, no entrance room, no rooms at all, and only single-door rooms.
+
+Two of those groups exist because their failure mode is *invisible on a live server*. A spawn
+search that is wrong only on L-shaped rooms still fills every room; the mobs are simply
+somewhere unreachable — so it is run against hand-drawn ASCII rooms including a sealed alcove
+the fill must not enter. And a rarity split that is 8% off looks exactly like luck; no amount of
+play tells you otherwise, so it is checked over 200,000 draws at three difficulty multipliers,
+against the worked example this project wrote down before any loot code existed.
 
 The probes hold their room set in the same alphabetical order the server does, so they predict
 exactly what the server will build. That is how the expected block coordinates for the live
@@ -237,18 +333,40 @@ probe proves the correlation exists *before* proving the mixer removes it.
 
 ## Configuration
 
-`config.yml`, fully commented. The knobs that matter:
+Four files, and the split between them is deliberate.
+
+**`config.yml`** — behaviour and server-specific values, fully commented. The knobs that matter:
 
 | Key | Default | What it does |
 |---|---|---|
+| `language` | `en` | Which `lang/<code>.yml` is used. `en` and `tr` ship. |
 | `dungeon-world.slot-size` | `512` | Edge of one instance's square. Must exceed your largest dungeon, or instances bleed into each other. |
 | `dungeon-world.columns` | `32` | Slots per grid row. 512 × 32 = 16,384 blocks along X. |
+| `dungeon-world.reset-on-start` | `true` | Wipe the void world at boot. No instance survives a shutdown, so every block left on disk is debris. |
 | `generation.turn-bias` | `2.0` | Pushes back door choices that continue straight, so chains don't come out ruler-straight. `1.0` disables it. |
 | `generation.max-attempts` | `8` | Retries before falling back to the best attempt and reporting a warning. |
 | `generation.plug-open-doors` | `true` | Turn off to see exactly where the graph choked. |
 | `schematics.extract-bundled` | `true` | Unpack the jar's rooms into the schematics folder. Off means a clean install has no rooms at all. |
-| `hud.lines` | 6 lines | The sidebar layout, as MiniMessage. Placeholders: `<player> <coin> <xp> <rank> <server> <ip>`. |
+| `instance.duration-seconds` | `1800` | How long a dungeon lives once someone is inside. |
+| `instance.clear-grace-seconds` | `60` | What the clock drops to when the boss dies. A ceiling, not a refill — 40 seconds left stays 40. |
+| `portal.wild.*` / `portal.lobby.*` | — | How often entrances appear in the world, and when a lobby one comes back. |
 | `hud.show-by-default` | `true` | Whether the sidebar is on when a player joins. Each player can flip it with `/hud`. |
+
+**`lang/en.yml`, `lang/tr.yml`** — every word a player reads, including the sidebar layout and
+the boss bar titles. The rule is one line: *`config.yml` holds behaviour, `lang/` holds
+sentences.* A translator who has to hunt through two files for the other half of the strings
+translates one of them and ships a plugin that is half in their language. A key your file is
+missing falls back to the English text bundled **inside the jar** — not to the `en.yml` on disk,
+which the operator may also have edited — and logs one line naming it, so a translation that is a
+release behind never shows a player a raw key.
+
+Console logs are English in the source and are not translated. A log is a diagnostic surface: a
+line quoted in a bug report has to be greppable, and an operator who cannot read their own log
+does not open the issue at all.
+
+**`mobs.yml`** and **`loot.yml`** — the catalogues, in their own files because phase 9's GUI
+editors will *write* them, and a program that rewrites a file destroys the comments in it. Every
+explanation in those two files survives precisely because they are not part of `config.yml`.
 
 YAML first, GUI editors later. A config that only works through a GUI is a config you cannot
 diff, template, or ship a preset for.
@@ -262,14 +380,25 @@ All under `/tdungeons` (aliases `/td`, `/takashidungeons`), permission `takashid
 | Command | |
 |---|---|
 | `dungeon <small\|medium\|large> [seed]` | Generate a full dungeon |
+| `instances` / `enter <id>` / `leave` / `close <id\|all>` | The live instances, and getting in and out of one |
+| `portal create\|list\|remove\|tp` | Place and manage entrance objects |
+| `mob list\|info\|spawn\|providers\|reload` | The mob catalogue, its providers, and one mob where you are looking |
+| `loot list\|info\|tables\|roll\|give\|reload` | The loot catalogue, and rolling a table to check its distribution |
 | `rooms` / `room <name>` | List templates / inspect one's doors, box and metadata |
 | `weights` | Show the candidate draw distribution |
+| `themes` | Room pools by folder |
 | `gen` | Write out the code-generated placeholder rooms |
 | `paste <name> [rot]` / `connect` | Placement primitives, for checking geometry by eye |
 | `slots` / `free <index>` | Instance slot grid |
 | `world` / `list` / `status` / `version` | Diagnostics |
+| `reload` | Re-read the language, the sidebar, both catalogues and the room templates |
 | `hud [name\|ip] <text>` | Read the sidebar settings, or write the server name / IP into `config.yml` |
 | `extract [force]` | Unpack the rooms bundled in the jar again; `force` overwrites what is on disk |
+
+`loot tables` prints each table's weights **and percentages** at every difficulty, and
+`loot roll <table> <difficulty> <count>` puts an empirical distribution next to the expected one.
+"The multiplier applies to rare and above" is a sentence; three rows of numbers are something you
+can check against what you meant.
 
 And one command for everyone, permission `takashidungeons.hud` (default: on):
 
@@ -278,20 +407,22 @@ And one command for everyone, permission `takashidungeons.hud` (default: on):
 | `/hud [on\|off]` | Toggle your own sidebar (aliases `/tdhud`, `/dhud`) |
 
 The sidebar shows the server name, the player's name, their coin, their rank and XP, and the
-server IP. Coin, rank and XP read `-` until the economy (phase 7) and rank (phase 11) systems
-exist — a `0` there would read as a real balance. Whether a player has it open is kept for the
-session only; making it stick needs the SQL layer, and player data does not go into YAML.
+server IP. Coin, rank and XP read `-` until the rank (phase 11) and currency (phase 12) addons
+exist — a `0` there would read as a real balance. Its layout is a `lang/` entry, not a config
+key: the words in it are exactly the words that need translating. Whether a player has it open
+is kept for the session only; making it stick needs the SQL layer (phase 7), and player data
+does not go into YAML.
 
 ---
 
 ## Roadmap
 
-Phase 0 (setup) and phase 1 (generation core) are done. The rule for the rest is that a phase
-ships **working** before the next one starts.
+Phases 0 through 3 are done. The rule for the rest is that a phase ships **working** before the
+next one starts.
 
-- **2 — Instance lifecycle** *(next)* — cleanup, timers, entry object, `/tp` blocking
-- **3 — Mobs** — `MobProvider` abstraction, vanilla fallback, MythicMobs integration, classes and difficulty
-- **4 — Loot** — rarity classes, weighted selection, chest filling, drop tables
+- ~~**2 — Instance lifecycle**~~ — cleanup, timers, entry object, `/tp` blocking
+- ~~**3 — Mobs**~~ — `MobProvider` abstraction, vanilla fallback, MythicMobs integration, classes and difficulty
+- **4 — Loot** *(in progress)* — rarity classes and weighted selection ✅, chest filling and drop tables next
 - **5 — Parties**
 - **6 — Supply mob** — optional pre-run shop
 - **7 — Database** — SQLite by default, MySQL optional, async access
