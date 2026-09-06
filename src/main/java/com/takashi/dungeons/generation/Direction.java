@@ -11,10 +11,10 @@ package com.takashi.dungeons.generation;
  */
 public enum Direction {
 
-    NORTH(0, 0, -1, "kuzey"),
-    EAST(1, 0, 0, "doğu"),
-    SOUTH(0, 0, 1, "güney"),
-    WEST(-1, 0, 0, "batı");
+    NORTH(0, 0, -1, "north"),
+    EAST(1, 0, 0, "east"),
+    SOUTH(0, 0, 1, "south"),
+    WEST(-1, 0, 0, "west");
 
     private static final Direction[] VALUES = values();
 

@@ -37,8 +37,9 @@ import java.util.UUID;
  * colour code and whose prefix carries the text. That is what keeps the sidebar from
  * flickering — a refresh rewrites a team prefix instead of removing and re-adding a score.
  *
- * <p>The layout lives in {@code config.yml} as MiniMessage lines, so an operator can rebuild
- * the HUD without touching code. Values arrive as MiniMessage tags: {@code <player>},
+ * <p>The layout lives in {@code lang/<code>.yml} as MiniMessage lines, so an operator can rebuild
+ * the HUD without touching code — and so a translator can reach the words in it, which is why it
+ * is there rather than in {@code config.yml}. Values arrive as MiniMessage tags: {@code <player>},
  * {@code <coin>}, {@code <xp>} and {@code <rank>} come from the player and are inserted
  * unparsed (a tag typed into a name can never become markup), while {@code <server>} and
  * {@code <ip>} are operator-supplied and ARE parsed — that is how they get to be styled.
@@ -139,9 +140,9 @@ public final class HudService implements Listener {
         // the jar's defaults, so the sidebar works out of the box — but say so, otherwise the
         // operator edits config.yml looking for a section that is not there.
         if (!config.contains("hud", true)) {
-            plugin.getLogger().info("config.yml'de 'hud' bölümü yok — gömülü varsayılanlar "
-                    + "kullanılıyor. Düzeni değiştirmek için jar içindeki config.yml'den "
-                    + "'hud' bölümünü kopyala.");
+            plugin.getLogger().info("config.yml has no 'hud' section - the jar's defaults are in "
+                    + "use. Copy the 'hud' section out of the jar's config.yml to change them; "
+                    + "the sidebar's LINES live in lang/<code>.yml.");
         }
         enabled = config.getBoolean("hud.enabled", true);
         showByDefault = config.getBoolean("hud.show-by-default", true);
@@ -151,10 +152,13 @@ public final class HudService implements Listener {
         serverNameText = parse(serverName);
         serverIpText = parse(serverIp);
 
-        List<String> lines = config.getStringList("hud.lines");
+        // The LAYOUT comes from the language file, not from here: the words in it - Player, Coin,
+        // Rank - are exactly the words that need translating. The VALUES it shows (server name,
+        // IP) stay in config.yml, because they are this server's, not this language's.
+        List<String> lines = plugin.getMessages().list("hud.lines");
         if (lines.size() > CODES.length()) {
-            plugin.getLogger().warning("hud.lines " + lines.size() + " satır içeriyor; scoreboard "
-                    + "en fazla " + CODES.length() + " satır taşır, fazlası atıldı.");
+            plugin.getLogger().warning("hud.lines has " + lines.size() + " lines; a scoreboard "
+                    + "carries at most " + CODES.length() + ", the rest were dropped.");
             lines = lines.subList(0, CODES.length());
         }
         layout = List.copyOf(lines.stream().filter(this::parses).toList());
@@ -170,7 +174,7 @@ public final class HudService implements Listener {
             mini.deserialize(line, PROBE);
             return true;
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("hud.lines satırı okunamadı, atlandı: " + line
+            plugin.getLogger().warning("A hud.lines entry could not be parsed and was skipped: " + line
                     + " (" + e.getMessage() + ")");
             return false;
         }
@@ -330,8 +334,8 @@ public final class HudService implements Listener {
         try {
             return mini.deserialize(raw);
         } catch (RuntimeException e) {
-            plugin.getLogger().warning("HUD metni MiniMessage olarak okunamadı, düz metin "
-                    + "olarak gösteriliyor: " + raw + " (" + e.getMessage() + ")");
+            plugin.getLogger().warning("HUD text could not be parsed as MiniMessage and is shown as plain "
+                    + "text: " + raw + " (" + e.getMessage() + ")");
             return Component.text(raw);
         }
     }

@@ -1,8 +1,6 @@
 package com.takashi.dungeons.portal;
 
 import com.takashi.dungeons.TakashiDungeonsPlugin;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.block.Block;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -87,7 +85,7 @@ public final class PortalListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        event.getPlayer().sendMessage(Component.text("Bu geçit kırılamaz.", NamedTextColor.RED));
+        event.getPlayer().sendMessage(plugin.getMessages().get("portal.unbreakable"));
     }
 
     /** Explosions must not take the block out from under a live portal. */

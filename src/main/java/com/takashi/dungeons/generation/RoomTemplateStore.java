@@ -166,10 +166,10 @@ public final class RoomTemplateStore {
             case EAST -> box.maxX();
         };
         if (actual != expected) {
-            plugin.getLogger().warning(name + ": " + door + " duvarın yüzeyinde değil — "
-                    + door.wall().displayName() + " duvarı " + expected + ", anchor " + actual
-                    + " (" + Math.abs(actual - expected) + " blok içeride). Bilerek yapılmadıysa "
-                    + "bağlanan odalar arasında boşluk kalır.");
+            plugin.getLogger().warning(name + ": " + door + " is not on the face of its wall - the "
+                    + door.wall().displayName() + " wall is at " + expected + ", the anchor at "
+                    + actual + " (" + Math.abs(actual - expected) + " blocks inside). Unless that "
+                    + "is deliberate, connected rooms will have a gap between them.");
         }
     }
 

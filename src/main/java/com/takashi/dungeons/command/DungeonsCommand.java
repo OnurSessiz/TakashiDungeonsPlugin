@@ -123,7 +123,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "hud" -> hud(sender, label, args);
             case "extract" -> extract(sender, args);
             default -> sender.sendMessage(Component
-                    .text("Kullanım: /" + label + " <" + String.join("|", SUB_COMMANDS) + ">",
+                    .text("Usage: /" + label + " <" + String.join("|", SUB_COMMANDS) + ">",
                             NamedTextColor.RED));
         }
         return true;
@@ -133,47 +133,47 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component
                 .text("TakashiDungeons v" + plugin.getPluginMeta().getVersion(), NamedTextColor.GOLD));
 
-        sender.sendMessage(Component.text("Entegrasyonlar:", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Integrations:", NamedTextColor.GRAY));
         plugin.getIntegrations().forEach((name, present) -> sender.sendMessage(Component
                 .text("  " + name + ": ", NamedTextColor.GRAY)
-                .append(Component.text(present ? "bulundu" : "yok",
+                .append(Component.text(present ? "found" : "absent",
                         present ? NamedTextColor.GREEN : NamedTextColor.RED))));
 
         World world = plugin.getWorldManager() == null ? null : plugin.getWorldManager().getWorld();
-        sender.sendMessage(Component.text("Dungeon dünyası: ", NamedTextColor.GRAY)
+        sender.sendMessage(Component.text("Dungeon world: ", NamedTextColor.GRAY)
                 .append(world == null
-                        ? Component.text("yüklenmedi", NamedTextColor.RED)
+                        ? Component.text("not loaded", NamedTextColor.RED)
                         : Component.text(world.getName() + " (" + world.getLoadedChunks().length
-                                + " chunk yüklü)", NamedTextColor.GREEN)));
+                                + " chunks loaded)", NamedTextColor.GREEN)));
 
         if (plugin.getWorldManager() != null) {
-            sender.sendMessage(Component.text("  açılışta sıfırlama: ", NamedTextColor.GRAY)
+            sender.sendMessage(Component.text("  reset on start: ", NamedTextColor.GRAY)
                     .append(plugin.getWorldManager().isResetOnStart()
-                            ? Component.text("açık (" + plugin.getWorldManager().getResetFiles()
-                                    + " dosya silindi)", NamedTextColor.GREEN)
-                            : Component.text("kapalı — eski dungeon'lar diskte birikir",
+                            ? Component.text("on (" + plugin.getWorldManager().getResetFiles()
+                                    + " files deleted)", NamedTextColor.GREEN)
+                            : Component.text("off - dead dungeons pile up on disk",
                                     NamedTextColor.YELLOW)));
         }
 
         GridSlotManager slots = plugin.getSlotManager();
         if (slots != null) {
             sender.sendMessage(Component.text("Slot: ", NamedTextColor.GRAY)
-                    .append(Component.text(slots.allocatedCount() + " ayrılmış, kenar "
-                            + slots.slotSize() + " blok", NamedTextColor.WHITE)));
+                    .append(Component.text(slots.allocatedCount() + " allocated, edge "
+                            + slots.slotSize() + " blocks", NamedTextColor.WHITE)));
         }
 
         InstanceManager instances = plugin.getInstanceManager();
         if (instances != null) {
             sender.sendMessage(Component.text("Instance: ", NamedTextColor.GRAY)
-                    .append(Component.text(instances.count() + " açık", NamedTextColor.WHITE)));
+                    .append(Component.text(instances.count() + " open", NamedTextColor.WHITE)));
         }
 
         SchematicService service = plugin.getSchematicService();
         sender.sendMessage(Component.text("Schematic: ", NamedTextColor.GRAY)
                 .append(service == null
-                        ? Component.text("devre dışı (WorldEdit/FAWE yok)", NamedTextColor.RED)
-                        : Component.text(service.list().size() + " dosya, paste "
-                                + (service.isAsyncPaste() ? "async" : "senkron"), NamedTextColor.GREEN)));
+                        ? Component.text("disabled (no WorldEdit/FAWE)", NamedTextColor.RED)
+                        : Component.text(service.list().size() + " files, paste mode "
+                                + (service.isAsyncPaste() ? "async" : "sync"), NamedTextColor.GREEN)));
     }
 
     private void world(CommandSender sender) {
@@ -187,7 +187,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         // Through the manager, so the plugin's own move is not stopped by its own teleport block.
         plugin.getInstanceManager().teleportInternal(player, new Location(world, 0.5, 65, 0.5));
-        sender.sendMessage(Component.text("Dungeon dünyasına ışınlandın.", NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Teleported to the dungeon world.", NamedTextColor.GREEN));
     }
 
     private void list(CommandSender sender) {
@@ -197,8 +197,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         List<String> names = service.list();
         if (names.isEmpty()) {
-            sender.sendMessage(Component.text("Schematic yok. Klasör: "
-                    + service.getDirectory().getPath() + "  (/tdungeons gen ile test odası üret)",
+            sender.sendMessage(Component.text("No schematics. Folder: "
+                    + service.getDirectory().getPath() + "  (create test rooms with /tdungeons gen)",
                     NamedTextColor.YELLOW));
             return;
         }
@@ -222,18 +222,18 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 if (store != null) {
                     store.invalidateCache();
                 }
-                sender.sendMessage(Component.text(count + " test odası (.schem + .yml) üretildi → "
+                sender.sendMessage(Component.text(count + " test rooms (.schem + .yml) created -> "
                         + service.getDirectory().getPath(), NamedTextColor.GREEN));
             } catch (Exception e) {
-                sender.sendMessage(Component.text("Üretim başarısız: " + e.getMessage(), NamedTextColor.RED));
-                plugin.getLogger().warning("Test odası üretimi başarısız: " + e);
+                sender.sendMessage(Component.text("Creation failed: " + e.getMessage(), NamedTextColor.RED));
+                plugin.getLogger().warning("Test room creation failed: " + e);
             }
         });
     }
 
     private void paste(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " paste <schematic> [0|90|180|270]",
+            sender.sendMessage(Component.text("Usage: /" + label + " paste <schematic> [0|90|180|270]",
                     NamedTextColor.RED));
             return;
         }
@@ -248,11 +248,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             try {
                 rotation = Integer.parseInt(args[2]);
             } catch (NumberFormatException e) {
-                sender.sendMessage(Component.text("Rotation sayı olmalı: " + args[2], NamedTextColor.RED));
+                sender.sendMessage(Component.text("Rotation must be a number: " + args[2], NamedTextColor.RED));
                 return;
             }
             if (Math.floorMod(rotation, 90) != 0) {
-                sender.sendMessage(Component.text("Rotation 90'ın katı olmalı: " + rotation,
+                sender.sendMessage(Component.text("Rotation must be a multiple of 90: " + rotation,
                         NamedTextColor.RED));
                 return;
             }
@@ -262,7 +262,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         GridSlot slot = plugin.getSlotManager().allocate();
         int rot = rotation;
 
-        sender.sendMessage(Component.text("Yükleniyor: " + name + " → " + slot, NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Loading: " + name + " → " + slot, NamedTextColor.GRAY));
 
         service.load(name)
                 .thenCompose((Clipboard clipboard) -> service.paste(clipboard, world,
@@ -275,9 +275,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         // No point holding the slot if the paste blew up
                         plugin.getSlotManager().release(slot.index());
                         Throwable cause = error.getCause() == null ? error : error.getCause();
-                        sender.sendMessage(Component.text("Paste başarısız: " + cause.getMessage(),
+                        sender.sendMessage(Component.text("Paste failed: " + cause.getMessage(),
                                 NamedTextColor.RED));
-                        plugin.getLogger().warning("Paste başarısız (" + name + "): " + cause);
+                        plugin.getLogger().warning("Paste failed (" + name + "): " + cause);
                         return;
                     }
                     sender.sendMessage(Component.text("Paste tamam: " + name + " rot=" + rot
@@ -294,7 +294,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             Location target = slot.center(world).add(0, 1, 0);
             plugin.getInstanceManager().teleportInternal(player, target);
-            player.sendMessage(Component.text("Odanın merkezine ışınlandın.", NamedTextColor.GRAY));
+            player.sendMessage(Component.text("Teleported to the centre of the room.", NamedTextColor.GRAY));
         });
     }
 
@@ -308,26 +308,26 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         List<String> names = store.list();
         if (names.isEmpty()) {
-            sender.sendMessage(Component.text("Oda yok \u2014 /tdungeons gen ile test odasi uret.",
+            sender.sendMessage(Component.text("No rooms - create test rooms with /tdungeons gen.",
                     NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Oda sablonlari (" + names.size() + "):", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("Room templates (" + names.size() + "):", NamedTextColor.GRAY));
         store.loadAll(names).whenComplete((templates, error) -> {
             if (error != null) {
-                sendFailure(sender, "Sablon yuklenemedi", error);
+                sendFailure(sender, "Template could not be loaded", error);
                 return;
             }
             for (RoomTemplate t : templates) {
                 String walls = t.doors().isEmpty()
-                        ? "kapisiz"
+                        ? "doorless"
                         : t.doors().stream().map(d -> d.wall().displayName())
                                 .reduce((a, b) -> a + "+" + b).orElse("");
                 sender.sendMessage(Component.text("  " + t.name(), NamedTextColor.WHITE)
                         .append(Component.text("  " + t.type().yamlValue()
-                                + "  agirlik=" + t.weight()
+                                + "  weight=" + t.weight()
                                 + "  " + t.describeSize()
-                                + "  kapi=" + t.doorCount() + " (" + walls + ")", NamedTextColor.GRAY)));
+                                + "  doors=" + t.doorCount() + " (" + walls + ")", NamedTextColor.GRAY)));
             }
         });
     }
@@ -335,7 +335,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     /** Dumps one template in resolved form — for verifying its metadata. */
     private void room(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Kullanim: /" + label + " room <oda>", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Usage: /" + label + " room <room>", NamedTextColor.RED));
             return;
         }
         RoomTemplateStore store = requireTemplates(sender);
@@ -344,23 +344,23 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         store.load(args[1]).whenComplete((t, error) -> {
             if (error != null) {
-                sendFailure(sender, "Sablon yuklenemedi", error);
+                sendFailure(sender, "Template could not be loaded", error);
                 return;
             }
-            sender.sendMessage(Component.text("Oda: " + t.name(), NamedTextColor.GOLD));
+            sender.sendMessage(Component.text("Room: " + t.name(), NamedTextColor.GOLD));
             sender.sendMessage(Component.text("  type: " + t.type().yamlValue()
                     + "   weight: " + t.weight(), NamedTextColor.GRAY));
-            sender.sendMessage(Component.text("  boyut: " + t.describeSize()
-                    + "   kutu (origin'e gore): " + t.localBox(), NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("  size: " + t.describeSize()
+                    + "   box (relative to origin): " + t.localBox(), NamedTextColor.GRAY));
             if (t.doors().isEmpty()) {
-                sender.sendMessage(Component.text("  kapi yok \u2014 bu oda grafa baglanamaz.",
+                sender.sendMessage(Component.text("  no doors - this room cannot join the graph.",
                         NamedTextColor.YELLOW));
                 return;
             }
             sender.sendMessage(Component.text("  doors:", NamedTextColor.GRAY));
             for (DoorAnchor d : t.doors()) {
                 sender.sendMessage(Component.text("    #" + d.index() + " " + d.local()
-                        + " -> " + d.wall().displayName() + " duvari", NamedTextColor.WHITE));
+                        + " -> " + d.wall().displayName() + " wall", NamedTextColor.WHITE));
             }
         });
     }
@@ -376,7 +376,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void connect(CommandSender sender, String label, String[] args) {
         if (args.length < 3) {
             sender.sendMessage(Component.text(
-                    "Kullanim: /" + label + " connect <ebeveyn> <cocuk> [parentDoor] [childDoor]",
+                    "Usage: /" + label + " connect <parent> <child> [parentDoor] [childDoor]",
                     NamedTextColor.RED));
             return;
         }
@@ -393,7 +393,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             parentDoor = args.length >= 4 ? Integer.parseInt(args[3]) : 0;
             childDoor = args.length >= 5 ? Integer.parseInt(args[4]) : 0;
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Kapi indeksi sayi olmali.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("The door index must be a number.", NamedTextColor.RED));
             return;
         }
 
@@ -412,7 +412,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 .whenComplete((pair, error) -> {
                     if (error != null) {
                         plugin.getSlotManager().release(slot.index());
-                        sendFailure(sender, "Baglanti basarisiz", error);
+                        sendFailure(sender, "Connection failed", error);
                         return;
                     }
                     reportConnection(sender, world, slot, pair[0], pair[1], parentDoor, childDoor);
@@ -440,29 +440,29 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         boolean mated = childAnchor.equals(parent.doorMate(parentDoor));
         boolean overlap = parent.bounds().intersects(child.bounds());
 
-        sender.sendMessage(Component.text("Baglandi \u2014 " + slot, NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Connected - " + slot, NamedTextColor.GOLD));
         sender.sendMessage(Component.text("  ebeveyn: " + parent
-                + "  kapi#" + parentDoor + " " + parentAnchor
+                + "  door#" + parentDoor + " " + parentAnchor
                 + " " + parent.doorOutward(parentDoor).displayName(), NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  cocuk:   " + child
-                + "  kapi#" + childDoor + " " + childAnchor
+                + "  door#" + childDoor + " " + childAnchor
                 + " " + child.doorOutward(childDoor).displayName(), NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  rotasyon hesaplandi: R=" + child.rotation().steps()
-                + " (" + child.rotation().degrees() + " derece)", NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  kutular: " + parent.bounds()
+        sender.sendMessage(Component.text("  rotation computed: R=" + child.rotation().steps()
+                + " (" + child.rotation().degrees() + " degrees)", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  boxes: " + parent.bounds()
                 + "  |  " + child.bounds(), NamedTextColor.DARK_GRAY));
 
         sender.sendMessage(mated
-                ? Component.text("  [OK] kapilar sirt sirta", NamedTextColor.GREEN)
-                : Component.text("  [HATA] kapilar hizasiz \u2014 beklenen "
+                ? Component.text("  [OK] the doors are back to back", NamedTextColor.GREEN)
+                : Component.text("  [ERROR] the doors are misaligned - expected "
                         + parent.doorMate(parentDoor), NamedTextColor.RED));
         sender.sendMessage(overlap
-                ? Component.text("  [HATA] kutular CAKISIYOR", NamedTextColor.RED)
-                : Component.text("  [OK] kutular cakismiyor", NamedTextColor.GREEN));
+                ? Component.text("  [ERROR] the boxes OVERLAP", NamedTextColor.RED)
+                : Component.text("  [OK] the boxes do not overlap", NamedTextColor.GREEN));
 
         // The two points where the passage gets verified by block test — from the console,
         // forceload followed by execute if block.
-        sender.sendMessage(Component.text("  gecit bloklari: " + parentAnchor + " ve " + childAnchor,
+        sender.sendMessage(Component.text("  doorway blocks: " + parentAnchor + " ve " + childAnchor,
                 NamedTextColor.DARK_GRAY));
 
         teleportTo(sender, world, parentAnchor);
@@ -480,7 +480,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private @Nullable RoomTemplateStore requireTemplates(CommandSender sender) {
         RoomTemplateStore store = plugin.getTemplateStore();
         if (store == null) {
-            sender.sendMessage(Component.text("Oda deposu kapali \u2014 WorldEdit ya da FAWE kurulu degil.",
+            sender.sendMessage(Component.text("The room store is off - WorldEdit or FAWE is not installed.",
                     NamedTextColor.RED));
         }
         return store;
@@ -514,12 +514,12 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         store.loadAll(store.list(theme)).whenComplete((templates, error) -> {
             if (error != null) {
-                sendFailure(sender, "Şablonlar yüklenemedi", error);
+                sendFailure(sender, "Templates could not be loaded", error);
                 return;
             }
             RoomLibrary library = new RoomLibrary(templates);
             sender.sendMessage(Component.text(
-                    "Aday havuzu — tema " + theme + " (giris/boss hariç: onlar atanıyor, seçilmiyor):",
+                    "Candidate pool - theme " + theme + " (entrance/boss excluded: they are assigned, not drawn):",
                     NamedTextColor.GOLD));
             if (!library.isUsable()) {
                 sender.sendMessage(Component.text("  " + library.describeProblem(),
@@ -529,15 +529,15 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             RoomLibrary.describeDistribution(library.normalPool()).forEach(line ->
                     sender.sendMessage(Component.text("  " + line, NamedTextColor.WHITE)));
             sender.sendMessage(Component.text(
-                    "  ağırlık ŞABLONA ait, (şablon x kapı) çiftine değil — generation.md 5.4",
+                    "  the weight belongs to the TEMPLATE, not to the (template x door) pair - generation.md 5.4",
                     NamedTextColor.DARK_GRAY));
 
             if (!library.entrances().isEmpty()) {
-                sender.sendMessage(Component.text("  giriş odaları: " + library.entrances().size()
-                        + "   boss odaları: " + library.bosses().size(), NamedTextColor.GRAY));
+                sender.sendMessage(Component.text("  entrance rooms: " + library.entrances().size()
+                        + "   boss rooms: " + library.bosses().size(), NamedTextColor.GRAY));
             } else {
                 sender.sendMessage(Component.text(
-                        "  giriş odası yok — normal havuzdan seçilecek (fallback)",
+                        "  no entrance room - one is drawn from the normal pool (fallback)",
                         NamedTextColor.YELLOW));
             }
         });
@@ -574,8 +574,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
         DungeonSize size = args.length > next ? DungeonSize.parse(args[next]) : DungeonSize.MEDIUM;
         if (size == null) {
-            sender.sendMessage(Component.text("Kullanım: /" + label
-                    + " dungeon <tema> [small|medium|large] [seed]", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Usage: /" + label
+                    + " dungeon <theme> [small|medium|large] [seed]", NamedTextColor.RED));
             return;
         }
         long seed;
@@ -584,18 +584,18 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     ? Long.parseLong(args[next + 1])
                     : new Random().nextLong();
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Seed sayı olmalı: " + args[next + 1],
+            sender.sendMessage(Component.text("Seed must be a number: " + args[next + 1],
                     NamedTextColor.RED));
             return;
         }
 
-        sender.sendMessage(Component.text("Üretiliyor: tema=" + theme + ", " + size.key()
+        sender.sendMessage(Component.text("Generating: theme=" + theme + ", " + size.key()
                 + ", seed=" + seed, NamedTextColor.GRAY));
 
         plugin.getInstanceManager().create(theme, size, seed)
                 .whenComplete((instance, error) -> {
                     if (error != null) {
-                        sendFailure(sender, "Üretim başarısız", error);
+                        sendFailure(sender, "Generation failed", error);
                         return;
                     }
                     reportDungeon(sender, world, instance);
@@ -616,8 +616,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                                           @Nullable String requested) {
         List<String> themes = store.themes();
         if (themes.isEmpty()) {
-            sender.sendMessage(Component.text("Hiç oda yok — /tdungeons gen ile test odası üret, "
-                    + "ya da schematics/ altına bir tema klasörü aç.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("No rooms at all - create test rooms with /tdungeons gen, "
+                    + "or make a theme folder under schematics/.", NamedTextColor.YELLOW));
             return null;
         }
         if (requested != null) {
@@ -626,14 +626,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     return theme;
                 }
             }
-            sender.sendMessage(Component.text("Tema yok: " + requested + "   mevcut: "
+            sender.sendMessage(Component.text("No such theme: " + requested + "   mevcut: "
                     + String.join(", ", themes), NamedTextColor.RED));
             return null;
         }
         if (themes.size() == 1) {
             return themes.get(0);
         }
-        sender.sendMessage(Component.text("Tema belirt — mevcut: " + String.join(", ", themes),
+        sender.sendMessage(Component.text("Name a theme - available: " + String.join(", ", themes),
                 NamedTextColor.RED));
         return null;
     }
@@ -646,23 +646,23 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         List<String> themes = store.themes();
         if (themes.isEmpty()) {
-            sender.sendMessage(Component.text("Tema yok — schematics/ boş.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("No themes - schematics/ is empty.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Temalar (" + themes.size() + "):", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Themes (" + themes.size() + "):", NamedTextColor.GOLD));
         for (String theme : themes) {
             store.loadAll(store.list(theme)).whenComplete((templates, error) -> {
                 if (error != null) {
-                    sendFailure(sender, "  " + theme + " yüklenemedi", error);
+                    sendFailure(sender, "  " + theme + " could not be loaded", error);
                     return;
                 }
                 RoomLibrary library = new RoomLibrary(templates);
                 sender.sendMessage(Component.text("  " + theme, NamedTextColor.WHITE)
-                        .append(Component.text("  " + templates.size() + " oda"
-                                + "  giriş=" + library.entrances().size()
+                        .append(Component.text("  " + templates.size() + " rooms"
+                                + "  entrance=" + library.entrances().size()
                                 + "  boss=" + library.bosses().size()
                                 + "  normal=" + library.normalPool().size()
-                                + " (çok kapılı=" + library.branchingPool().size() + ")",
+                                + " (multi-door=" + library.branchingPool().size() + ")",
                                 NamedTextColor.GRAY)));
                 if (!library.isUsable()) {
                     sender.sendMessage(Component.text("    [HATA] " + library.describeProblem(),
@@ -671,12 +671,12 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 }
                 if (library.entrances().isEmpty()) {
                     sender.sendMessage(Component.text(
-                            "    [UYARI] giriş odası yok — normal havuzdan seçilecek",
+                            "    [WARNING] no entrance room - one is drawn from the normal pool",
                             NamedTextColor.YELLOW));
                 }
                 if (library.bosses().isEmpty()) {
                     sender.sendMessage(Component.text(
-                            "    [UYARI] boss odası yok — dungeon boss'suz üretilir",
+                            "    [WARNING] no boss room - the dungeon is generated without one",
                             NamedTextColor.YELLOW));
                 }
             });
@@ -693,11 +693,19 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      */
     private void reload(CommandSender sender) {
         plugin.reloadConfig();
+        // Messages FIRST, and before the HUD: the sidebar's layout is read out of the language
+        // file, so reloading the HUD against the old one would rebuild it from the language the
+        // operator has just changed away from.
+        if (plugin.getMessages() != null) {
+            plugin.getMessages().load();
+            sender.sendMessage(Component.text("Language reloaded: "
+                    + plugin.getMessages().language(), NamedTextColor.GREEN));
+        }
         // The HUD is reloaded before the early return below: it has no WorldEdit dependency,
         // so a server without WorldEdit must still be able to reload its sidebar.
         if (plugin.getHudService() != null) {
             plugin.getHudService().reload();
-            sender.sendMessage(Component.text("HUD yeniden yüklendi.", NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("HUD reloaded.", NamedTextColor.GREEN));
         }
         // Mobs reload here too, and for the same reason: mobs.yml has no WorldEdit dependency, so
         // a server without it must still be able to fix a typo in its mob set without a restart.
@@ -716,8 +724,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         store.invalidateCache();
 
         List<String> themes = service.themes();
-        sender.sendMessage(Component.text("Yeniden yüklendi — " + service.list().size() + " oda, "
-                + themes.size() + " tema (" + String.join(", ", themes) + ")",
+        sender.sendMessage(Component.text("Reloaded - " + service.list().size() + " rooms, "
+                + themes.size() + " themes (" + String.join(", ", themes) + ")",
                 NamedTextColor.GREEN));
     }
 
@@ -725,26 +733,26 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         DungeonGenerator.Result result = instance.result();
         DoorPlugger.Report plug = instance.plugReport();
 
-        sender.sendMessage(Component.text("Dungeon üretildi — instance#" + instance.id()
+        sender.sendMessage(Component.text("Dungeon generated - instance#" + instance.id()
                 + " @ " + instance.slot(), NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("  tema: " + instance.theme(), NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  boyut: " + result.size().key()
-                + "   oda: " + result.rooms() + "/" + result.targetRooms()
-                + "   kritik path: " + result.pathLength() + "/" + result.targetPathLength(),
+        sender.sendMessage(Component.text("  theme: " + instance.theme(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  size: " + result.size().key()
+                + "   rooms: " + result.rooms() + "/" + result.targetRooms()
+                + "   critical path: " + result.pathLength() + "/" + result.targetPathLength(),
                 NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  deneme: " + result.attemptsUsed()
-                + "   tıpa: " + plug.plugged() + " kapı / " + plug.blocks() + " blok"
+        sender.sendMessage(Component.text("  attempts: " + result.attemptsUsed()
+                + "   plugs: " + plug.plugged() + " doors / " + plug.blocks() + " blocks"
                 + (plug.skipped() > 0 ? "   atlanan: " + plug.skipped() : ""),
                 NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  seed: " + result.seed()
-                + "  (tema + boyut + seed aynıysa dungeon da aynı)", NamedTextColor.DARK_GRAY));
+                + "  (same theme + size + seed, same dungeon)", NamedTextColor.DARK_GRAY));
 
         if (result.warning() != null) {
-            sender.sendMessage(Component.text("  uyarı: " + result.warning(),
+            sender.sendMessage(Component.text("  warning: " + result.warning(),
                     NamedTextColor.YELLOW));
         }
         plug.warnings().forEach(w -> sender.sendMessage(
-                Component.text("  tıpa uyarısı: " + w, NamedTextColor.YELLOW)));
+                Component.text("  plug warning: " + w, NamedTextColor.YELLOW)));
 
         DungeonGenerator.describe(result.layout(), result.bossNodeId()).forEach(line ->
                 sender.sendMessage(Component.text("  " + line, NamedTextColor.WHITE)));
@@ -752,7 +760,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         List<String> problems = result.layout().validate();
         if (problems.isEmpty()) {
             sender.sendMessage(Component.text(
-                    "  [OK] yerleşim tutarlı: çakışma yok, geçitler hizalı, graf bağlı",
+                    "  [OK] layout consistent: no overlaps, doorways aligned, graph connected",
                     NamedTextColor.GREEN));
         } else {
             problems.forEach(pr -> sender.sendMessage(
@@ -760,9 +768,9 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
 
         Aabb box = instance.bounds();
-        sender.sendMessage(Component.text("  temizlenecek hacim: " + box
-                + "  (" + box.volume() + " blok)", NamedTextColor.DARK_GRAY));
-        sender.sendMessage(Component.text("  süre: "
+        sender.sendMessage(Component.text("  volume to clear: " + box
+                + "  (" + box.volume() + " blocks)", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("  time left: "
                 + InstanceManager.formatDuration(instance.remainingMillis()),
                 NamedTextColor.DARK_GRAY));
 
@@ -782,25 +790,25 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         InstanceManager manager = plugin.getInstanceManager();
         List<DungeonInstance> live = manager.all();
         if (live.isEmpty()) {
-            sender.sendMessage(Component.text("Açık instance yok.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("No open instances.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Açık instance (" + live.size() + "):",
+        sender.sendMessage(Component.text("Open instances (" + live.size() + "):",
                 NamedTextColor.GOLD));
         for (DungeonInstance instance : live) {
             sender.sendMessage(Component.text("  #" + instance.id(), NamedTextColor.WHITE)
                     .append(Component.text("  " + instance.theme()
                             + "/" + instance.result().size().key()
-                            + "  " + instance.result().rooms() + " oda"
+                            + "  " + instance.result().rooms() + " rooms"
                             + "  " + instance.slot()
                             + "  " + instance.state(), NamedTextColor.GRAY))
-                    .append(Component.text("  kalan "
+                    .append(Component.text("  left "
                             + InstanceManager.formatDuration(instance.remainingMillis()),
                             NamedTextColor.YELLOW))
-                    .append(Component.text("  oyuncu " + instance.playerCount(),
+                    .append(Component.text("  players " + instance.playerCount(),
                             NamedTextColor.GRAY))
                     .append(instance.isCleared()
-                            ? Component.text("  temizlendi", NamedTextColor.GREEN)
+                            ? Component.text("  cleared", NamedTextColor.GREEN)
                             : Component.empty()));
         }
         sender.sendMessage(Component.text("  /tdungeons enter <id> | leave | close <id|all>",
@@ -820,7 +828,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " enter <id>",
+            sender.sendMessage(Component.text("Usage: /" + label + " enter <id>",
                     NamedTextColor.RED));
             return;
         }
@@ -828,21 +836,21 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         try {
             id = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz id: " + args[1], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Invalid id: " + args[1], NamedTextColor.RED));
             return;
         }
         InstanceManager manager = plugin.getInstanceManager();
         DungeonInstance instance = manager.get(id);
         if (instance == null) {
-            sender.sendMessage(Component.text("instance#" + id + " yok.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("instance#" + id + " does not exist.", NamedTextColor.YELLOW));
             return;
         }
         if (!manager.enter(player, instance)) {
-            sender.sendMessage(Component.text("instance#" + id + " girilebilir durumda değil: "
+            sender.sendMessage(Component.text("instance#" + id + " cannot be entered: "
                     + instance.state(), NamedTextColor.RED));
             return;
         }
-        sender.sendMessage(Component.text("instance#" + id + " içindesin — kalan "
+        sender.sendMessage(Component.text("instance#" + id + " - you are inside, time left "
                 + InstanceManager.formatDuration(instance.remainingMillis()), NamedTextColor.GREEN));
     }
 
@@ -855,11 +863,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         InstanceManager manager = plugin.getInstanceManager();
         DungeonInstance instance = manager.instanceOf(player);
         if (instance == null) {
-            sender.sendMessage(Component.text("Bir dungeon içinde değilsin.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("You are not inside a dungeon.", NamedTextColor.YELLOW));
             return;
         }
         manager.leave(player, instance);
-        sender.sendMessage(Component.text("instance#" + instance.id() + " terk edildi.",
+        sender.sendMessage(Component.text("instance#" + instance.id() + " left.",
                 NamedTextColor.GREEN));
     }
 
@@ -872,7 +880,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      */
     private void close(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " close <id|all>",
+            sender.sendMessage(Component.text("Usage: /" + label + " close <id|all>",
                     NamedTextColor.RED));
             return;
         }
@@ -881,13 +889,13 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (args[1].equalsIgnoreCase("all")) {
             int count = manager.count();
             if (count == 0) {
-                sender.sendMessage(Component.text("Açık instance yok.", NamedTextColor.YELLOW));
+                sender.sendMessage(Component.text("No open instances.", NamedTextColor.YELLOW));
                 return;
             }
-            sender.sendMessage(Component.text(count + " instance kapatılıyor…", NamedTextColor.GRAY));
+            sender.sendMessage(Component.text(count + " instances closing...", NamedTextColor.GRAY));
             manager.closeAll().whenComplete((ignored, error) -> sender.sendMessage(error == null
-                    ? Component.text(count + " instance kapatıldı.", NamedTextColor.GREEN)
-                    : Component.text("Kapatma sırasında hata — konsola bak.", NamedTextColor.RED)));
+                    ? Component.text(count + " instances closed.", NamedTextColor.GREEN)
+                    : Component.text("Something failed while closing - check the console.", NamedTextColor.RED)));
             return;
         }
 
@@ -895,24 +903,24 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         try {
             id = Integer.parseInt(args[1]);
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz id: " + args[1], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Invalid id: " + args[1], NamedTextColor.RED));
             return;
         }
         DungeonInstance instance = manager.get(id);
         if (instance == null) {
-            sender.sendMessage(Component.text("instance#" + id + " yok.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("instance#" + id + " does not exist.", NamedTextColor.YELLOW));
             return;
         }
         manager.close(instance).whenComplete((report, error) -> {
             if (error != null) {
-                sendFailure(sender, "Kapatılamadı", error);
+                sendFailure(sender, "Could not be closed", error);
                 return;
             }
-            sender.sendMessage(Component.text("instance#" + report.id() + " kapatıldı — "
-                    + report.blocksCleared() + " blok silindi, "
-                    + report.chunksUnloaded() + " chunk boşaltıldı, "
-                    + report.entitiesRemoved() + " entity kaldırıldı, "
-                    + report.playersEvicted() + " oyuncu çıkarıldı  ("
+            sender.sendMessage(Component.text("instance#" + report.id() + " closed - "
+                    + report.blocksCleared() + " blocks cleared, "
+                    + report.chunksUnloaded() + " chunks unloaded, "
+                    + report.entitiesRemoved() + " entities removed, "
+                    + report.playersEvicted() + " players evicted  ("
                     + report.millis() + " ms)", NamedTextColor.GREEN));
         });
     }
@@ -929,7 +937,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void portal(CommandSender sender, String label, String[] args) {
         PortalManager manager = plugin.getPortalManager();
         if (manager == null) {
-            sender.sendMessage(Component.text("Geçit servisi kurulmadı.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("The gateway service was not built.", NamedTextColor.RED));
             return;
         }
         String action = args.length < 2 ? "list" : args[1].toLowerCase(Locale.ROOT);
@@ -939,7 +947,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "create" -> portalCreate(sender, manager, args);
             case "remove" -> portalRemove(sender, manager, label, args);
             case "tp" -> portalTeleport(sender, manager, label, args);
-            default -> sender.sendMessage(Component.text("Kullanım: /" + label + " portal <"
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " portal <"
                     + String.join("|", PORTAL_ACTIONS) + ">", NamedTextColor.RED));
         }
     }
@@ -947,11 +955,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void portalList(CommandSender sender, PortalManager manager) {
         List<DungeonPortal> all = manager.all();
         if (all.isEmpty()) {
-            sender.sendMessage(Component.text("Geçit yok. /tdungeons portal create ile lobby "
-                    + "geçidi koy.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("No gateways. Place a lobby gateway with /tdungeons portal "
+                    + "create.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Geçitler (" + all.size() + "):", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Gateways (" + all.size() + "):", NamedTextColor.GOLD));
         for (DungeonPortal portal : all) {
             Component line = Component.text("  #" + portal.id(), NamedTextColor.WHITE)
                     .append(Component.text("  " + portal.kind().displayName()
@@ -983,7 +991,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         // Everything after "create" is optional: [size] [theme].
         DungeonSize size = args.length >= 3 ? DungeonSize.parse(args[2]) : manager.defaultSize();
         if (size == null) {
-            sender.sendMessage(Component.text("Boyut small|medium|large olmalı: " + args[2],
+            sender.sendMessage(Component.text("Size must be small|medium|large: " + args[2],
                     NamedTextColor.RED));
             return;
         }
@@ -991,25 +999,25 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
         DungeonPortal portal = manager.create(player.getLocation(), PortalKind.LOBBY, theme, size);
         if (portal == null) {
-            sender.sendMessage(Component.text("Burada zaten bir geçit var.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("There is already a gateway here.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Geçit kuruldu: " + portal, NamedTextColor.GREEN));
-        sender.sendMessage(Component.text("  Kalıcı olması için config.yml → portal.lobby.points "
-                + "altına ekle; geçitler restart'ı atlatmıyor (kalıcılık FAZ 7).",
+        sender.sendMessage(Component.text("Gateway placed: " + portal, NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("  To make it permanent add it under config.yml -> portal.lobby.points; "
+                + "gateways do not survive a restart (persistence is phase 7).",
                 NamedTextColor.DARK_GRAY));
     }
 
     private void portalRemove(CommandSender sender, PortalManager manager, String label,
                               String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " portal remove <id|all>",
+            sender.sendMessage(Component.text("Usage: /" + label + " portal remove <id|all>",
                     NamedTextColor.RED));
             return;
         }
         if (args[2].equalsIgnoreCase("all")) {
             int count = manager.removeAll();
-            sender.sendMessage(Component.text(count + " geçit kaldırıldı.", NamedTextColor.GREEN));
+            sender.sendMessage(Component.text(count + " gateways removed.", NamedTextColor.GREEN));
             return;
         }
         DungeonPortal portal = findPortal(sender, manager, args[2]);
@@ -1017,7 +1025,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         manager.remove(portal);
-        sender.sendMessage(Component.text("portal#" + portal.id() + " kaldırıldı.",
+        sender.sendMessage(Component.text("portal#" + portal.id() + " removed.",
                 NamedTextColor.GREEN));
     }
 
@@ -1028,7 +1036,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " portal tp <id>",
+            sender.sendMessage(Component.text("Usage: /" + label + " portal tp <id>",
                     NamedTextColor.RED));
             return;
         }
@@ -1037,7 +1045,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         plugin.getInstanceManager().teleportInternal(player, portal.center().add(0, 1, 0));
-        sender.sendMessage(Component.text("portal#" + portal.id() + " konumuna ışınlandın.",
+        sender.sendMessage(Component.text("portal#" + portal.id() + " - teleported to it.",
                 NamedTextColor.GREEN));
     }
 
@@ -1046,11 +1054,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         try {
             DungeonPortal portal = manager.get(Integer.parseInt(raw));
             if (portal == null) {
-                sender.sendMessage(Component.text("portal#" + raw + " yok.", NamedTextColor.YELLOW));
+                sender.sendMessage(Component.text("portal#" + raw + " does not exist.", NamedTextColor.YELLOW));
             }
             return portal;
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz id: " + raw, NamedTextColor.RED));
+            sender.sendMessage(Component.text("Invalid id: " + raw, NamedTextColor.RED));
             return null;
         }
     }
@@ -1058,10 +1066,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void slots(CommandSender sender) {
         GridSlotManager manager = plugin.getSlotManager();
         if (manager.allocatedCount() == 0) {
-            sender.sendMessage(Component.text("Ayrılmış slot yok.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("No allocated slots.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Ayrılmış slot (" + manager.allocatedCount() + "):",
+        sender.sendMessage(Component.text("Allocated slots (" + manager.allocatedCount() + "):",
                 NamedTextColor.GRAY));
         manager.allocated().forEach(s ->
                 sender.sendMessage(Component.text("  " + s, NamedTextColor.WHITE)));
@@ -1077,15 +1085,15 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      */
     private void free(CommandSender sender, String label, String[] args) {
         if (args.length < 2) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " free <index|all>", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Usage: /" + label + " free <index|all>", NamedTextColor.RED));
             return;
         }
         GridSlotManager manager = plugin.getSlotManager();
         if (args[1].equalsIgnoreCase("all")) {
             int count = manager.allocatedCount();
             manager.releaseAll();
-            sender.sendMessage(Component.text(count + " slot serbest bırakıldı. "
-                    + "(Bloklar silinmez — instance için /tdungeons close kullan.)",
+            sender.sendMessage(Component.text(count + " slots released. "
+                    + "(Blocks are not deleted - use /tdungeons close for an instance.)",
                     NamedTextColor.GREEN));
             return;
         }
@@ -1093,11 +1101,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             int index = Integer.parseInt(args[1]);
             boolean released = manager.release(index);
             sender.sendMessage(released
-                    ? Component.text("slot#" + index + " serbest bırakıldı. (Bloklar silinmez — "
-                            + "instance için /tdungeons close kullan.)", NamedTextColor.GREEN)
-                    : Component.text("slot#" + index + " zaten ayrılmış değil.", NamedTextColor.YELLOW));
+                    ? Component.text("slot#" + index + " released. (Blocks are not deleted - "
+                            + "use /tdungeons close for an instance.)", NamedTextColor.GREEN)
+                    : Component.text("slot#" + index + " was not allocated.", NamedTextColor.YELLOW));
         } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz index: " + args[1], NamedTextColor.RED));
+            sender.sendMessage(Component.text("Invalid index: " + args[1], NamedTextColor.RED));
         }
     }
 
@@ -1109,36 +1117,36 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void hud(CommandSender sender, String label, String[] args) {
         HudService hud = plugin.getHudService();
         if (hud == null) {
-            sender.sendMessage(Component.text("HUD servisi kurulmadı.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("The HUD service was not built.", NamedTextColor.RED));
             return;
         }
 
         if (args.length == 1) {
             sender.sendMessage(Component.text("HUD: ", NamedTextColor.GRAY)
                     .append(hud.isEnabled()
-                            ? Component.text("açık", NamedTextColor.GREEN)
-                            : Component.text("kapalı (config: hud.enabled)", NamedTextColor.RED)));
-            sender.sendMessage(Component.text("  Sunucu adı: ", NamedTextColor.GRAY)
+                            ? Component.text("on", NamedTextColor.GREEN)
+                            : Component.text("off (config: hud.enabled)", NamedTextColor.RED)));
+            sender.sendMessage(Component.text("  Server name: ", NamedTextColor.GRAY)
                     .append(Component.text(hud.getServerName(), NamedTextColor.WHITE)));
-            sender.sendMessage(Component.text("  Sunucu IP: ", NamedTextColor.GRAY)
+            sender.sendMessage(Component.text("  Server IP: ", NamedTextColor.GRAY)
                     .append(Component.text(hud.getServerIp(), NamedTextColor.WHITE)));
-            sender.sendMessage(Component.text("  Satır: ", NamedTextColor.GRAY)
-                    .append(Component.text(hud.lineCount() + " (config: hud.lines)",
+            sender.sendMessage(Component.text("  Lines: ", NamedTextColor.GRAY)
+                    .append(Component.text(hud.lineCount() + " (lang: hud.lines)",
                             NamedTextColor.WHITE)));
-            sender.sendMessage(Component.text("Kullanım: /" + label + " hud <name|ip> <metin>",
+            sender.sendMessage(Component.text("Usage: /" + label + " hud <name|ip> <text>",
                     NamedTextColor.GRAY));
             return;
         }
 
         String setting = args[1].toLowerCase(Locale.ROOT);
         if (!HUD_SETTINGS.contains(setting)) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " hud <name|ip> <metin>",
+            sender.sendMessage(Component.text("Usage: /" + label + " hud <name|ip> <text>",
                     NamedTextColor.RED));
             return;
         }
         if (args.length < 3) {
-            sender.sendMessage(Component.text("Bir değer yaz: /" + label + " hud " + setting
-                    + " <metin>", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Write a value: /" + label + " hud " + setting
+                    + " <text>", NamedTextColor.RED));
             return;
         }
 
@@ -1146,11 +1154,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         String value = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
         if (setting.equals("name")) {
             hud.setServerName(value);
-            sender.sendMessage(Component.text("HUD sunucu adı: ", NamedTextColor.GREEN)
+            sender.sendMessage(Component.text("HUD server name: ", NamedTextColor.GREEN)
                     .append(Component.text(value, NamedTextColor.WHITE)));
         } else {
             hud.setServerIp(value);
-            sender.sendMessage(Component.text("HUD sunucu IP: ", NamedTextColor.GREEN)
+            sender.sendMessage(Component.text("HUD server IP: ", NamedTextColor.GREEN)
                     .append(Component.text(value, NamedTextColor.WHITE)));
         }
     }
@@ -1166,7 +1174,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void extract(CommandSender sender, String[] args) {
         BundledRooms bundled = plugin.getBundledRooms();
         if (bundled == null) {
-            sender.sendMessage(Component.text("Gömülü oda servisi kurulmadı.", NamedTextColor.RED));
+            sender.sendMessage(Component.text("The bundled-room service was not built.", NamedTextColor.RED));
             return;
         }
         boolean force = args.length > 1 && args[1].equalsIgnoreCase("force");
@@ -1174,16 +1182,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                 new File(plugin.getDataFolder(), "schematics"), force);
 
         if (result.total() == 0) {
-            sender.sendMessage(Component.text("Jar'da gömülü oda yok.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("The jar holds no bundled rooms.", NamedTextColor.YELLOW));
             return;
         }
-        sender.sendMessage(Component.text("Gömülü odalar: ", NamedTextColor.GRAY)
-                .append(Component.text(result.written() + " yazıldı", NamedTextColor.GREEN))
+        sender.sendMessage(Component.text("Bundled rooms: ", NamedTextColor.GRAY)
+                .append(Component.text(result.written() + " written", NamedTextColor.GREEN))
                 .append(Component.text(", " + result.skipped()
-                        + (force ? " atlandı" : " zaten vardı"), NamedTextColor.GRAY))
+                        + (force ? " skipped" : " already present"), NamedTextColor.GRAY))
                 .append(result.failed() == 0
                         ? Component.empty()
-                        : Component.text(", " + result.failed() + " başarısız", NamedTextColor.RED)));
+                        : Component.text(", " + result.failed() + " failed", NamedTextColor.RED)));
 
         // New files on disk mean the caches are stale — the same reason /tdungeons reload exists.
         SchematicService service = plugin.getSchematicService();
@@ -1191,8 +1199,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (result.written() > 0 && service != null && store != null) {
             service.invalidateCache();
             store.invalidateCache();
-            sender.sendMessage(Component.text("Cache boşaltıldı — " + service.list().size()
-                    + " oda görünüyor.", NamedTextColor.GRAY));
+            sender.sendMessage(Component.text("Cache cleared - " + service.list().size()
+                    + " rooms visible.", NamedTextColor.GRAY));
         }
     }
 
@@ -1200,14 +1208,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (sender instanceof Player player) {
             return player;
         }
-        sender.sendMessage(Component.text("Bu komut oyuncu tarafından çalıştırılmalı.", NamedTextColor.RED));
+        sender.sendMessage(Component.text("This command must be run by a player.", NamedTextColor.RED));
         return null;
     }
 
     private @Nullable World requireWorld(CommandSender sender) {
         World world = plugin.getWorldManager() == null ? null : plugin.getWorldManager().getWorld();
         if (world == null) {
-            sender.sendMessage(Component.text("Dungeon dünyası yüklü değil — konsol loglarına bak.",
+            sender.sendMessage(Component.text("The dungeon world is not loaded - check the console log.",
                     NamedTextColor.RED));
         }
         return world;
@@ -1216,7 +1224,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private @Nullable SchematicService requireSchematics(CommandSender sender) {
         SchematicService service = plugin.getSchematicService();
         if (service == null) {
-            sender.sendMessage(Component.text("Schematic servisi kapalı — WorldEdit ya da FAWE kurulu değil.",
+            sender.sendMessage(Component.text("The schematic service is off - WorldEdit or FAWE is not installed.",
                     NamedTextColor.RED));
         }
         return service;
@@ -1232,7 +1240,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "spawn" -> mobSpawn(sender, label, args);
             case "providers" -> mobProviders(sender);
             case "reload" -> mobReload(sender);
-            default -> sender.sendMessage(Component.text("Kullanım: /" + label + " mob <"
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " mob <"
                     + String.join("|", MOB_ACTIONS) + ">", NamedTextColor.RED));
         }
     }
@@ -1248,7 +1256,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         MobRegistry registry = plugin.getMobRegistry();
         MobClass filter = args.length >= 3 ? MobClass.parse(args[2]) : null;
         if (args.length >= 3 && filter == null) {
-            sender.sendMessage(Component.text("Bilinmeyen sınıf: " + args[2] + " — geçerli: "
+            sender.sendMessage(Component.text("Unknown class: " + args[2] + " - valid: "
                     + "weak, normal, strong, super_strong, boss", NamedTextColor.RED));
             return;
         }
@@ -1256,8 +1264,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (registry.loadError() != null) {
             sender.sendMessage(Component.text(registry.loadError(), NamedTextColor.RED));
         }
-        sender.sendMessage(Component.text("Mob kaydı — " + registry.definitions().size()
-                + " kullanılabilir, varsayılan zorluk: " + registry.defaultDifficulty(),
+        sender.sendMessage(Component.text("Mob registry - " + registry.definitions().size()
+                + " usable, default difficulty: " + registry.defaultDifficulty(),
                 NamedTextColor.GOLD));
 
         for (MobClass mobClass : MobClass.values()) {
@@ -1276,7 +1284,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
         List<MobRegistry.Disabled> disabled = registry.disabled();
         if (!disabled.isEmpty()) {
-            sender.sendMessage(Component.text("  devre dışı (" + disabled.size() + "):",
+            sender.sendMessage(Component.text("  disabled (" + disabled.size() + "):",
                     NamedTextColor.RED));
             for (MobRegistry.Disabled entry : disabled) {
                 sender.sendMessage(Component.text("    " + entry.id() + " (" + entry.address()
@@ -1301,14 +1309,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private void mobInfo(CommandSender sender, String label, String[] args) {
         if (args.length < 3) {
-            sender.sendMessage(Component.text("Kullanım: /" + label + " mob info <id>",
+            sender.sendMessage(Component.text("Usage: /" + label + " mob info <id>",
                     NamedTextColor.RED));
             return;
         }
         MobRegistry registry = plugin.getMobRegistry();
         MobDefinition definition = registry.definition(args[2]);
         if (definition == null) {
-            sender.sendMessage(Component.text("Böyle bir mob yok: " + args[2]
+            sender.sendMessage(Component.text("No such mob: " + args[2]
                     + " — /" + label + " mob list", NamedTextColor.RED));
             return;
         }
@@ -1316,19 +1324,19 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         boolean override = provider != null && definition.resolveStatOverride(provider);
 
         sender.sendMessage(Component.text(definition.id(), NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("  adres: " + definition.address(), NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  sınıf: " + definition.mobClass()
-                + "   ağırlık: " + definition.weight(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  address: " + definition.address(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  class: " + definition.mobClass()
+                + "   weight: " + definition.weight(), NamedTextColor.GRAY));
         // The resolved value AND where it came from: the difference between "you wrote false" and
         // "MythicMobs definitions default to false" is what an operator is actually asking.
         sender.sendMessage(Component.text("  statOverride: " + override
                 + (definition.statOverride() == null
-                        ? " (sağlayıcı varsayılanı)" : " (dosyada yazılı)"), NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("  statlar:" + (definition.hasStats()
-                ? statSummary(definition) : " yok — mob'un doğal değerleri"), NamedTextColor.GRAY));
+                        ? " (provider default)" : " (written in the file)"), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  stats:" + (definition.hasStats()
+                ? statSummary(definition) : " none - the mob's own values"), NamedTextColor.GRAY));
         if (definition.hasStats() && !override) {
-            sender.sendMessage(Component.text("  ! statOverride kapalı — yukarıdaki statlar "
-                    + "UYGULANMAYACAK.", NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("  ! statOverride is off - the stats above are "
+                    + "NOT APPLIED.", NamedTextColor.YELLOW));
         }
         for (Difficulty difficulty : Difficulty.values()) {
             sender.sendMessage(Component.text("  " + difficulty.key() + ": "
@@ -1348,7 +1356,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             return;
         }
         if (args.length < 3) {
-            sender.sendMessage(Component.text("Kullanım: /" + label
+            sender.sendMessage(Component.text("Usage: /" + label
                     + " mob spawn <id> [easy|medium|hard]", NamedTextColor.RED));
             return;
         }
@@ -1356,7 +1364,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         MobRegistry registry = plugin.getMobRegistry();
         MobDefinition definition = registry.definition(args[2]);
         if (definition == null) {
-            sender.sendMessage(Component.text("Böyle bir mob yok: " + args[2]
+            sender.sendMessage(Component.text("No such mob: " + args[2]
                     + " — /" + label + " mob list", NamedTextColor.RED));
             return;
         }
@@ -1364,8 +1372,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (args.length >= 4) {
             difficulty = Difficulty.parse(args[3]);
             if (difficulty == null) {
-                sender.sendMessage(Component.text("Bilinmeyen zorluk: " + args[3]
-                        + " — geçerli: easy, medium, hard", NamedTextColor.RED));
+                sender.sendMessage(Component.text("Unknown difficulty: " + args[3]
+                        + " - valid: easy, medium, hard", NamedTextColor.RED));
                 return;
             }
         }
@@ -1376,11 +1384,11 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
         LivingEntity entity = service.spawn(definition, where, difficulty, new Random());
         if (entity == null) {
-            sender.sendMessage(Component.text("Doğurulamadı — sağlayıcı reddetti. Konsola bak.",
+            sender.sendMessage(Component.text("Could not spawn - the provider refused. Check the console.",
                     NamedTextColor.RED));
             return;
         }
-        sender.sendMessage(Component.text(definition.id() + " doğdu (" + difficulty.key()
+        sender.sendMessage(Component.text(definition.id() + " spawned (" + difficulty.key()
                 + ") — can " + round(entity.getHealth()) + "/"
                 + round(entity.getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH) == null
                         ? entity.getHealth()
@@ -1393,12 +1401,12 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     }
 
     private void mobProviders(CommandSender sender) {
-        sender.sendMessage(Component.text("Mob sağlayıcıları:", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Mob providers:", NamedTextColor.GOLD));
         for (MobProvider provider : plugin.getMobRegistry().providers()) {
             boolean up = provider.isAvailable();
             sender.sendMessage(Component.text("  " + provider.id() + " — " + provider.displayName()
-                    + ": " + (up ? provider.knownKeys().size() + " mob" : "yok")
-                    + "   statOverride varsayılanı: " + provider.defaultStatOverride(),
+                    + ": " + (up ? provider.knownKeys().size() + " mobs" : "absent")
+                    + "   statOverride default: " + provider.defaultStatOverride(),
                     up ? NamedTextColor.GRAY : NamedTextColor.DARK_GRAY));
         }
     }
@@ -1406,10 +1414,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private void mobReload(CommandSender sender) {
         MobRegistry registry = plugin.getMobRegistry();
         registry.load();
-        sender.sendMessage(Component.text("mobs.yml yeniden yüklendi — "
-                + registry.definitions().size() + " mob"
+        sender.sendMessage(Component.text("mobs.yml reloaded - "
+                + registry.definitions().size() + " mobs"
                 + (registry.disabled().isEmpty() ? "" : ", " + registry.disabled().size()
-                        + " devre dışı"), NamedTextColor.GREEN));
+                        + " disabled"), NamedTextColor.GREEN));
     }
 
     @Override

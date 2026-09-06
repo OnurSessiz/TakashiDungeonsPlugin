@@ -40,7 +40,7 @@ public record DifficultyScaling(double health, double damage, double speed,
     private static double requirePositive(double value, String field) {
         if (!Double.isFinite(value) || value <= 0) {
             throw new IllegalArgumentException("difficulty." + field
-                    + " pozitif bir sayı olmalı — bulunan: " + value);
+                    + " must be a positive number - found: " + value);
         }
         return value;
     }
@@ -57,8 +57,8 @@ public record DifficultyScaling(double health, double damage, double speed,
         }
         ArmorTier tier = ArmorTier.parse(section.getString("armor", ArmorTier.NONE.key()));
         if (tier == null) {
-            throw new IllegalArgumentException(where + ".armor: geçersiz değer '"
-                    + section.getString("armor") + "' — geçerli: none, leather, golden, chainmail, "
+            throw new IllegalArgumentException(where + ".armor: invalid value '"
+                    + section.getString("armor") + "' - valid: none, leather, golden, chainmail, "
                     + "iron, diamond, netherite");
         }
         return new DifficultyScaling(

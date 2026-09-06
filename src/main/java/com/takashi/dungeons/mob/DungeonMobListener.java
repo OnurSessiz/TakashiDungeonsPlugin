@@ -97,7 +97,7 @@ public final class DungeonMobListener implements Listener {
             removed++;
         }
         if (removed > 0) {
-            plugin.getLogger().info("Sahipsiz dungeon mob'u temizlendi: " + removed + " adet @ "
+            plugin.getLogger().info("Orphaned dungeon mobs removed: " + removed + " @ chunk "
                     + event.getChunk().getX() + "," + event.getChunk().getZ());
         }
     }

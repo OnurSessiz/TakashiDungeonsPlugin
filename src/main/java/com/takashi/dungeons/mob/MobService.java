@@ -81,7 +81,7 @@ public final class MobService {
             try {
                 handler.accept(kill);
             } catch (RuntimeException error) {
-                plugin.getLogger().warning("Mob ölüm dinleyicisi hata verdi: " + error);
+                plugin.getLogger().warning("A mob-death listener threw: " + error);
             }
         }
     }
@@ -113,7 +113,7 @@ public final class MobService {
                                         Difficulty difficulty, RandomGenerator random,
                                         int instanceId, boolean boss) {
         if (!plugin.getServer().isPrimaryThread()) {
-            throw new IllegalStateException("Mob spawn'ı main thread'de yapılmalı: " + definition.id());
+            throw new IllegalStateException("Mob spawning must happen on the main thread: " + definition.id());
         }
         MobProvider provider = registry.provider(definition.providerId());
         if (provider == null || !provider.isAvailable()) {

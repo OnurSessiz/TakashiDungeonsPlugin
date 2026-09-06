@@ -21,10 +21,10 @@ public record StatRange(double min, double max) {
 
     public StatRange {
         if (min < 0) {
-            throw new IllegalArgumentException("stat aralığı negatif olamaz: " + min);
+            throw new IllegalArgumentException("a stat range cannot be negative: " + min);
         }
         if (max < min) {
-            throw new IllegalArgumentException("stat aralığında max < min: [" + min + ", " + max + "]");
+            throw new IllegalArgumentException("max < min in a stat range: [" + min + ", " + max + "]");
         }
     }
 
@@ -63,7 +63,7 @@ public record StatRange(double min, double max) {
         }
         if (raw instanceof List<?> list) {
             if (list.size() != 2) {
-                throw new IllegalArgumentException(where + ": aralık tam olarak 2 sayı içermeli "
+                throw new IllegalArgumentException(where + ": a range must hold exactly 2 numbers "
                         + "([min, max]) — bulunan: " + list.size());
             }
             double min = number(list.get(0), where, "min");
@@ -73,7 +73,7 @@ public record StatRange(double min, double max) {
             }
             return new StatRange(min, max);
         }
-        throw new IllegalArgumentException(where + ": sayı ya da [min, max] listesi bekleniyordu — "
+        throw new IllegalArgumentException(where + ": expected a number or a [min, max] list - "
                 + "bulunan: " + raw);
     }
 
@@ -81,12 +81,12 @@ public record StatRange(double min, double max) {
         if (value instanceof Number number) {
             return requireFinite(number.doubleValue(), where + " (" + field + ")");
         }
-        throw new IllegalArgumentException(where + " " + field + ": sayı bekleniyordu — bulunan: " + value);
+        throw new IllegalArgumentException(where + " " + field + ": expected a number - found: " + value);
     }
 
     private static double requireFinite(double value, String where) {
         if (!Double.isFinite(value) || value < 0) {
-            throw new IllegalArgumentException(where + ": sonlu ve negatif olmayan bir sayı olmalı "
+            throw new IllegalArgumentException(where + ": must be a finite, non-negative number "
                     + "— bulunan: " + value);
         }
         return value;

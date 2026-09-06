@@ -77,7 +77,7 @@ public final class MobPopulator {
      */
     public Report populate(DungeonInstance instance, World world, Difficulty difficulty) {
         if (!plugin.getServer().isPrimaryThread()) {
-            throw new IllegalStateException("Mob yerleştirme main thread'de yapılmalı.");
+            throw new IllegalStateException("Mob placement must happen on the main thread.");
         }
         MobRegistry registry = plugin.getMobRegistry();
         MobService service = plugin.getMobService();
@@ -216,7 +216,7 @@ public final class MobPopulator {
                                      SpawnRules rules, RoomSpawnFinder finder) {
         SpawnRules.Boss bossRules = rules.boss();
         if (!bossRules.enabled()) {
-            return BossOutcome.failed("boss yerleştirme kapalı (spawn.boss.enabled)");
+            return BossOutcome.failed("boss placement is switched off (spawn.boss.enabled)");
         }
         MobRegistry registry = plugin.getMobRegistry();
         MobService service = plugin.getMobService();
@@ -225,12 +225,12 @@ public final class MobPopulator {
         RandomGenerator random = Seeds.derive(result.seed(), node.id());
         List<Vec3i> surface = finder.survey(node.bounds(), random);
         if (surface.isEmpty()) {
-            return BossOutcome.failed("boss odasında durulabilecek yer bulunamadı");
+            return BossOutcome.failed("no standable place was found in the boss room");
         }
 
         MobDefinition definition = registry.pick(MobClass.BOSS, random);
         if (definition == null) {
-            return BossOutcome.failed("boss havuzu boş — mobs.yml'de 'class: boss' bir mob yok");
+            return BossOutcome.failed("the boss pool is empty - no mob in mobs.yml has 'class: boss'");
         }
         // One point for the boss plus one per guard, taken from the same spread so the minimum
         // spacing holds between the boss and its retinue as well as among the guards.
@@ -238,7 +238,7 @@ public final class MobPopulator {
         LivingEntity boss = service.spawn(definition, standOn(world, points.get(0)), difficulty,
                 random, instance.id(), true);
         if (boss == null) {
-            return BossOutcome.failed("boss doğurulamadı: " + definition.address());
+            return BossOutcome.failed("the boss could not be spawned: " + definition.address());
         }
 
         int guards = 0;

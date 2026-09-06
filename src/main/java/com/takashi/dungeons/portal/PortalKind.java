@@ -11,7 +11,7 @@ package com.takashi.dungeons.portal;
 public enum PortalKind {
 
     /** Spawned out in the world by the plugin. Consumed when its dungeon ends. */
-    WILD("doğa"),
+    WILD("wild"),
 
     /** Placed by an operator at a fixed point. Comes back at the next refresh hour. */
     LOBBY("lobby");

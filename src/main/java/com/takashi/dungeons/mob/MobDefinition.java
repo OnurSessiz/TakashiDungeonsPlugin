@@ -65,28 +65,28 @@ public record MobDefinition(String id, String providerId, String mobKey, MobClas
 
         String address = section.getString("mob");
         if (address == null || address.isBlank()) {
-            throw new IllegalArgumentException(where + ": 'mob' alanı zorunlu — "
-                    + "biçim: <provider>:<key>, örnek: vanilla:ZOMBIE");
+            throw new IllegalArgumentException(where + ": the 'mob' field is required - "
+                    + "format: <provider>:<key>, for example vanilla:ZOMBIE");
         }
         int colon = address.indexOf(':');
         if (colon <= 0 || colon == address.length() - 1) {
-            throw new IllegalArgumentException(where + ": 'mob' değeri <provider>:<key> biçiminde "
-                    + "olmalı (bulunan: '" + address + "'). Örnek: vanilla:ZOMBIE");
+            throw new IllegalArgumentException(where + ": the 'mob' value must be in <provider>:<key> form "
+                    + "(found: '" + address + "'). For example: vanilla:ZOMBIE");
         }
         String providerId = address.substring(0, colon).trim().toLowerCase(Locale.ROOT);
         String mobKey = address.substring(colon + 1).trim();
 
         MobClass mobClass = MobClass.parse(section.getString("class", MobClass.NORMAL.key()));
         if (mobClass == null) {
-            throw new IllegalArgumentException(where + ": geçersiz class '"
-                    + section.getString("class") + "' — geçerli: weak, normal, strong, "
+            throw new IllegalArgumentException(where + ": invalid class '"
+                    + section.getString("class") + "' - valid: weak, normal, strong, "
                     + "super_strong, boss");
         }
 
         int weight = section.getInt("weight", 100);
         if (weight <= 0) {
-            throw new IllegalArgumentException(where + ": weight pozitif olmalı (bulunan: " + weight
-                    + "). Bir mob'u kapatmak için 'enabled: false' yaz ya da girdiyi sil.");
+            throw new IllegalArgumentException(where + ": weight must be positive (found: " + weight
+                    + "). To switch a mob off write 'enabled: false' or delete the entry.");
         }
 
         // Read as an Object rather than getBoolean: the difference between "false" and "not

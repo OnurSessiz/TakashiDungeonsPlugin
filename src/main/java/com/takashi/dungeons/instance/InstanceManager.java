@@ -14,11 +14,10 @@ import com.takashi.dungeons.mob.MobKill;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
+import com.takashi.dungeons.text.Messages;
 import com.takashi.dungeons.world.GridSlot;
 import net.kyori.adventure.bossbar.BossBar;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
@@ -114,7 +113,7 @@ public final class InstanceManager {
         SchematicService service = plugin.getSchematicService();
         if (world == null || store == null || service == null) {
             return CompletableFuture.failedFuture(new IllegalStateException(
-                    "Dungeon dünyası ya da schematic servisi hazır değil."));
+                    "The dungeon world or the schematic service is not ready."));
         }
 
         double turnBias = plugin.getConfig().getDouble("generation.turn-bias", 2.0);
@@ -197,22 +196,22 @@ public final class InstanceManager {
             try {
                 var report = plugin.getMobPopulator().populate(instance, world,
                         plugin.getMobRegistry().defaultDifficulty());
-                plugin.getLogger().info("Mob yerleştirildi: instance#" + instance.id() + " — "
-                        + report.spawned() + " mob, " + report.roomsPopulated() + " oda"
+                plugin.getLogger().info("Mobs placed: instance#" + instance.id() + " - "
+                        + report.spawned() + " mobs, " + report.roomsPopulated() + " rooms"
                         + (report.hasBoss() ? ", boss: " + report.bossMob()
-                                + (report.guards() == 0 ? "" : " +" + report.guards() + " muhafız")
+                                + (report.guards() == 0 ? "" : " +" + report.guards() + " guards")
                                 : "")
-                        + (report.refused() == 0 ? "" : ", " + report.refused() + " reddedildi")
+                        + (report.refused() == 0 ? "" : ", " + report.refused() + " refused")
                         + (report.roomsShortOfSpace() == 0 ? ""
-                                : ", " + report.roomsShortOfSpace() + " odada yer yetmedi"));
+                                : ", " + report.roomsShortOfSpace() + " rooms short of space"));
                 // A boss room that stayed empty is the difference between a dungeon and a walk;
                 // it gets its own line rather than a clause nobody reads to the end of.
                 if (report.bossProblem() != null) {
-                    plugin.getLogger().warning("instance#" + instance.id() + " boss'suz açıldı: "
+                    plugin.getLogger().warning("instance#" + instance.id() + " opened without a boss: "
                             + report.bossProblem());
                 }
             } catch (RuntimeException error) {
-                plugin.getLogger().warning("Mob yerleştirme başarısız (" + instance + "): " + error);
+                plugin.getLogger().warning("Mob placement failed (" + instance + "): " + error);
             }
             done.complete(instance);
         });
@@ -231,7 +230,7 @@ public final class InstanceManager {
         // Logged because an instance opening and closing is the one thing an operator cannot see
         // from outside: the dungeon world is not somewhere anybody is standing. Without these two
         // lines a console log shows portals being born and nothing they lead to.
-        plugin.getLogger().info("Instance açıldı: " + instance);
+        plugin.getLogger().info("Instance opened: " + instance);
         return instance;
     }
 
@@ -250,7 +249,7 @@ public final class InstanceManager {
         }
         cleaner.clear(world, slotBounds).whenComplete((report, error) -> {
             if (error != null) {
-                plugin.getLogger().warning("Başarısız üretim sonrası slot temizlenemedi ("
+                plugin.getLogger().warning("The slot could not be cleared after a failed generation ("
                         + slot + "): " + error);
             }
             plugin.getServer().getScheduler().runTask(plugin,
@@ -288,7 +287,7 @@ public final class InstanceManager {
                 continue;
             }
             if (instance.isExpired()) {
-                expire(instance, "Süre doldu");
+                expire(instance, "instance.reason-expired");
                 continue;
             }
             // An instance nobody is in is holding a slot for nothing. Only armed once somebody
@@ -296,7 +295,7 @@ public final class InstanceManager {
             // birth, and closing it on that basis would delete the rooms they are standing in.
             if (emptyTimeout > 0 && instance.everOccupied() && instance.playerCount() == 0
                     && instance.emptyMillis() >= emptyTimeout) {
-                expire(instance, "İçeride kimse kalmadı");
+                expire(instance, "instance.reason-empty");
                 continue;
             }
             updateBossBar(instance);
@@ -304,21 +303,23 @@ public final class InstanceManager {
         }
     }
 
-    /** Sends everyone home, then tears the instance down. */
-    private void expire(DungeonInstance instance, String reason) {
-        for (UUID uuid : instance.players()) {
-            Player player = plugin.getServer().getPlayer(uuid);
-            if (player != null) {
-                player.sendMessage(Component.text(reason + " — dungeon kapanıyor.",
-                        NamedTextColor.YELLOW));
-            }
-        }
+    /**
+     * Sends everyone home, then tears the instance down.
+     *
+     * @param reasonKey the message key naming why — the reason is a translated phrase rather than
+     *                  a string built here, because in most languages it does not slot into the
+     *                  closing sentence the way it does in English
+     */
+    private void expire(DungeonInstance instance, String reasonKey) {
+        Messages messages = plugin.getMessages();
+        broadcast(instance, messages.get("instance.closing", Placeholder.component("reason",
+                messages.get(reasonKey))));
         // Players first, and to THEIR OWN return location — close() only knows the generic way
         // out and would drop everyone at world spawn.
         sendEveryoneHome(instance);
         close(instance).exceptionally(error -> {
             plugin.getLogger().warning("instance#" + instance.id()
-                    + " süre bitiminde kapatılamadı: " + error);
+                    + " could not be closed when its time ran out: " + error);
             return null;
         });
     }
@@ -372,22 +373,23 @@ public final class InstanceManager {
             }
         }
         announceCleared(instance, kill);
-        plugin.getLogger().info("Instance temizlendi: instance#" + instance.id() + " — boss "
-                + (kill.definition() == null ? "?" : kill.definition().id()) + " öldürüldü"
-                + (kill.killer() == null ? "" : " (" + kill.killer().getName() + ")")
-                + ", kalan süre " + formatDuration(instance.remainingMillis()));
+        plugin.getLogger().info("Instance cleared: instance#" + instance.id() + " - boss "
+                + (kill.definition() == null ? "?" : kill.definition().id()) + " killed"
+                + (kill.killer() == null ? "" : " by " + kill.killer().getName())
+                + ", " + formatDuration(instance.remainingMillis()) + " left");
     }
 
     private void announceCleared(DungeonInstance instance, MobKill kill) {
+        Messages messages = plugin.getMessages();
+        // The boss's own display name comes from mobs.yml and is already a rendered component;
+        // it goes in as a component rather than as text, so its colours survive.
         Component name = kill.entity().customName() != null
                 ? kill.entity().customName()
-                : Component.text("Boss", NamedTextColor.DARK_RED);
-        broadcast(instance, Component.text("", NamedTextColor.GREEN)
-                .append(name)
-                .append(Component.text(" devrildi — dungeon temizlendi!", NamedTextColor.GREEN)));
-        broadcast(instance, Component.text("Çıkış için "
-                + formatDuration(instance.remainingMillis()) + " süren var.",
-                NamedTextColor.YELLOW));
+                : messages.get("instance.boss-unnamed");
+        broadcast(instance, messages.get("instance.cleared",
+                Placeholder.component("boss", name)));
+        broadcast(instance, messages.get("instance.cleared-exit",
+                Placeholder.unparsed("time", formatDuration(instance.remainingMillis()))));
         updateBossBar(instance);
     }
 
@@ -431,23 +433,15 @@ public final class InstanceManager {
     }
 
     private Component barTitle(DungeonInstance instance) {
-        String format = instance.isCleared()
-                ? plugin.getConfig().getString("instance.boss-bar.cleared-title",
-                        "<green>Temizlendi</green> <dark_gray>|</dark_gray> <white><time></white>")
-                : plugin.getConfig().getString("instance.boss-bar.title",
-                        "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>");
-        try {
-            return MiniMessage.miniMessage().deserialize(format,
-                    Placeholder.unparsed("time", formatDuration(instance.remainingMillis())),
-                    Placeholder.unparsed("theme", instance.theme()),
-                    Placeholder.unparsed("size", instance.result().size().key()),
-                    Placeholder.unparsed("rooms", String.valueOf(instance.result().rooms())));
-        } catch (RuntimeException e) {
-            // The title is repainted every second; a broken tag must not fill the console once
-            // per second per instance. Fall back to plain text and carry on.
-            return Component.text("Dungeon | " + formatDuration(instance.remainingMillis()),
-                    NamedTextColor.GOLD);
-        }
+        // Messages.get() already swallows a broken tag and warns once per key, which is what
+        // matters here: the bar is repainted every second per instance, so a mistranslated tag
+        // must not be able to write a line per second per dungeon.
+        return plugin.getMessages().get(
+                instance.isCleared() ? "instance.boss-bar-cleared" : "instance.boss-bar",
+                Placeholder.unparsed("time", formatDuration(instance.remainingMillis())),
+                Placeholder.unparsed("theme", instance.theme()),
+                Placeholder.unparsed("size", instance.result().size().key()),
+                Placeholder.unparsed("rooms", String.valueOf(instance.result().rooms())));
     }
 
     /** {@code mm:ss}, or {@code h:mm:ss} once an hour is involved. */
@@ -477,8 +471,8 @@ public final class InstanceManager {
             if (remainingSeconds > threshold || !instance.markWarned(threshold)) {
                 continue;
             }
-            broadcast(instance, Component.text("Dungeon " + formatDuration(threshold * 1000L)
-                    + " içinde kapanacak.", NamedTextColor.YELLOW));
+            broadcast(instance, plugin.getMessages().get("instance.warning",
+                    Placeholder.unparsed("time", formatDuration(threshold * 1000L))));
         }
     }
 
@@ -611,14 +605,14 @@ public final class InstanceManager {
     public CompletableFuture<CloseReport> close(DungeonInstance instance) {
         if (!instance.advanceTo(InstanceState.CLOSING)) {
             return CompletableFuture.failedFuture(new IllegalStateException(
-                    "instance#" + instance.id() + " kapatılabilir durumda değil: "
+                    "instance#" + instance.id() + " is not in a closable state: "
                             + instance.state()));
         }
         World world = plugin.getWorldManager().getWorld();
         RegionCleaner cleaner = plugin.getRegionCleaner();
         if (world == null || cleaner == null) {
             return CompletableFuture.failedFuture(new IllegalStateException(
-                    "Temizlik için dünya ya da WorldEdit yok — instance kapatılamıyor."));
+                    "No world or no WorldEdit to clean with - the instance cannot be closed."));
         }
 
         long start = System.currentTimeMillis();
@@ -643,11 +637,11 @@ public final class InstanceManager {
                     notifyClosed(instance);
                     CloseReport report = new CloseReport(instance.id(), counts[0], counts[1],
                             counts[2], chunks, System.currentTimeMillis() - start);
-                    plugin.getLogger().info("Instance kapandı: instance#" + report.id()
-                            + " — " + report.playersEvicted() + " oyuncu, "
-                            + report.entitiesRemoved() + " entity, "
-                            + report.blocksCleared() + " blok, " + report.millis() + "ms"
-                            + (instance.isCleared() ? " (boss öldürülmüştü)" : ""));
+                    plugin.getLogger().info("Instance closed: instance#" + report.id()
+                            + " - " + report.playersEvicted() + " players, "
+                            + report.entitiesRemoved() + " entities, "
+                            + report.blocksCleared() + " blocks, " + report.millis() + "ms"
+                            + (instance.isCleared() ? " (the boss had been killed)" : ""));
                     return report;
                 }));
     }
@@ -664,7 +658,7 @@ public final class InstanceManager {
             } catch (RuntimeException e) {
                 // One listener throwing must not abort the teardown of the others, nor leave the
                 // slot in limbo — the release above has already happened by design.
-                plugin.getLogger().warning("Instance kapanış dinleyicisi hata verdi: " + e);
+                plugin.getLogger().warning("An instance close listener threw: " + e);
             }
         }
     }
@@ -675,7 +669,7 @@ public final class InstanceManager {
         CompletableFuture<?>[] futures = live.stream()
                 .map(instance -> close(instance).exceptionally(error -> {
                     plugin.getLogger().warning("instance#" + instance.id()
-                            + " kapatılamadı: " + error);
+                            + " could not be closed: " + error);
                     return null;
                 }))
                 .toArray(CompletableFuture[]::new);

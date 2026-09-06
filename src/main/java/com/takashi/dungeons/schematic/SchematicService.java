@@ -79,7 +79,7 @@ public final class SchematicService {
         this.directory = directory;
         this.asyncPaste = asyncPaste;
         if (!directory.exists() && !directory.mkdirs()) {
-            plugin.getLogger().warning("Schematic klasörü oluşturulamadı: " + directory.getAbsolutePath());
+            plugin.getLogger().warning("The schematic folder could not be created: " + directory.getAbsolutePath());
         }
     }
 

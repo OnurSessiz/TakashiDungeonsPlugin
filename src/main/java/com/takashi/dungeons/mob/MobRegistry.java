@@ -110,7 +110,7 @@ public final class MobRegistry {
             plugin.saveResource(FILE_NAME, false);
         }
         if (!file.exists()) {
-            loadError = FILE_NAME + " oluşturulamadı — mob sistemi boş çalışıyor.";
+            loadError = FILE_NAME + " could not be created - the mob system is running empty.";
             plugin.getLogger().warning(loadError);
             return;
         }
@@ -121,15 +121,15 @@ public final class MobRegistry {
 
         Difficulty parsed = Difficulty.parse(yaml.getString("default-difficulty", "medium"));
         if (parsed == null) {
-            plugin.getLogger().warning(FILE_NAME + ": geçersiz default-difficulty '"
-                    + yaml.getString("default-difficulty") + "' — medium kullanılıyor.");
+            plugin.getLogger().warning(FILE_NAME + ": invalid default-difficulty '"
+                    + yaml.getString("default-difficulty") + "' - using medium.");
             parsed = Difficulty.MEDIUM;
         }
         defaultDifficulty = parsed;
 
         ConfigurationSection mobs = yaml.getConfigurationSection("mobs");
         if (mobs == null) {
-            loadError = FILE_NAME + ": 'mobs' bölümü yok — hiçbir mob tanımlı değil.";
+            loadError = FILE_NAME + ": no 'mobs' section - no mob is defined.";
             plugin.getLogger().warning(loadError);
             return;
         }
@@ -149,7 +149,7 @@ public final class MobRegistry {
                         "difficulty." + difficulty.key()));
             } catch (IllegalArgumentException error) {
                 plugin.getLogger().warning(FILE_NAME + ": " + error.getMessage()
-                        + " — bu zorluk ölçeklenmeden kullanılacak.");
+                        + " - this difficulty will be used unscaled.");
                 scalings.put(difficulty, DifficultyScaling.NEUTRAL);
             }
         }
@@ -158,7 +158,7 @@ public final class MobRegistry {
     /** Reads one entry; a bad entry is skipped with a message, it does not abort the file. */
     private void readDefinition(@Nullable ConfigurationSection section, String id) {
         if (section == null) {
-            disabled.add(new Disabled(id, "?", "girdi bir bölüm değil (altında alanlar yok)"));
+            disabled.add(new Disabled(id, "?", "the entry is not a section (it has no fields under it)"));
             return;
         }
         if (!section.getBoolean("enabled", true)) {
@@ -176,19 +176,19 @@ public final class MobRegistry {
 
         MobProvider provider = providers.get(definition.providerId());
         if (provider == null) {
-            disabled.add(new Disabled(id, definition.address(), "bilinmeyen sağlayıcı '"
-                    + definition.providerId() + "' — tanımlı olanlar: " + String.join(", ",
+            disabled.add(new Disabled(id, definition.address(), "unknown provider '"
+                    + definition.providerId() + "' - registered: " + String.join(", ",
                     providers.keySet())));
             return;
         }
         if (!provider.isAvailable()) {
             disabled.add(new Disabled(id, definition.address(),
-                    provider.displayName() + " kurulu değil"));
+                    provider.displayName() + " is not installed"));
             return;
         }
         if (!provider.supports(definition.mobKey())) {
             disabled.add(new Disabled(id, definition.address(),
-                    provider.displayName() + " böyle bir mob tanımıyor"));
+                    provider.displayName() + " does not know that mob"));
             return;
         }
         definitions.put(id, definition);
@@ -211,14 +211,14 @@ public final class MobRegistry {
             }
             counts.append(mobClass.key()).append('=').append(pool(mobClass).size());
         }
-        plugin.getLogger().info("Mob kaydı yüklendi: " + definitions.size() + " mob ("
+        plugin.getLogger().info("Mob registry loaded: " + definitions.size() + " mobs ("
                 + counts + ")" + (disabled.isEmpty() ? "" : ", " + disabled.size()
-                + " devre dışı — /tdungeons mob list"));
+                + " disabled - /tdungeons mob list"));
         // Each disabled entry gets its own line: the count alone tells an operator that something
         // is wrong without telling them what, which is the worst of both.
         for (Disabled entry : disabled) {
-            plugin.getLogger().warning("  devre dışı: " + entry.id() + " (" + entry.address()
-                    + ") — " + entry.reason());
+            plugin.getLogger().warning("  disabled: " + entry.id() + " (" + entry.address()
+                    + ") - " + entry.reason());
         }
     }
 

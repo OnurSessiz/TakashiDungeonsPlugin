@@ -378,6 +378,6 @@ public final class DungeonInstance {
     @Override
     public String toString() {
         return "instance#" + id + " (" + theme + "/" + result.size().key()
-                + ", " + result.rooms() + " oda, " + slot + ")";
+                + ", " + result.rooms() + " rooms, " + slot + ")";
     }
 }

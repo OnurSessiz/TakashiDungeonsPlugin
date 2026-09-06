@@ -68,8 +68,8 @@ public final class BundledRooms {
             return new Result(0, 0, 0);
         }
         if (!target.isDirectory() && !target.mkdirs()) {
-            plugin.getLogger().warning("Schematic klasörü oluşturulamadı, gömülü odalar "
-                    + "çıkarılamadı: " + target.getAbsolutePath());
+            plugin.getLogger().warning("The schematic folder could not be created, so the bundled rooms were "
+                    + "not extracted: " + target.getAbsolutePath());
             return new Result(0, 0, entries.size());
         }
 
@@ -85,7 +85,7 @@ public final class BundledRooms {
             }
             File parent = destination.getParentFile();
             if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-                plugin.getLogger().warning("Tema klasörü oluşturulamadı: " + parent.getAbsolutePath());
+                plugin.getLogger().warning("Theme folder could not be created: " + parent.getAbsolutePath());
                 failed++;
                 continue;
             }
@@ -115,7 +115,7 @@ public final class BundledRooms {
                 }
             }
         } catch (IOException e) {
-            plugin.getLogger().warning("Jar içindeki odalar listelenemedi: " + e.getMessage());
+            plugin.getLogger().warning("The rooms inside the jar could not be listed: " + e.getMessage());
             return List.of();
         }
         entries.sort(String::compareTo);
@@ -125,7 +125,7 @@ public final class BundledRooms {
     private boolean copy(String entry, File destination) {
         try (InputStream in = plugin.getResource(entry)) {
             if (in == null) {
-                plugin.getLogger().warning("Gömülü oda okunamadı: " + entry);
+                plugin.getLogger().warning("Bundled room could not be read: " + entry);
                 return false;
             }
             try (OutputStream out = Files.newOutputStream(destination.toPath())) {
@@ -133,7 +133,7 @@ public final class BundledRooms {
             }
             return true;
         } catch (IOException e) {
-            plugin.getLogger().warning("Gömülü oda yazılamadı: " + entry + " — " + e.getMessage());
+            plugin.getLogger().warning("Bundled room could not be written: " + entry + " - " + e.getMessage());
             return false;
         }
     }

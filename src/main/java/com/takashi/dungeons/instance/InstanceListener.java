@@ -1,8 +1,6 @@
 package com.takashi.dungeons.instance;
 
 import com.takashi.dungeons.TakashiDungeonsPlugin;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -77,8 +75,7 @@ public final class InstanceListener implements Listener {
             return;
         }
         instances.teleportInternal(event.getPlayer(), instances.fallbackExit());
-        event.getPlayer().sendMessage(Component.text(
-                "Bulunduğun dungeon artık yok — dışarı çıkarıldın.", NamedTextColor.YELLOW));
+        event.getPlayer().sendMessage(plugin.getMessages().get("instance.rescued"));
     }
 
     /**
@@ -137,7 +134,7 @@ public final class InstanceListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        player.sendMessage(Component.text("Dungeon içinde ışınlanma kapalı.", NamedTextColor.RED));
+        player.sendMessage(plugin.getMessages().get("instance.teleport-blocked"));
     }
 
     private boolean isDungeonWorld(Location location) {

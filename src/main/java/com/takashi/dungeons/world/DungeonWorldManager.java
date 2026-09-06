@@ -73,13 +73,13 @@ public final class DungeonWorldManager {
 
         World created = creator.createWorld();
         if (created == null) {
-            plugin.getLogger().severe("Dungeon dünyası '" + worldName + "' oluşturulamadı.");
+            plugin.getLogger().severe("The dungeon world '" + worldName + "' could not be created.");
             return false;
         }
 
         this.world = created;
         applyRules(created);
-        plugin.getLogger().info("Dungeon dünyası hazır: " + worldName);
+        plugin.getLogger().info("Dungeon world ready: " + worldName);
         return true;
     }
 
@@ -110,8 +110,8 @@ public final class DungeonWorldManager {
             resetFiles += deleteRecursively(new File(folder, name));
         }
         if (resetFiles > 0) {
-            plugin.getLogger().info("Dungeon dünyası sıfırlandı: " + resetFiles
-                    + " chunk dosyası silindi (dungeon-world.reset-on-start).");
+            plugin.getLogger().info("Dungeon world reset: " + resetFiles
+                    + " chunk files deleted (dungeon-world.reset-on-start).");
         }
     }
 
@@ -134,7 +134,7 @@ public final class DungeonWorldManager {
         if (file.delete()) {
             return 1;
         }
-        plugin.getLogger().warning("Silinemedi: " + file.getPath());
+        plugin.getLogger().warning("Could not delete: " + file.getPath());
         return 0;
     }
 

@@ -94,7 +94,7 @@ public final class MythicMobsProvider implements MobProvider {
                 names = List.copyOf(found);
             }
         } catch (ReflectiveOperationException | RuntimeException error) {
-            fail("mob listesi okunamadı", error);
+            fail("the mob list could not be read", error);
         }
     }
 
@@ -130,7 +130,7 @@ public final class MythicMobsProvider implements MobProvider {
             }
             return null;
         } catch (ReflectiveOperationException | RuntimeException error) {
-            fail("'" + mobKey + "' doğurulamadı", error);
+            fail("'" + mobKey + "' could not be spawned", error);
             return null;
         }
     }
@@ -167,7 +167,7 @@ public final class MythicMobsProvider implements MobProvider {
         Class<?> entry = Class.forName(ENTRY_CLASS);
         Object instance = entry.getMethod("inst").invoke(null);
         if (instance == null) {
-            throw new IllegalStateException(ENTRY_CLASS + ".inst() null döndü");
+            throw new IllegalStateException(ENTRY_CLASS + ".inst() returned null");
         }
         return instance;
     }
@@ -179,7 +179,7 @@ public final class MythicMobsProvider implements MobProvider {
         Object instance = entryInstance();
         Object helper = instance.getClass().getMethod("getAPIHelper").invoke(instance);
         if (helper == null) {
-            throw new IllegalStateException("MythicBukkit.getAPIHelper() null döndü");
+            throw new IllegalStateException("MythicBukkit.getAPIHelper() returned null");
         }
         apiHelper = helper;
         return helper;
@@ -204,9 +204,9 @@ public final class MythicMobsProvider implements MobProvider {
     private void fail(String what, Throwable error) {
         if (!broken) {
             broken = true;
-            owner.getLogger().log(Level.WARNING, "MythicMobs entegrasyonu devre dışı bırakıldı — "
-                    + what + ". MythicMobs sürümü destekleniyor mu kontrol edin; bu sağlayıcıya "
-                    + "bağlı mob tanımları artık doğmayacak.", error);
+            owner.getLogger().log(Level.WARNING, "The MythicMobs integration has been disabled - "
+                    + what + ". Check whether this MythicMobs version is supported; mob "
+                    + "definitions bound to this provider will no longer spawn.", error);
         }
         apiHelper = null;
         spawnMethod = null;
@@ -227,6 +227,6 @@ public final class MythicMobsProvider implements MobProvider {
 
     @Override
     public String toString() {
-        return ID + " (" + (isAvailable() ? names.size() + " mob" : "yok") + ")";
+        return ID + " (" + (isAvailable() ? names.size() + " mobs" : "absent") + ")";
     }
 }

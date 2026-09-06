@@ -6,8 +6,7 @@ import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.DungeonInstance;
 import com.takashi.dungeons.instance.InstanceManager;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.text.minimessage.MiniMessage;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -249,9 +248,8 @@ public final class PortalManager {
 
         if (portal.state() == PortalState.COOLDOWN) {
             long remaining = Math.max(0, portal.readyAt() - System.currentTimeMillis());
-            player.sendMessage(Component.text("Bu geçit yenileniyor — "
-                    + InstanceManager.formatDuration(remaining) + " sonra açılacak.",
-                    NamedTextColor.YELLOW));
+            player.sendMessage(plugin.getMessages().get("portal.refreshing",
+                    Placeholder.unparsed("time", InstanceManager.formatDuration(remaining))));
             return;
         }
         if (portal.boundInstanceId() != null) {
@@ -265,20 +263,18 @@ public final class PortalManager {
             portal.bind(null);
         }
         if (!generating.add(portal.id())) {
-            player.sendMessage(Component.text("Geçit hazırlanıyor, bir saniye…",
-                    NamedTextColor.GRAY));
+            player.sendMessage(plugin.getMessages().get("portal.busy"));
             return;
         }
 
         String theme = resolveTheme(portal);
         if (theme == null) {
             generating.remove(portal.id());
-            player.sendMessage(Component.text(
-                    "Geçit açılamıyor: kullanılabilir bir oda teması yok.", NamedTextColor.RED));
+            player.sendMessage(plugin.getMessages().get("portal.no-theme"));
             return;
         }
 
-        player.sendMessage(Component.text("Dungeon hazırlanıyor…", NamedTextColor.GRAY));
+        player.sendMessage(plugin.getMessages().get("portal.preparing"));
         instances.create(theme, portal.size(), random.nextLong())
                 .whenComplete((instance, error) -> plugin.getServer().getScheduler().runTask(plugin,
                         () -> finishUse(player, portal, instance, error)));
@@ -289,9 +285,9 @@ public final class PortalManager {
         generating.remove(portal.id());
         if (error != null) {
             Throwable cause = error.getCause() == null ? error : error.getCause();
-            player.sendMessage(Component.text("Dungeon üretilemedi: " + cause.getMessage(),
-                    NamedTextColor.RED));
-            plugin.getLogger().warning("Geçitten üretim başarısız (" + portal + "): " + cause);
+            player.sendMessage(plugin.getMessages().get("portal.failed",
+                    Placeholder.unparsed("reason", String.valueOf(cause.getMessage()))));
+            plugin.getLogger().warning("Generation from gateway failed (" + portal + "): " + cause);
             return;
         }
         // The portal may have been removed by an operator while the dungeon was generating.
@@ -304,9 +300,8 @@ public final class PortalManager {
         // mid-generation. Ignoring the answer would leave the player standing at the portal after
         // "Dungeon hazırlanıyor…" with nothing else ever said, which reads as a frozen plugin.
         if (!plugin.getInstanceManager().enter(player, instance)) {
-            player.sendMessage(Component.text("Dungeon hazır ama içeri alınamadın.",
-                    NamedTextColor.RED));
-            plugin.getLogger().warning("Geçitten giriş reddedildi (" + portal + "): " + instance);
+            player.sendMessage(plugin.getMessages().get("portal.enter-failed"));
+            plugin.getLogger().warning("Entry through gateway refused (" + portal + "): " + instance);
         }
     }
 
@@ -409,7 +404,7 @@ public final class PortalManager {
         for (Map<?, ?> entry : entries) {
             World world = plugin.getServer().getWorld(String.valueOf(entry.get("world")));
             if (world == null) {
-                plugin.getLogger().warning("Lobby geçidi atlandı — dünya yok: " + entry.get("world"));
+                plugin.getLogger().warning("Lobby gateway skipped - no such world: " + entry.get("world"));
                 continue;
             }
             Location loc = new Location(world,
@@ -419,7 +414,7 @@ public final class PortalManager {
             create(loc, PortalKind.LOBBY, theme, size == null ? defaultSize() : size);
         }
         if (!entries.isEmpty()) {
-            plugin.getLogger().info("Lobby geçidi kuruldu: " + entries.size());
+            plugin.getLogger().info("Lobby gateways placed: " + entries.size());
         }
     }
 
@@ -467,7 +462,7 @@ public final class PortalManager {
             }
             DungeonPortal portal = create(spot, PortalKind.WILD, null, defaultSize());
             if (portal != null) {
-                plugin.getLogger().info("Doğada geçit doğdu: " + portal);
+                plugin.getLogger().info("Wild gateway spawned: " + portal);
                 return;
             }
         }
@@ -549,7 +544,7 @@ public final class PortalManager {
             removed += sweepOrphans(world.getEntities());
         }
         if (removed > 0) {
-            plugin.getLogger().info("Sahipsiz geçit parçası temizlendi: " + removed);
+            plugin.getLogger().info("Orphaned gateway pieces removed: " + removed);
         }
     }
 
@@ -609,14 +604,7 @@ public final class PortalManager {
     }
 
     private Component label() {
-        String raw = plugin.getConfig().getString("portal.label",
-                "<light_purple><bold>Dungeon</bold></light_purple>");
-        try {
-            return MiniMessage.miniMessage().deserialize(raw);
-        } catch (RuntimeException e) {
-            plugin.getLogger().warning("portal.label okunamadı, düz metne düşüldü: " + e.getMessage());
-            return Component.text("Dungeon", NamedTextColor.LIGHT_PURPLE);
-        }
+        return plugin.getMessages().get("portal.label");
     }
 
     public DungeonSize defaultSize() {

@@ -18,6 +18,7 @@ import com.takashi.dungeons.schematic.BundledRooms;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
+import com.takashi.dungeons.text.Messages;
 import com.takashi.dungeons.world.DungeonWorldManager;
 import com.takashi.dungeons.world.GridSlotManager;
 import com.takashi.dungeons.world.VoidChunkGenerator;
@@ -63,18 +64,23 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private MobRegistry mobRegistry;
     private MobService mobService;
     private MobPopulator mobPopulator;
+    private Messages messages;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        // Words first: every layer below this line has something to say to a player, and a
+        // message asked for before the language is loaded would answer with its own key.
+        messages = new Messages(this);
+        messages.load();
         detectIntegrations();
 
-        getLogger().info("TakashiDungeons v" + getPluginMeta().getVersion() + " etkinleştirildi.");
+        getLogger().info("TakashiDungeons v" + getPluginMeta().getVersion() + " enabled.");
         // The signature travels with the jar; a README can be deleted, this line stays.
         getLogger().info("  Onur Sessiz — github.com/OnurSessiz/TakashiDungeonsPlugin (GPLv3)");
-        getLogger().info("Entegrasyonlar:");
+        getLogger().info("Integrations:");
         integrations.forEach((name, present) ->
-                getLogger().info("  - " + name + ": " + (present ? "bulundu" : "yok")));
+                getLogger().info("  - " + name + ": " + (present ? "found" : "absent")));
 
         setupWorld();
         setupSchematics();
@@ -108,7 +114,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // that nobody's logout position ends up inside an instance — that position outlives the
         // instance and would drop them into the void on their next join.
         evacuateDungeonWorld();
-        getLogger().info("TakashiDungeons devre dışı bırakıldı.");
+        getLogger().info("TakashiDungeons disabled.");
     }
 
     /** Everyone standing in the dungeon world goes back out before the plugin stops. */
@@ -142,7 +148,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         slotManager = new GridSlotManager(slotSize, columns, baseY);
         worldManager = new DungeonWorldManager(this, worldName, resetOnStart);
         if (!worldManager.load()) {
-            getLogger().severe("Dungeon dünyası yüklenemedi — generation komutları çalışmayacak.");
+            getLogger().severe("The dungeon world could not be loaded - generation commands will not work.");
         }
     }
 
@@ -152,8 +158,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
         boolean worldEdit = hasIntegration("WorldEdit") || hasIntegration("FastAsyncWorldEdit");
         if (!worldEdit) {
-            getLogger().warning("WorldEdit/FAWE bulunamadı — schematic paste devre dışı. "
-                    + "Dungeon üretimi için WorldEdit ya da FastAsyncWorldEdit kurun.");
+            getLogger().warning("WorldEdit/FAWE not found - schematic pasting is disabled. "
+                    + "Install WorldEdit or FastAsyncWorldEdit to generate dungeons.");
             return;
         }
 
@@ -170,8 +176,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // Same rule again for the cleaner: a sync paste racing an async wipe of the same slot is
         // exactly the corruption the threading decision exists to prevent.
         regionCleaner = new RegionCleaner(this, async);
-        getLogger().info("Schematic servisi hazır — paste modu: "
-                + (async ? "async (FAWE)" : "senkron (main thread)"));
+        getLogger().info("Schematic service ready - paste mode: "
+                + (async ? "async (FAWE)" : "synchronous (main thread)"));
     }
 
     /**
@@ -226,17 +232,17 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private void extractBundledRooms(File schematicDir) {
         bundledRooms = new BundledRooms(this, getFile());
         if (!getConfig().getBoolean("schematics.extract-bundled", true)) {
-            getLogger().info("Gömülü odaların çıkarılması config'de kapalı "
+            getLogger().info("Extracting the bundled rooms is switched off in the config "
                     + "(schematics.extract-bundled).");
             return;
         }
         BundledRooms.Result result = bundledRooms.extract(schematicDir, false);
         if (result.written() > 0) {
-            getLogger().info("Gömülü oda dosyası çıkarıldı: " + result.written()
-                    + " (zaten mevcut: " + result.skipped() + ")");
+            getLogger().info("Bundled room files extracted: " + result.written()
+                    + " (already present: " + result.skipped() + ")");
         }
         if (result.failed() > 0) {
-            getLogger().warning(result.failed() + " gömülü oda dosyası çıkarılamadı.");
+            getLogger().warning(result.failed() + " bundled room files could not be extracted.");
         }
     }
 
@@ -249,7 +255,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         PluginCommand command = getCommand("tdungeons");
         if (command == null) {
             // Never pass over a mismatch between plugin.yml and the code in silence
-            getLogger().severe("'tdungeons' komutu plugin.yml'de tanımlı değil — komut kaydedilemedi.");
+            getLogger().severe("The 'tdungeons' command is not declared in plugin.yml - it was not registered.");
             return;
         }
         DungeonsCommand executor = new DungeonsCommand(this);
@@ -258,7 +264,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
         PluginCommand hudCommand = getCommand("hud");
         if (hudCommand == null) {
-            getLogger().severe("'hud' komutu plugin.yml'de tanımlı değil — komut kaydedilemedi.");
+            getLogger().severe("The 'hud' command is not declared in plugin.yml - it was not registered.");
             return;
         }
         HudCommand hudExecutor = new HudCommand(this);
@@ -344,5 +350,10 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Fills a generated dungeon's rooms with mobs. Always built. */
     public MobPopulator getMobPopulator() {
         return mobPopulator;
+    }
+
+    /** Every word a player reads. Built first, before anything can need one. */
+    public Messages getMessages() {
+        return messages;
     }
 }

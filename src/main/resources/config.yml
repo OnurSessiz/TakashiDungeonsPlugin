@@ -1,5 +1,16 @@
 # TakashiDungeons — main configuration
 # Rule: everything works through YAML first; GUI editors come later.
+#
+# THIS FILE HOLDS BEHAVIOUR, NOT WORDS. Every message a player reads lives in lang/<code>.yml.
+# The split is deliberate: a translator who has to hunt through two files for the other half of
+# the sentences translates one of them and ships a plugin that is half in their language.
+
+# Which lang/<code>.yml is used. Shipped: en, tr.
+#
+# To add your own: copy lang/en.yml to lang/xx.yml, translate the values, put xx here, then
+# /tdungeons reload. A key your file is missing falls back to the English text bundled inside
+# the jar and logs one line naming it — players never see a raw key.
+language: en
 
 dungeon-world:
   # Name of the void world the instances live in. Keep it unique so it cannot
@@ -99,17 +110,10 @@ instance:
   boss-bar:
     # Ekranın üstünde kalan süreyi gösteren çubuk. Kapatılırsa süre sistemi aynen çalışır,
     # sadece görünmez olur.
+    #
+    # Çubuğun YAZISI burada değil: lang/<dil>.yml -> instance.boss-bar (ve boss ölünce
+    # instance.boss-bar-cleared). Oyuncunun okuduğu her kelime orada.
     enabled: true
-
-    # MiniMessage. Yerine geçenler: <time> <theme> <size> <rooms> — hepsi unparsed.
-    # Çubuk dolmuyor, BOŞALIYOR; rengi kalan orana göre kendisi değişiyor:
-    # mavi -> %25 altında sarı -> %10 altında kırmızı.
-    title: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
-
-    # Boss öldükten sonraki başlık. Çubuk bu noktada YEŞİL yanıyor ve kalan süreyi baştan
-    # doldurup boşaltıyor: artık kaybetmeye değil, çıkmaya kalan süreyi ölçüyor. Aynı
-    # yerine geçenler geçerli.
-    cleared-title: "<green>Temizlendi</green> <dark_gray>|</dark_gray> <white><time></white>"
 
 portal:
   # ---------------------------------------------------------------------------------------
@@ -120,9 +124,9 @@ portal:
   # yüzden görselin üstüne ayrı bir Interaction hitbox konuyor — oyuncu havadaki shard'a nişan
   # alıyor ve tıklanamayan bir şeye tıklamak bozuk geçit gibi görünürdü.
   # ---------------------------------------------------------------------------------------
+  # Geçidin YAZISI burada değil: lang/<dil>.yml -> portal.label
   block: AMETHYST_BLOCK
   item: AMETHYST_SHARD
-  label: "<light_purple><bold>Dungeon</bold></light_purple>"
 
   # Sağ tıkta açılacak dungeon'ın boyutu.
   size: medium
@@ -194,14 +198,7 @@ hud:
   server-name: "<gradient:#ffd45e:#ff8a3d>TAKASHI</gradient>"
   server-ip: "play.sunucun.net"
 
-  # Satır düzeni — yukarıdan aşağı. MiniMessage biçimi.
-  # Yerine geçenler: <player> <coin> <xp> <rank> <server> <ip>
-  # Scoreboard en fazla 16 satır taşır; fazlası atılır. Satırları kısa tut, sidebar
-  # genişliği en uzun satıra göre belirlenir ve ekranın sağını gereksiz kaplar.
-  lines:
-    - "<dark_gray><strikethrough>                    "
-    - "<gray>Oyuncu <white><player>"
-    - "<gray>Coin <gold><coin>"
-    - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
-    - "<dark_gray><strikethrough>                    "
-    - "<yellow><ip>"
+  # SATIR DÜZENİ burada değil: lang/<dil>.yml -> hud.lines
+  #
+  # Sebep: düzendeki kelimeler — Oyuncu, Coin, Rank — tam da çevrilmesi gereken kelimeler.
+  # Gösterdiği değerler (yukarıdaki server-name ve server-ip) burada kalıyor.

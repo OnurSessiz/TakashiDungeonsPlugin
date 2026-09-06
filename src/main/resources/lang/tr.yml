@@ -1,0 +1,95 @@
+# TakashiDungeons - Türkçe
+#
+# Kullanmak için config.yml'de:  language: tr
+#
+# Bu dosya oyuncunun okuduğu HER kelimeyi taşıyor. config.yml davranışı ve sunucuya özel
+# değerleri tutuyor, oyuncuya görünen hiçbir metni tutmuyor. Ayrım bilinçli: cümlelerin yarısı
+# için başka bir dosyaya bakmak zorunda kalan çevirmen ikisinden birini çeviriyor ve yarısı
+# kendi dilinde olan bir plugin çıkıyor.
+#
+# Dosya bir kez oluştuktan sonra ASLA üzerine yazılmıyor; düzenlemelerin plugin güncellemesini
+# atlatıyor. Bedeli, güncellemenin senin kopyanda olmayan bir anahtar eklemesi: eksik anahtar
+# jar'ın İÇİNDEKİ İngilizce metne düşüyor ve anahtarı adıyla tek bir satır log'a yazıyor.
+# Oyuncu asla ham anahtar görmüyor. Sıfırdan başlamak için dosyayı sil ve sunucuyu yeniden başlat.
+#
+# ---------------------------------------------------------------------------------------------
+# BİÇİM: MiniMessage. https://docs.advntr.dev/minimessage/format.html
+#
+# Açılı parantez içindekiler - <time>, <boss>, <reason>, <player> - plugin tarafından
+# dolduruluyor ve UNPARSED giriyor: içinde tag geçen bir mob adı markup'a dönüşemez.
+# Her mesajın altında hangi tag'leri aldığı yazıyor. Verilmeyen bir tag düz metin olarak kalır,
+# yani yazım hatası kaybolmaz, görünür.
+#
+# Konsol log satırları burada DEĞİL ve çevrilmiyor. Log bir teşhis yüzeyi: hata raporu kaynakta
+# bulunabilecek bir satır alıntılamalı, ve log'u okuyamayan operatör issue bile açamaz.
+# ---------------------------------------------------------------------------------------------
+
+instance:
+
+  # Oyuncu dungeon içinde /tp ya da /tpa denediğinde. takashidungeons.teleport.bypass izni olan
+  # yetkililer bunu hiç görmez.
+  teleport-blocked: "<red>Dungeon içinde ışınlanma kapalı.</red>"
+
+  # Girişte: artık var olmayan bir dungeon'ın içinde çıkış yapmış oyuncuya.
+  rescued: "<yellow>Bulunduğun dungeon artık yok - dışarı çıkarıldın.</yellow>"
+
+  # Dungeon kapanıyor. <reason> aşağıdaki iki satırdan biri.
+  closing: "<yellow><reason> - dungeon kapanıyor.</yellow>"
+  reason-expired: "Süre doldu"
+  reason-empty: "İçeride kimse kalmadı"
+
+  # Süre uyarıları, config.yml -> instance.warn-seconds içindeki her eşik için bir tane. <time>
+  warning: "<yellow>Dungeon <time> içinde kapanacak.</yellow>"
+
+  # Boss öldü. <boss> boss'un görünen adı, adı yoksa aşağıdaki boss-unnamed.
+  cleared: "<green><boss> devrildi - dungeon temizlendi!</green>"
+  cleared-exit: "<yellow>Çıkış için <time> süren var.</yellow>"
+  boss-unnamed: "<dark_red>Boss</dark_red>"
+
+  # Hotbar'ın üstündeki süre çubuğu. Tag'ler: <time> <theme> <size> <rooms>
+  #
+  # Çubuk dolmuyor, BOŞALIYOR; rengi kalan orana göre kendisi değişiyor: mavi, %25 altında sarı,
+  # %10 altında kırmızı. Renk oyuncunun bakmadan okuduğu şey - sayı ne kadar kaldığını söylüyor,
+  # renk umursaması gerekip gerekmediğini.
+  boss-bar: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
+
+  # Boss öldükten sonraki hâli. YEŞİL yanıyor ve sayaç baştan doluyor: artık kaybetmeye değil,
+  # çıkmaya kalan süreyi ölçüyor.
+  boss-bar-cleared: "<green>Temizlendi</green> <dark_gray>|</dark_gray> <white><time></white>"
+
+portal:
+
+  # Geçidin üstünde duran yazı.
+  label: "<light_purple><bold>Dungeon</bold></light_purple>"
+
+  # Geçide sağ tıklama.
+  refreshing: "<yellow>Bu geçit yenileniyor - <time> sonra açılacak.</yellow>"
+  busy: "<gray>Geçit hazırlanıyor, bir saniye...</gray>"
+  preparing: "<gray>Dungeon hazırlanıyor...</gray>"
+  no-theme: "<red>Geçit açılamıyor: kullanılabilir bir oda teması yok.</red>"
+  failed: "<red>Dungeon üretilemedi: <reason></red>"
+  enter-failed: "<red>Dungeon hazır ama içeri alınamadın.</red>"
+
+  # Geçit bloğunu kırma, itme ya da patlatma denemesi.
+  unbreakable: "<red>Bu geçit kırılamaz.</red>"
+
+hud:
+
+  # Sidebar, yukarıdan aşağı.
+  #
+  # Tag'ler: <player> <coin> <xp> <rank> oyuncudan geliyor ve unparsed giriyor;
+  #          <server> ve <ip> config.yml -> hud.server-name / hud.server-ip'ten geliyor ve
+  #          PARSED, renklenebilmelerinin sebebi bu.
+  #
+  # Scoreboard en fazla 16 satır taşır, fazlası atılır. Satırları kısa tut - sidebar genişliği
+  # en uzun satıra göre belirlenir ve ekranın sağını gereksiz kaplar.
+  #
+  # Düzen config.yml'de değil burada, çünkü içindeki kelimeler - Oyuncu, Coin, Rank - tam da
+  # çevrilmesi gereken kelimeler. Gösterdiği değerler config.yml'de kalıyor.
+  lines:
+    - "<dark_gray><strikethrough>                    "
+    - "<gray>Oyuncu <white><player>"
+    - "<gray>Coin <gold><coin>"
+    - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
+    - "<dark_gray><strikethrough>                    "
+    - "<yellow><ip>"

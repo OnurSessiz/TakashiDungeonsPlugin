@@ -10,7 +10,7 @@ package com.takashi.dungeons.portal;
 public enum PortalState {
 
     /** Nothing bound; a right-click opens a fresh dungeon. */
-    READY("hazır"),
+    READY("ready"),
 
     /** A dungeon is bound and standing; a right-click joins that one. */
     OCCUPIED("dolu"),

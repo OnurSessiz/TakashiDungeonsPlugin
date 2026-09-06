@@ -1,0 +1,98 @@
+# TakashiDungeons - English (default)
+#
+# This file holds EVERY word a player reads. config.yml holds behaviour and server-specific
+# values; it holds no player-facing text at all. That split is deliberate: a translator who has
+# to hunt through two files for the other half of the sentences translates one of them and ships
+# a plugin that is half in their language.
+#
+# TO TRANSLATE: copy this file to lang/<code>.yml, translate the values, then set
+#   language: <code>
+# in config.yml and run /tdungeons reload.
+#
+# This file is NEVER overwritten once it exists, so your edits survive plugin updates. The cost
+# is that an update may add a key your copy has never heard of; a missing key falls back to the
+# English text bundled INSIDE the jar and logs one line naming the key. Players never see a raw
+# key. To start over from a fresh copy, delete the file and restart.
+#
+# ---------------------------------------------------------------------------------------------
+# FORMAT: MiniMessage. https://docs.advntr.dev/minimessage/format.html
+#
+# Values in angle brackets - <time>, <boss>, <reason>, <player> - are filled in by the plugin
+# and inserted UNPARSED: a mob name that happens to contain a tag can never become markup.
+# Each message below lists the tags it is given. A tag the message is not given is left as
+# literal text, so a typo shows up rather than disappearing.
+#
+# Console log lines are NOT here and are not translatable. Logs are a diagnostic surface: a bug
+# report has to quote a line that can be found in the source, and an operator who cannot read
+# the log cannot open an issue at all.
+# ---------------------------------------------------------------------------------------------
+
+instance:
+
+  # Shown when a player tries to /tp or /tpa in or out of a dungeon. Admins with
+  # takashidungeons.teleport.bypass never see it.
+  teleport-blocked: "<red>Teleporting is disabled inside a dungeon.</red>"
+
+  # On join, when the player logged out inside a dungeon that no longer exists.
+  rescued: "<yellow>The dungeon you were in is gone - you have been moved out.</yellow>"
+
+  # The dungeon is shutting down. <reason> is one of the two lines below.
+  closing: "<yellow><reason> - the dungeon is closing.</yellow>"
+  reason-expired: "Time is up"
+  reason-empty: "Nobody is left inside"
+
+  # Countdown warnings, one per threshold in config.yml -> instance.warn-seconds. <time>
+  warning: "<yellow>The dungeon closes in <time>.</yellow>"
+
+  # The boss died. <boss> is the boss's display name, or boss-unnamed below if it has none.
+  cleared: "<green><boss> has fallen - dungeon cleared!</green>"
+  cleared-exit: "<yellow>You have <time> to get out.</yellow>"
+  boss-unnamed: "<dark_red>The boss</dark_red>"
+
+  # The countdown bar above the hotbar. Tags: <time> <theme> <size> <rooms>
+  #
+  # The bar DRAINS rather than fills, and its colour follows the fraction left by itself:
+  # blue, then yellow under a quarter, then red under a tenth. The colour is the part a player
+  # reads without looking - the number says how long, the colour says whether to care.
+  boss-bar: "<gold>Dungeon</gold> <dark_gray>|</dark_gray> <white><time></white>"
+
+  # The same bar once the boss is down. It turns GREEN and the countdown refills, because it is
+  # now measuring the way out rather than the way to failure.
+  boss-bar-cleared: "<green>Cleared</green> <dark_gray>|</dark_gray> <white><time></white>"
+
+portal:
+
+  # The floating label above a gateway.
+  label: "<light_purple><bold>Dungeon</bold></light_purple>"
+
+  # Right-clicking a gateway.
+  refreshing: "<yellow>This gateway is refreshing - it opens in <time>.</yellow>"
+  busy: "<gray>The gateway is opening, one moment...</gray>"
+  preparing: "<gray>Preparing your dungeon...</gray>"
+  no-theme: "<red>This gateway cannot open: no usable room theme.</red>"
+  failed: "<red>The dungeon could not be generated: <reason></red>"
+  enter-failed: "<red>The dungeon is ready but you could not be let in.</red>"
+
+  # Trying to break, push or blow up the gateway block.
+  unbreakable: "<red>This gateway cannot be broken.</red>"
+
+hud:
+
+  # The sidebar, top to bottom.
+  #
+  # Tags: <player> <coin> <xp> <rank> come from the player and are inserted unparsed;
+  #       <server> and <ip> come from config.yml -> hud.server-name / hud.server-ip and ARE
+  #       parsed, which is how they get to be styled.
+  #
+  # A scoreboard carries at most 16 lines; anything past that is dropped. Keep lines short - the
+  # sidebar's width follows its longest line and eats the right of the screen.
+  #
+  # The layout lives here rather than in config.yml because the words in it - Player, Coin,
+  # Rank - are exactly the words that need translating. The values it shows stay in config.yml.
+  lines:
+    - "<dark_gray><strikethrough>                    "
+    - "<gray>Player <white><player>"
+    - "<gray>Coin <gold><coin>"
+    - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
+    - "<dark_gray><strikethrough>                    "
+    - "<yellow><ip>"

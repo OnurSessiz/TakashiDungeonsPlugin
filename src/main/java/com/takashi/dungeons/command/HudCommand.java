@@ -33,14 +33,14 @@ public final class HudCommand implements CommandExecutor, TabCompleter {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
                              @NotNull String label, @NotNull String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(Component.text("Bu komut oyuncu tarafından çalıştırılmalı.",
+            sender.sendMessage(Component.text("This command must be run by a player.",
                     NamedTextColor.RED));
             return true;
         }
 
         HudService hud = plugin.getHudService();
         if (hud == null || !hud.isEnabled()) {
-            player.sendMessage(Component.text("HUD sunucu genelinde kapalı.", NamedTextColor.RED));
+            player.sendMessage(Component.text("The HUD is switched off server-wide.", NamedTextColor.RED));
             return true;
         }
 
@@ -50,7 +50,7 @@ public final class HudCommand implements CommandExecutor, TabCompleter {
         } else {
             String state = args[0].toLowerCase(Locale.ROOT);
             if (!STATES.contains(state)) {
-                player.sendMessage(Component.text("Kullanım: /" + label + " [on|off]",
+                player.sendMessage(Component.text("Usage: /" + label + " [on|off]",
                         NamedTextColor.RED));
                 return true;
             }
@@ -60,8 +60,8 @@ public final class HudCommand implements CommandExecutor, TabCompleter {
 
         player.sendMessage(Component.text("HUD ", NamedTextColor.GRAY)
                 .append(visible
-                        ? Component.text("açık", NamedTextColor.GREEN)
-                        : Component.text("kapalı", NamedTextColor.RED)));
+                        ? Component.text("on", NamedTextColor.GREEN)
+                        : Component.text("off", NamedTextColor.RED)));
         return true;
     }
 
