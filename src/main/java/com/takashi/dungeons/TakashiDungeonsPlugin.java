@@ -6,6 +6,9 @@ import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.loot.ChestListener;
+import com.takashi.dungeons.loot.DungeonChestTag;
+import com.takashi.dungeons.loot.LootPopulator;
 import com.takashi.dungeons.loot.LootRegistry;
 import com.takashi.dungeons.loot.LootService;
 import com.takashi.dungeons.mob.DungeonMobListener;
@@ -68,6 +71,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private MobPopulator mobPopulator;
     private LootRegistry lootRegistry;
     private LootService lootService;
+    private LootPopulator lootPopulator;
+    private DungeonChestTag dungeonChestTag;
     private Messages messages;
 
     @Override
@@ -216,6 +221,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         lootRegistry = new LootRegistry(this);
         lootRegistry.load();
         lootService = new LootService(lootRegistry);
+        // The tag is built once and holds this run's session token, so it must outlive any single
+        // reload of the catalogue -- a chest filled before a /tdungeons reload is still this run's.
+        dungeonChestTag = new DungeonChestTag(this);
+        lootPopulator = new LootPopulator(this);
+        getServer().getPluginManager().registerEvents(new ChestListener(this), this);
     }
 
     /**
@@ -379,6 +389,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Rolls tables and builds the items they name. Always built. */
     public LootService getLootService() {
         return lootService;
+    }
+
+    /** Places and fills a generated dungeon's chests. Always built. */
+    public LootPopulator getLootPopulator() {
+        return lootPopulator;
+    }
+
+    /** The mark a dungeon chest carries. Holds this run's session token. */
+    public DungeonChestTag getDungeonChestTag() {
+        return dungeonChestTag;
     }
 
     /** Every word a player reads. Built first, before anything can need one. */

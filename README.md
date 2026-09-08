@@ -265,6 +265,19 @@ weight and room chests produce them too.
 The shipped mythics are a nether star, an elytra and a dragon egg — each one normally costs a
 wither fight, an End journey or a raid on a fortress. A mythic should be a story, not an upgrade.
 
+**Where the loot ends up is hybrid, and the mapper wins.** A room whose schematic contains chests
+has *those* chests filled — all of them, wherever they were built. Only a room with none gets one
+placed, on floor the flood fill can reach. The person who built the room knows where a chest
+belongs in it; a procedural search that overruled them would stand the treasure in the open next
+to the alcove they carved for it. A double chest is one chest: its halves share an inventory, a
+player opens it once, so it is filled once — and tagged on both halves, because breaking either
+one drops the whole thing.
+
+The entrance has no table and is not touched at all — players are teleported into that room. The
+boss room has one, so a chest a mapper hid there *is* stocked, but nothing is ever placed there:
+its reward is the chest that appears where the boss died. Chests cannot be broken, pushed, blown
+up or washed away; they can always be opened.
+
 ---
 
 ## Building and running
@@ -310,8 +323,8 @@ second keeps its arithmetic apart from the Bukkit types it feeds.
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-**240 checks**, split across geometry (53), candidate selection and collision (28), graph
-generation (31), the spawn search (22) and the loot draw (106). They cover rotation round-trips,
+**246 checks**, split across geometry (53), candidate selection and collision (28), graph
+generation (31), the spawn search (22) and the loot draw (112). They cover rotation round-trips,
 wall derivation on square, rectangular and asymmetric rooms, weight distribution over 200,000
 draws, dead-door marking, seed reproducibility, plug coverage, and the out-of-box fallbacks —
 generating with no boss room, no entrance room, no rooms at all, and only single-door rooms.

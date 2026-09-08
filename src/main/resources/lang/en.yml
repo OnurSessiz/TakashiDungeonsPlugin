@@ -76,6 +76,13 @@ portal:
   # Trying to break, push or blow up the gateway block.
   unbreakable: "<red>This gateway cannot be broken.</red>"
 
+loot:
+
+  # Trying to break a dungeon chest. Opening one is never blocked - only breaking it, because a
+  # broken chest spills its contents on the floor where they can be lost or taken by whoever
+  # swung first.
+  chest-unbreakable: "<red>This chest cannot be broken - open it.</red>"
+
 hud:
 
   # The sidebar, top to bottom.

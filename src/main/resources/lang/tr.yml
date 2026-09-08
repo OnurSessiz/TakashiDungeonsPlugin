@@ -73,6 +73,12 @@ portal:
   # Geçit bloğunu kırma, itme ya da patlatma denemesi.
   unbreakable: "<red>Bu geçit kırılamaz.</red>"
 
+loot:
+
+  # Dungeon sandığını kırma denemesi. Açmak hiçbir zaman engellenmiyor — sadece kırmak, çünkü
+  # kırılan sandık içindekileri yere döküyor ve orada kaybolabiliyor ya da ilk vuran alıyor.
+  chest-unbreakable: "<red>Bu sandık kırılamaz - açman gerekiyor.</red>"
+
 hud:
 
   # Sidebar, yukarıdan aşağı.

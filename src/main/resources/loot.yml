@@ -110,6 +110,55 @@ tables:
       mythic: 3
 
 # ===============================================================================================
+# CHESTS - where the loot actually ends up
+#
+# HYBRID, AND THE MAPPER WINS. A room whose schematic contains chests has THOSE chests filled -
+# all of them, wherever they were built. Only a room with none gets one placed. The person who
+# built the room knows where a chest belongs in it; a procedural search that overruled them would
+# stand the treasure in the open next to the alcove they carved for it.
+#
+# Two chests in a room means two chests, each rolled in full. Splitting one roll between them
+# would make both disappointing. A double chest is the exception and barely one: its halves share
+# an inventory, a player opens it once, so it counts as a single chest.
+#
+# Anything already inside a chest is left alone. A mapper who pre-loaded one with a story item
+# meant it to be there.
+chests:
+
+  # Which table a room's chests draw from, by room type.
+  #
+  # A type that is absent, or blank, is NOT TOUCHED AT ALL - not "given an empty chest". The
+  # entrance ships that way: players are teleported into that room and a party gathers there, and
+  # a free reward before the first corridor is a different game. If a mapper drew a chest into
+  # their entrance hall they get exactly the chest they drew, unstocked.
+  #
+  # The boss room draws room_chest, NOT boss_chest, and that is deliberate. A hidden chest in the
+  # lair is a bonus; giving it the boss's own table would make the reward for killing the boss
+  # the second-best thing in the room. boss_chest belongs to the chest that appears where the boss
+  # dies (phase 4C) - and it is the only table that can produce a mythic.
+  tables:
+    entrance: ""
+    normal: room_chest
+    boss: room_chest
+
+  # Blocks in a schematic that count as "a chest the mapper placed".
+  containers: [CHEST, TRAPPED_CHEST, BARREL]
+
+  # Whether a room with no chest of its own gets one. Off means loot appears only where a mapper
+  # drew a chest - reasonable once you have a full room set, and empty on a fresh install.
+  place-when-missing: true
+
+  # What a placed chest is made of.
+  place-material: CHEST
+
+  # Room types that never have a chest PLACED in them, even when they have none of their own.
+  # This is not the same as having no table: a mapper's chest in the boss room is still filled.
+  # The boss room is here because its reward is the chest that appears where the boss died, and a
+  # second chest standing in the corner from the moment the door opens announces the ending before
+  # the fight does.
+  procedural-skip: [boss]
+
+# ===============================================================================================
 # ITEMS
 #
 #   material          a Minecraft item id (DIAMOND_SWORD). An unknown one DISABLES the entry with

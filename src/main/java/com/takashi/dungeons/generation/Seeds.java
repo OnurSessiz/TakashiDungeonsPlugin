@@ -68,6 +68,29 @@ public final class Seeds {
      * dungeon" would be impossible.
      */
     public static RandomGenerator derive(long seed, int index) {
-        return new SplittableRandom(mix(seed + index * 0x9E3779B97F4A7C15L));
+        return derive(seed, index, 0);
+    }
+
+    /**
+     * An independent stream from the same seed and index, for a second system that indexes the
+     * same things.
+     *
+     * <h2>Why this exists</h2>
+     * Two systems both index rooms by node id: {@code MobPopulator} and {@code LootPopulator}. Had
+     * loot called {@link #derive(long, int)} it would have been handed the <b>identical sequence
+     * of numbers</b> the mob populator had already consumed for that room — same seed, same index,
+     * same generator. Nothing would look broken: each system uses its numbers for its own thing.
+     * But the two would be locked together, so the room that drew high for its mob class would
+     * draw high for its loot rarity, in every dungeon, forever.
+     *
+     * <p>That is the kind of fault this project treats as expensive: invisible in play, impossible
+     * to attribute, and it would survive every test that checks each system on its own.
+     *
+     * @param stream which system is asking. Multiplied by an odd 64-bit constant before mixing, so
+     *               two streams cannot land on the same state by having nearby numbers
+     */
+    public static RandomGenerator derive(long seed, int index, long stream) {
+        return new SplittableRandom(mix(seed + index * 0x9E3779B97F4A7C15L
+                + stream * 0xD1B54A32D192ED03L));
     }
 }

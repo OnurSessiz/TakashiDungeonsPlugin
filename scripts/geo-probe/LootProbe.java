@@ -1,3 +1,4 @@
+import com.takashi.dungeons.generation.Seeds;
 import com.takashi.dungeons.loot.CountRange;
 import com.takashi.dungeons.loot.ItemClass;
 import com.takashi.dungeons.loot.LootTable;
@@ -8,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import java.util.random.RandomGenerator;
 
 /**
  * Server-free verification of the phase 4A loot draw.
@@ -43,6 +46,7 @@ public class LootProbe {
         parsing();
         classBoundary();
         mythicClass();
+        chestStream();
 
         System.out.println("\n==============================================");
         System.out.println("GECEN: " + pass + "   KALAN: " + fail);
@@ -405,6 +409,56 @@ public class LootProbe {
         checkNear("easy  ~%1.5", chestChance(boss, ItemClass.MYTHIC), 1.49);
         checkNear("medium ~%2.5", chestChance(bossMedium, ItemClass.MYTHIC), 2.47);
         checkNear("hard  ~%3.9", chestChance(bossHard, ItemClass.MYTHIC), 3.95);
+    }
+
+    // ---------------------------------------------------------------- 10. loot akisi (4B)
+
+    /**
+     * Loot and mobs both index rooms by node id. Had loot used the two-argument
+     * {@code Seeds.derive} it would have been handed the IDENTICAL sequence the mob populator
+     * already consumed for that room -- nothing would look broken, and the two systems would be
+     * locked together forever: the room that drew high for its mob class would draw high for its
+     * loot rarity, in every dungeon.
+     *
+     * <p>This is why {@code LootPopulator.CHEST_STREAM} exists, and it is checked here because it
+     * is the sort of fault no test of either system on its own would ever see.
+     */
+    static void chestStream() {
+        section("Loot ve mob AYRI akis kullaniyor (ayni tohum, ayni oda)");
+        long seed = 987654321L;
+        int node = 7;
+        List<Integer> mobs = draws(Seeds.derive(seed, node), 50);
+        List<Integer> loot = draws(Seeds.derive(seed, node, 0x10_07L), 50);
+        check("iki dizi ayni DEGIL", !mobs.equals(loot));
+        check("iki argumanli derive akis 0 ile ayni",
+                draws(Seeds.derive(seed, node), 50).equals(draws(Seeds.derive(seed, node, 0), 50)));
+
+        section("Loot akisi hala tekrarlanabilir");
+        check("ayni tohum+oda -> ayni dizi", draws(Seeds.derive(seed, node, 0x10_07L), 50)
+                .equals(draws(Seeds.derive(seed, node, 0x10_07L), 50)));
+        check("farkli oda -> farkli dizi", !draws(Seeds.derive(seed, node, 0x10_07L), 50)
+                .equals(draws(Seeds.derive(seed, node + 1, 0x10_07L), 50)));
+        check("farkli tohum -> farkli dizi", !draws(Seeds.derive(seed, node, 0x10_07L), 50)
+                .equals(draws(Seeds.derive(seed + 1, node, 0x10_07L), 50)));
+
+        // The failure this guards against is a stream constant chosen so that (index, stream) can
+        // collide with (index', stream') -- two rooms sharing a chest layout across systems.
+        section("Komsu oda/akis kombinasyonlari carpismiyor");
+        Set<List<Integer>> seen = new java.util.HashSet<>();
+        boolean unique = true;
+        for (int id = 0; id < 40; id++) {
+            unique &= seen.add(draws(Seeds.derive(seed, id), 8));
+            unique &= seen.add(draws(Seeds.derive(seed, id, 0x10_07L), 8));
+        }
+        check("80 akisin hepsi farkli", unique);
+    }
+
+    static List<Integer> draws(RandomGenerator random, int count) {
+        List<Integer> values = new java.util.ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            values.add(random.nextInt(1000));
+        }
+        return values;
     }
 
     /**

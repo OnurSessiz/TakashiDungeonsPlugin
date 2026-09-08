@@ -24,6 +24,7 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Builds simple test rooms in code and writes them to disk as {@code .schem} + {@code .yml}.
@@ -70,6 +71,28 @@ public final class TestRoomFactory {
         }
     }
 
+    /**
+     * A chest built into a room, standing on the floor at {@code (x, 1, z)}.
+     *
+     * <p>These exist so that phase 4B's hybrid rule can be tested at all. Without a room that has
+     * a chest of its own, every dungeon exercises only the procedural half and the decision the
+     * whole design turns on — <i>the mapper's placement wins</i> — is never executed.
+     *
+     * @param half which half of a large chest this is. {@link Half#SINGLE} is an ordinary chest;
+     *             a {@code LEFT}/{@code RIGHT} pair on adjacent blocks is one double chest, which
+     *             {@code LootPopulator} must fill <b>once</b>
+     */
+    public record ChestSpec(int x, int z, Half half) {
+
+        public enum Half {
+            SINGLE, LEFT, RIGHT
+        }
+
+        public static ChestSpec of(int x, int z) {
+            return new ChestSpec(x, z, Half.SINGLE);
+        }
+    }
+
     /** Width of the door opening, in blocks — odd, so that it has a centre block. */
     private static final int DOOR_WIDTH = 3;
     /** Height of the door opening, in blocks, measured up from the floor. */
@@ -94,6 +117,12 @@ public final class TestRoomFactory {
      */
     public static BuiltRoom buildRoom(int sizeX, int sizeZ, int height,
                                       RoomType type, int weight, List<DoorSpec> doors) {
+        return buildRoom(sizeX, sizeZ, height, type, weight, doors, List.of());
+    }
+
+    /** As above, with chests built into the floor. */
+    public static BuiltRoom buildRoom(int sizeX, int sizeZ, int height, RoomType type, int weight,
+                                      List<DoorSpec> doors, List<ChestSpec> chests) {
         if (sizeX < 5 || sizeZ < 5 || height < 5) {
             throw new IllegalArgumentException(
                     "A room must be at least 5x5x5: " + sizeX + "x" + height + "x" + sizeZ);
@@ -136,6 +165,10 @@ public final class TestRoomFactory {
 
             for (DoorSpec door : doors) {
                 anchors.add(carveDoor(clipboard, sizeX, sizeZ, origin, door, air));
+            }
+
+            for (ChestSpec chest : chests) {
+                clipboard.setBlock(BlockVector3.at(chest.x(), 1, chest.z()), chestState(chest.half()));
             }
         } catch (WorldEditException e) {
             throw new IllegalStateException("Could not build the test room: " + e.getMessage(), e);
@@ -275,15 +308,30 @@ public final class TestRoomFactory {
      */
     public static int writeStandardSet(File directory) throws IOException {
         record Spec(String name, int sizeX, int sizeZ, int height,
-                    RoomType type, int weight, List<DoorSpec> doors) {
+                    RoomType type, int weight, List<DoorSpec> doors, List<ChestSpec> chests) {
+
+            Spec(String name, int sizeX, int sizeZ, int height, RoomType type, int weight,
+                 List<DoorSpec> doors) {
+                this(name, sizeX, sizeZ, height, type, weight, doors, List.of());
+            }
         }
 
+        // Three of the rooms carry chests, and each one tests a different half of phase 4B:
+        //   test_cross    TWO singles  -> every chest the mapper placed is filled, not just one
+        //   test_corridor a DOUBLE     -> the two halves share an inventory and count as ONE
+        //   test_boss     ONE single   -> a mapper's chest in the boss room IS filled, while
+        //                                 nothing is ever placed there procedurally
+        // test_entrance deliberately has none: the entrance has no table, and a chest there would
+        // only prove the room was skipped, which the absence of a chest proves just as well.
         List<Spec> specs = List.of(
                 new Spec("test_cross", 17, 17, 9, RoomType.NORMAL, 100, List.of(
                         DoorSpec.of(Door.NORTH), DoorSpec.of(Door.EAST),
-                        DoorSpec.of(Door.SOUTH), DoorSpec.of(Door.WEST))),
+                        DoorSpec.of(Door.SOUTH), DoorSpec.of(Door.WEST)),
+                        List.of(ChestSpec.of(3, 3), ChestSpec.of(13, 13))),
                 new Spec("test_corridor", 17, 17, 9, RoomType.NORMAL, 150, List.of(
-                        DoorSpec.of(Door.NORTH), DoorSpec.of(Door.SOUTH))),
+                        DoorSpec.of(Door.NORTH), DoorSpec.of(Door.SOUTH)),
+                        List.of(new ChestSpec(4, 4, ChestSpec.Half.LEFT),
+                                new ChestSpec(5, 4, ChestSpec.Half.RIGHT))),
                 new Spec("test_corner", 17, 17, 9, RoomType.NORMAL, 120, List.of(
                         DoorSpec.of(Door.NORTH), DoorSpec.of(Door.EAST))),
                 new Spec("test_deadend", 17, 17, 9, RoomType.NORMAL, 60, List.of(
@@ -291,7 +339,8 @@ public final class TestRoomFactory {
                 new Spec("test_entrance", 17, 17, 9, RoomType.ENTRANCE, 100, List.of(
                         DoorSpec.of(Door.NORTH))),
                 new Spec("test_boss", 33, 33, 15, RoomType.BOSS, 100, List.of(
-                        DoorSpec.of(Door.NORTH))),
+                        DoorSpec.of(Door.NORTH)),
+                        List.of(ChestSpec.of(5, 5))),
                 // East wall, near the south end: v = (+4, +10). Because |dz| > |dx| the naive
                 // rule says SOUTH -- wrong. Normalized, nx=4/4=1.0 > nz=10/12=0.833 -> EAST.
                 // Offset +10 is the ceiling: at +11 a 3-block opening spills into the corner
@@ -305,11 +354,30 @@ public final class TestRoomFactory {
 
         for (Spec spec : specs) {
             BuiltRoom room = buildRoom(spec.sizeX(), spec.sizeZ(), spec.height(),
-                    spec.type(), spec.weight(), spec.doors());
+                    spec.type(), spec.weight(), spec.doors(), spec.chests());
             write(room.clipboard(), directory, spec.name());
             writeMetadata(room, directory, spec.name());
         }
         return specs.size();
+    }
+
+    /**
+     * A chest block state, with the {@code type} property set for a half of a large chest.
+     *
+     * <p>Facing is left at the default (north), so a {@code LEFT}/{@code RIGHT} pair must sit side
+     * by side along X to become one double chest. Getting that wrong does not throw — the two
+     * simply stay separate chests — so the room built with a pair is worth checking in game once
+     * rather than trusting.
+     */
+    @SuppressWarnings("unchecked")
+    private static BlockState chestState(ChestSpec.Half half) {
+        BlockState chest = state(BlockTypes.CHEST, "chest");
+        if (half == ChestSpec.Half.SINGLE) {
+            return chest;
+        }
+        var property = (com.sk89q.worldedit.registry.state.Property<Object>)
+                chest.getBlockType().getProperty("type");
+        return chest.with(property, property.getValueFor(half.name().toLowerCase(Locale.ROOT)));
     }
 
     /** {@link BlockTypes} fields are nullable; if one is missing, throw rather than silently

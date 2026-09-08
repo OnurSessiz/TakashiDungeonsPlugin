@@ -213,6 +213,25 @@ public final class InstanceManager {
             } catch (RuntimeException error) {
                 plugin.getLogger().warning("Mob placement failed (" + instance + "): " + error);
             }
+            // Loot in the SAME task, in its own try: the two are independent, and a dungeon with
+            // mobs and no chests is still playable, as is one with chests and no mobs. Sharing the
+            // catch would have made either failure delete the other's work.
+            try {
+                var loot = plugin.getLootPopulator().populate(instance, world,
+                        plugin.getMobRegistry().defaultDifficulty());
+                if (!loot.isEmpty()) {
+                    plugin.getLogger().info("Loot placed: instance#" + instance.id() + " - "
+                            + loot.filled() + " chests, " + loot.items() + " items ("
+                            + loot.fromSchematic() + " from schematics, " + loot.placed()
+                            + " placed)"
+                            + (loot.empty() == 0 ? "" : ", " + loot.empty()
+                                    + " draws on an empty class")
+                            + (loot.noSpace() == 0 ? "" : ", " + loot.noSpace()
+                                    + " rooms had nowhere to put one"));
+                }
+            } catch (RuntimeException error) {
+                plugin.getLogger().warning("Chest placement failed (" + instance + "): " + error);
+            }
             done.complete(instance);
         });
         return done;

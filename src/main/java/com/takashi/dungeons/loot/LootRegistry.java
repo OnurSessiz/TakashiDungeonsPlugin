@@ -1,6 +1,7 @@
 package com.takashi.dungeons.loot;
 
 import com.takashi.dungeons.TakashiDungeonsPlugin;
+import com.takashi.dungeons.generation.RoomType;
 import com.takashi.dungeons.mob.Difficulty;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -53,6 +54,7 @@ public final class LootRegistry {
     private final List<Disabled> disabled = new ArrayList<>();
 
     private RarityWeights baseWeights = RarityWeights.DEFAULT;
+    private ChestRules chestRules = ChestRules.DEFAULT;
 
     /** Problems that stopped the file being read at all — shown by {@code /tdungeons loot list}. */
     private @Nullable String loadError;
@@ -76,6 +78,7 @@ public final class LootRegistry {
         multipliers.clear();
         disabled.clear();
         baseWeights = RarityWeights.DEFAULT;
+        chestRules = ChestRules.DEFAULT;
         loadError = null;
 
         File file = new File(plugin.getDataFolder(), FILE_NAME);
@@ -103,7 +106,34 @@ public final class LootRegistry {
         }
         buildPools();
         readTables(yaml.getConfigurationSection("tables"));
+        readChests(yaml.getConfigurationSection("chests"));
         logSummary();
+    }
+
+    /**
+     * Reads the {@code chests:} block — where chests come from and which table each room type
+     * draws.
+     *
+     * <p>{@link ChestRules} does no logging of its own so that it stays readable without a server;
+     * it collects what was wrong and this method says it.
+     */
+    private void readChests(@Nullable ConfigurationSection section) {
+        List<String> problems = new ArrayList<>();
+        chestRules = ChestRules.parse(section, problems);
+        // A table id that names nothing is the quietest mistake in this file: rooms of that type
+        // simply have no loot, which looks exactly like a generation that went thin. Said here
+        // because it can only be checked once the tables themselves have been read.
+        for (RoomType type : RoomType.values()) {
+            String id = chestRules.tableFor(type);
+            if (id != null && !tables.containsKey(id)) {
+                problems.add("chests.tables." + type.yamlValue() + " names table '" + id
+                        + "', which is not defined - " + type.yamlValue()
+                        + " rooms get no loot at all.");
+            }
+        }
+        for (String problem : problems) {
+            plugin.getLogger().warning(FILE_NAME + ": " + problem);
+        }
     }
 
     private void readRarity(@Nullable ConfigurationSection section) {
@@ -293,6 +323,11 @@ public final class LootRegistry {
     /** The class split used by a table that does not override it. */
     public RarityWeights baseWeights() {
         return baseWeights;
+    }
+
+    /** Where chests come from and which table each room type draws — the {@code chests:} block. */
+    public ChestRules chestRules() {
+        return chestRules;
     }
 
     /** The multiplier applied to rare and above at this difficulty. */
