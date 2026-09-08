@@ -79,6 +79,9 @@ loot:
   # kırılan sandık içindekileri yere döküyor ve orada kaybolabiliyor ya da ilk vuran alıyor.
   chest-unbreakable: "<red>Bu sandık kırılamaz - açman gerekiyor.</red>"
 
+  # Boss öldü ve ödül sandığı düştüğü yerde belirdi. Tag: <boss>
+  boss-reward: "<gold><boss> düştüğü yerde bir hazine bıraktı.</gold>"
+
 hud:
 
   # Sidebar, yukarıdan aşağı.

@@ -69,4 +69,22 @@ public interface MobProvider {
     default boolean defaultStatOverride() {
         return true;
     }
+
+    /**
+     * Whether definitions from this provider receive the dungeon's own drop table unless told
+     * otherwise.
+     *
+     * <p>The drop-side twin of {@link #defaultStatOverride()}, and the same argument decides it.
+     * {@code true} for vanilla — a zombie's rotten flesh is not a reward anyone designed.
+     * {@code false} for external sources: a MythicMobs mob arrives with the drops its author
+     * wrote, and stapling a second table onto them would double the reward the server operator
+     * already balanced, silently. An explicit {@code dungeonDrops} in {@code mobs.yml} always wins.
+     *
+     * <p>Note what this does <b>not</b> control: whether the mob's own vanilla drops survive. That
+     * is {@code loot.yml} → {@code drops.vanilla-drops}, one switch for the whole dungeon, because
+     * it is a question about the dungeon's economy rather than about where a mob came from.
+     */
+    default boolean defaultDungeonDrops() {
+        return true;
+    }
 }

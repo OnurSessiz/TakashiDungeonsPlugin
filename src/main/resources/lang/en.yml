@@ -83,6 +83,9 @@ loot:
   # swung first.
   chest-unbreakable: "<red>This chest cannot be broken - open it.</red>"
 
+  # The boss is dead and its reward chest has appeared where it fell. Tag: <boss>
+  boss-reward: "<gold><boss> has left a hoard where it fell.</gold>"
+
 hud:
 
   # The sidebar, top to bottom.

@@ -451,6 +451,17 @@ public class LootProbe {
             unique &= seen.add(draws(Seeds.derive(seed, id, 0x10_07L), 8));
         }
         check("80 akisin hepsi farkli", unique);
+
+        // 4C adds a third consumer indexing by node id: the boss reward chest, which uses the boss
+        // room's node. Sharing CHEST_STREAM would tie the boss's hoard to whatever the room chests
+        // in that same room drew -- the same fault, one phase later.
+        section("Boss odulu de AYRI akis (4C)");
+        List<Integer> chest = draws(Seeds.derive(seed, node, 0x10_07L), 50);
+        List<Integer> reward = draws(Seeds.derive(seed, node, 0x4C_05L), 50);
+        check("odul != oda sandigi", !reward.equals(chest));
+        check("odul != mob", !reward.equals(mobs));
+        check("odul tekrarlanabilir",
+                reward.equals(draws(Seeds.derive(seed, node, 0x4C_05L), 50)));
     }
 
     static List<Integer> draws(RandomGenerator random, int count) {

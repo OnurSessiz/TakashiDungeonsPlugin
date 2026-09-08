@@ -82,6 +82,12 @@ tables:
   room_chest:
     rolls: [2, 4]
 
+  # What a mob leaves on the floor. ONE draw, because it is multiplied by however many mobs the
+  # party kills: at two draws a corridor of eight zombies out-earns a room chest, and the chest is
+  # the thing players are supposed to be looking for.
+  mob_drop:
+    rolls: 1
+
   # The boss. More draws and a heavier lean than a room chest, and it still scales with difficulty:
   #
   #     easy 23% rare+   ->   medium 41%   ->   hard 58%      (room chest: 15 -> 26 -> 37.5)
@@ -157,6 +163,51 @@ chests:
   # second chest standing in the corner from the moment the door opens announces the ending before
   # the fight does.
   procedural-skip: [boss]
+
+# ===============================================================================================
+# DROPS - what a dungeon mob leaves behind
+#
+# Two different things happen, and the difference is not size.
+#
+# An ORDINARY mob may add a roll to the items on the floor. The BOSS does not: its reward is a
+# chest that appears where it died. On the floor, a hoard the whole party just fought for goes to
+# whoever swung last, can fall into lava or off an edge, and despawns on a timer nobody is
+# watching. A chest waits, and everyone can open it. A zombie's three iron nuggets have none of
+# those problems, and a chest per zombie would turn a dungeon into a warehouse.
+drops:
+
+  # Whether a dungeon mob still drops what it would have dropped outside.
+  #
+  # OFF by default. Rotten flesh from a dungeon zombie is the mob's own drop, not a reward anyone
+  # designed - leave it in and the loot table is only ever part of the answer to "what is farming
+  # this worth", with the part nobody configured scaling by how many mobs a room holds. Turn it on
+  # if you want the dungeon to feed a survival economy.
+  vanilla-drops: false
+
+  # Per mob class: which table a kill rolls, and how often it rolls at all.
+  #
+  # The CHANCE climbs with the class, not the table. A rarer mob should be worth killing more
+  # often, not worth more each time - a table per class would be five tables to balance against
+  # each other and five places to get it wrong.
+  #
+  # There is no 'boss' entry and writing one does nothing: the boss never reaches this path.
+  classes:
+    weak:         { table: mob_drop, chance: 0.08 }
+    normal:       { table: mob_drop, chance: 0.14 }
+    strong:       { table: mob_drop, chance: 0.28 }
+    super_strong: { table: mob_drop, chance: 0.50 }
+
+  # The boss's reward chest, placed where it fell.
+  #
+  # This is the ONLY thing that rolls boss_chest, which makes it the only source of a mythic.
+  # instance.clear-grace-seconds in config.yml is what keeps the dungeon open long enough to walk
+  # over and take it - that setting exists for this chest.
+  boss:
+    table: boss_chest
+    material: CHEST
+
+# A mob may be excluded from all of this per entry: mobs.yml -> dungeonDrops: false. Left unwritten
+# the provider decides - true for vanilla, false for MythicMobs, the same rule statOverride uses.
 
 # ===============================================================================================
 # ITEMS

@@ -507,7 +507,14 @@ public final class InstanceManager {
         }
     }
 
-    private void broadcast(DungeonInstance instance, Component message) {
+    /**
+     * Says something to everyone inside one dungeon.
+     *
+     * <p>Public because phase 4C's boss reward has to announce itself, and "the players in this
+     * instance" is a question only this class can answer — membership is declared here, not
+     * derived from position.
+     */
+    public void broadcast(DungeonInstance instance, Component message) {
         for (UUID uuid : instance.players()) {
             Player player = plugin.getServer().getPlayer(uuid);
             if (player != null) {

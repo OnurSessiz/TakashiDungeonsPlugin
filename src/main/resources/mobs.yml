@@ -43,6 +43,14 @@
 #   true  → the stats above and the difficulty multiplier are applied
 #   false → the mob's own plugin's stats are PRESERVED (anahedef.md §4)
 #
+# dungeonDrops: the same rule on the drop side — LEFT OUT, the provider decides, true for vanilla
+# and false for MythicMobs.
+#   true  → killing it may roll the dungeon's drop table (loot.yml → drops:)
+#   false → it drops only what it would have dropped anyway
+# A MythicMobs mob already drops what its author wrote; stapling a second table on top doubles a
+# reward somebody has already balanced. Whether a mob keeps its OWN drops is a different switch and
+# a dungeon-wide one: loot.yml → drops.vanilla-drops.
+#
 # ---------------------------------------------------------------------------------------------
 # WHAT TO KNOW ABOUT THE DUNGEON WORLD (when picking mobs)
 #   - The world is Environment.NORMAL. PIGLIN and PIGLIN_BRUTE zombify here — which is why they
@@ -302,7 +310,8 @@ mobs:
   # ----------------------------------------------------------------------------- example: MythicMobs
   # If MythicMobs is not installed this entry is disabled and the reason is logged — the set is
   # not broken by it.
-  # statOverride is left out, so MythicMobs' own stats are PRESERVED.
+  # statOverride and dungeonDrops are left out, so MythicMobs' own stats AND its own drops are
+  # preserved: the dungeon adds nothing on top of either.
   #
   # mythic_knight:
   #   mob: mythicmobs:SkeletalKnight

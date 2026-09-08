@@ -26,6 +26,8 @@ import java.util.Locale;
  *                    same convention as room templates ({@code generation.md} §5.4)
  * @param statOverride {@code null} means "use the provider's default"; see
  *                    {@link MobProvider#defaultStatOverride()}
+ * @param dungeonDrops {@code null} means "use the provider's default"; see
+ *                    {@link MobProvider#defaultDungeonDrops()}
  * @param health      max health range, or {@code null} to leave the entity's natural value
  * @param damage      attack damage range, or {@code null}
  * @param speed       movement speed range, or {@code null}
@@ -34,6 +36,7 @@ import java.util.Locale;
  */
 public record MobDefinition(String id, String providerId, String mobKey, MobClass mobClass,
                             int weight, @Nullable Boolean statOverride,
+                            @Nullable Boolean dungeonDrops,
                             @Nullable StatRange health, @Nullable StatRange damage,
                             @Nullable StatRange speed, @Nullable String displayName,
                             boolean baby) {
@@ -46,6 +49,11 @@ public record MobDefinition(String id, String providerId, String mobKey, MobClas
     /** Resolves the flag against the provider that owns this definition. */
     public boolean resolveStatOverride(MobProvider provider) {
         return statOverride != null ? statOverride : provider.defaultStatOverride();
+    }
+
+    /** The same resolution on the drop side. */
+    public boolean resolveDungeonDrops(MobProvider provider) {
+        return dungeonDrops != null ? dungeonDrops : provider.defaultDungeonDrops();
     }
 
     /** Whether any attribute would actually be written, assuming the override is on. */
@@ -93,8 +101,10 @@ public record MobDefinition(String id, String providerId, String mobKey, MobClas
         // written" is the whole point of the flag, and getBoolean flattens the two.
         Boolean statOverride = section.isSet("statOverride")
                 ? section.getBoolean("statOverride") : null;
+        Boolean dungeonDrops = section.isSet("dungeonDrops")
+                ? section.getBoolean("dungeonDrops") : null;
 
-        return new MobDefinition(id, providerId, mobKey, mobClass, weight, statOverride,
+        return new MobDefinition(id, providerId, mobKey, mobClass, weight, statOverride, dungeonDrops,
                 StatRange.parse(section.get("health"), where + " -> health"),
                 StatRange.parse(section.get("damage"), where + " -> damage"),
                 StatRange.parse(section.get("speed"), where + " -> speed"),

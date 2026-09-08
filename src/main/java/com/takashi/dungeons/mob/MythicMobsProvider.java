@@ -149,6 +149,16 @@ public final class MythicMobsProvider implements MobProvider {
         return false;
     }
 
+    /**
+     * The same argument on the drop side: a MythicMobs mob already drops what its author wrote,
+     * and adding the dungeon's table on top doubles a reward somebody has already balanced. The
+     * operator can ask for both with {@code dungeonDrops: true} on the entry.
+     */
+    @Override
+    public boolean defaultDungeonDrops() {
+        return false;
+    }
+
     /** Matches exactly first, then case-insensitively; {@code null} when the name is unknown. */
     private @Nullable String resolveName(String mobKey) {
         String value = mobKey.trim();

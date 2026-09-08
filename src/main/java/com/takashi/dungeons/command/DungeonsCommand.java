@@ -1352,6 +1352,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("  statOverride: " + override
                 + (definition.statOverride() == null
                         ? " (provider default)" : " (written in the file)"), NamedTextColor.GRAY));
+        boolean drops = provider != null && definition.resolveDungeonDrops(provider);
+        sender.sendMessage(Component.text("  dungeonDrops: " + drops
+                + (definition.dungeonDrops() == null
+                        ? " (provider default)" : " (written in the file)"), NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  stats:" + (definition.hasStats()
                 ? statSummary(definition) : " none - the mob's own values"), NamedTextColor.GRAY));
         if (definition.hasStats() && !override) {
@@ -1426,7 +1430,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             boolean up = provider.isAvailable();
             sender.sendMessage(Component.text("  " + provider.id() + " — " + provider.displayName()
                     + ": " + (up ? provider.knownKeys().size() + " mobs" : "absent")
-                    + "   statOverride default: " + provider.defaultStatOverride(),
+                    + "   defaults: statOverride=" + provider.defaultStatOverride()
+                    + " dungeonDrops=" + provider.defaultDungeonDrops(),
                     up ? NamedTextColor.GRAY : NamedTextColor.DARK_GRAY));
         }
     }

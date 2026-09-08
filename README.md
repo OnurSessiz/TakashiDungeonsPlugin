@@ -278,6 +278,21 @@ boss room has one, so a chest a mapper hid there *is* stocked, but nothing is ev
 its reward is the chest that appears where the boss died. Chests cannot be broken, pushed, blown
 up or washed away; they can always be opened.
 
+**Mobs drop, the boss leaves a chest**, and the difference is not size. An ordinary kill has a
+chance — 8% for a weak mob rising to 50% for a super strong one — of adding one draw to the floor.
+The chance climbs with the class rather than the table getting richer: a rarer mob should be worth
+killing more *often*, not worth more each time. A boss's hoard on the floor would go to whoever
+swung last, could fall into lava or off an edge, and would despawn on a timer nobody is watching,
+so it goes into a chest that waits where the boss fell. `instance.clear-grace-seconds` exists to
+keep the dungeon open long enough to walk over and take it.
+
+**Vanilla drops are off by default.** Rotten flesh from a dungeon zombie is the mob's own drop, not
+a reward anyone designed; leaving it in means the part of the reward nobody configured scales with
+how many mobs a room holds. Measured on a 42-mob dungeon: 7 dropped stacks with the switch off, 37
+with it on. A mob from another plugin is left alone entirely — `dungeonDrops` defaults to false for
+MythicMobs the same way `statOverride` does, because stapling a second table onto drops its author
+already balanced doubles a reward silently.
+
 ---
 
 ## Building and running
@@ -323,8 +338,8 @@ second keeps its arithmetic apart from the Bukkit types it feeds.
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-**246 checks**, split across geometry (53), candidate selection and collision (28), graph
-generation (31), the spawn search (22) and the loot draw (112). They cover rotation round-trips,
+**249 checks**, split across geometry (53), candidate selection and collision (28), graph
+generation (31), the spawn search (22) and the loot draw (115). They cover rotation round-trips,
 wall derivation on square, rectangular and asymmetric rooms, weight distribution over 200,000
 draws, dead-door marking, seed reproducibility, plug coverage, and the out-of-box fallbacks —
 generating with no boss room, no entrance room, no rooms at all, and only single-door rooms.

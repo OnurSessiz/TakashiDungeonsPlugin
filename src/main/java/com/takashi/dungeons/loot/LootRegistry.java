@@ -3,6 +3,7 @@ package com.takashi.dungeons.loot;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
 import com.takashi.dungeons.generation.RoomType;
 import com.takashi.dungeons.mob.Difficulty;
+import com.takashi.dungeons.mob.MobClass;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.jetbrains.annotations.Nullable;
@@ -55,6 +56,7 @@ public final class LootRegistry {
 
     private RarityWeights baseWeights = RarityWeights.DEFAULT;
     private ChestRules chestRules = ChestRules.DEFAULT;
+    private DropRules dropRules = DropRules.DEFAULT;
 
     /** Problems that stopped the file being read at all — shown by {@code /tdungeons loot list}. */
     private @Nullable String loadError;
@@ -79,6 +81,7 @@ public final class LootRegistry {
         disabled.clear();
         baseWeights = RarityWeights.DEFAULT;
         chestRules = ChestRules.DEFAULT;
+        dropRules = DropRules.DEFAULT;
         loadError = null;
 
         File file = new File(plugin.getDataFolder(), FILE_NAME);
@@ -107,7 +110,33 @@ public final class LootRegistry {
         buildPools();
         readTables(yaml.getConfigurationSection("tables"));
         readChests(yaml.getConfigurationSection("chests"));
+        readDrops(yaml.getConfigurationSection("drops"));
         logSummary();
+    }
+
+    /**
+     * Reads the {@code drops:} block — what a dungeon mob leaves behind.
+     *
+     * <p>Same shape as {@link #readChests}: a table id naming nothing is the quiet mistake, so it
+     * is checked here, once the tables are known.
+     */
+    private void readDrops(@Nullable ConfigurationSection section) {
+        List<String> problems = new ArrayList<>();
+        dropRules = DropRules.parse(section, problems);
+        for (MobClass mobClass : MobClass.values()) {
+            String id = dropRules.tableFor(mobClass);
+            if (id != null && !tables.containsKey(id)) {
+                problems.add("drops.classes." + mobClass.key() + " names table '" + id
+                        + "', which is not defined - those kills drop nothing.");
+            }
+        }
+        if (!dropRules.bossTable().isBlank() && !tables.containsKey(dropRules.bossTable())) {
+            problems.add("drops.boss.table names '" + dropRules.bossTable()
+                    + "', which is not defined - the boss leaves no reward.");
+        }
+        for (String problem : problems) {
+            plugin.getLogger().warning(FILE_NAME + ": " + problem);
+        }
     }
 
     /**
@@ -328,6 +357,11 @@ public final class LootRegistry {
     /** Where chests come from and which table each room type draws — the {@code chests:} block. */
     public ChestRules chestRules() {
         return chestRules;
+    }
+
+    /** What a dungeon mob leaves behind — the {@code drops:} block. */
+    public DropRules dropRules() {
+        return dropRules;
     }
 
     /** The multiplier applied to rare and above at this difficulty. */

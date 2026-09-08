@@ -11,6 +11,7 @@ import com.takashi.dungeons.loot.DungeonChestTag;
 import com.takashi.dungeons.loot.LootPopulator;
 import com.takashi.dungeons.loot.LootRegistry;
 import com.takashi.dungeons.loot.LootService;
+import com.takashi.dungeons.loot.MobDropService;
 import com.takashi.dungeons.mob.DungeonMobListener;
 import com.takashi.dungeons.mob.MobPopulator;
 import com.takashi.dungeons.mob.MobRegistry;
@@ -73,6 +74,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private LootService lootService;
     private LootPopulator lootPopulator;
     private DungeonChestTag dungeonChestTag;
+    private MobDropService mobDropService;
     private Messages messages;
 
     @Override
@@ -226,6 +228,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         dungeonChestTag = new DungeonChestTag(this);
         lootPopulator = new LootPopulator(this);
         getServer().getPluginManager().registerEvents(new ChestListener(this), this);
+        // The death-event half registers here; the boss half subscribes to the kill signal, which
+        // only exists once the mob layer is up -- setupMobs() has already run.
+        mobDropService = new MobDropService(this);
+        getServer().getPluginManager().registerEvents(mobDropService, this);
+        mobService.onKill(mobDropService::onKill);
     }
 
     /**
@@ -399,6 +406,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The mark a dungeon chest carries. Holds this run's session token. */
     public DungeonChestTag getDungeonChestTag() {
         return dungeonChestTag;
+    }
+
+    /** Mob drops and the boss's reward chest. Always built. */
+    public MobDropService getMobDropService() {
+        return mobDropService;
     }
 
     /** Every word a player reads. Built first, before anything can need one. */
