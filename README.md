@@ -249,6 +249,22 @@ A draw that lands on a class with no items in it produces **nothing** — it doe
 a class that does. Sliding would turn the 1% legendary a player just earned into a loaf of bread,
 silently, at the worst possible moment.
 
+There is a sixth class above legendary, **mythic**, and nothing about it is special in the code —
+no hiding, no announcement, no separate path. It is rare because its weight is small, and because
+the base split above leaves it at **zero**: only the shipped `boss_chest` declares a weight for it
+(3 in 1000 per draw). So a mythic is something you get for killing a boss and never something a
+room chest hands you, which is a number in `loot.yml` rather than a rule in the code — write a
+weight and room chests produce them too.
+
+| | per draw | per chest (4–6 draws) |
+|---|---|---|
+| easy | 0.3% | ~1 in 67 |
+| medium | 0.5% | ~1 in 40 |
+| hard | 0.8% | ~1 in 25 |
+
+The shipped mythics are a nether star, an elytra and a dragon egg — each one normally costs a
+wither fight, an End journey or a raid on a fortress. A mythic should be a story, not an upgrade.
+
 ---
 
 ## Building and running
@@ -294,8 +310,8 @@ second keeps its arithmetic apart from the Bukkit types it feeds.
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-**205 checks**, split across geometry (53), candidate selection and collision (28), graph
-generation (31), the spawn search (22) and the loot draw (71). They cover rotation round-trips,
+**240 checks**, split across geometry (53), candidate selection and collision (28), graph
+generation (31), the spawn search (22) and the loot draw (106). They cover rotation round-trips,
 wall derivation on square, rectangular and asymmetric rooms, weight distribution over 200,000
 draws, dead-door marking, seed reproducibility, plug coverage, and the out-of-box fallbacks —
 generating with no boss room, no entrance room, no rooms at all, and only single-door rooms.

@@ -1461,8 +1461,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         LootRegistry registry = plugin.getLootRegistry();
         ItemClass filter = args.length >= 3 ? ItemClass.parse(args[2]) : null;
         if (args.length >= 3 && filter == null) {
-            sender.sendMessage(Component.text("Unknown class: " + args[2] + " - valid: common, "
-                    + "uncommon, rare, ultra_rare, legendary", NamedTextColor.RED));
+            sender.sendMessage(Component.text("Unknown class: " + args[2] + " - valid: "
+                    + ItemClass.keyList(), NamedTextColor.RED));
             return;
         }
         if (registry.loadError() != null) {

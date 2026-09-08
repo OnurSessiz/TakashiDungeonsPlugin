@@ -49,8 +49,16 @@ public record RarityWeights(Map<ItemClass, Integer> weights) {
     /** What the shipped weights add up to. Nothing enforces it — it is a convention, not a rule. */
     public static final int TOTAL = 1000;
 
-    /** The shipped split: 60 / 25 / 10 / 4 / 1 percent. */
-    public static final RarityWeights DEFAULT = of(600, 250, 100, 40, 10);
+    /**
+     * The shipped split: 60 / 25 / 10 / 4 / 1 percent, and <b>no mythic</b>.
+     *
+     * <p>Mythic is left at zero here on purpose. It is the reward for killing a boss, so only the
+     * shipped {@code boss_chest} declares a weight for it; every table that does not override this
+     * split — an ordinary room chest included — therefore cannot produce one. Nothing in the code
+     * enforces that, and an operator who writes a mythic weight into their own table gets exactly
+     * what they wrote.
+     */
+    public static final RarityWeights DEFAULT = of(600, 250, 100, 40, 10, 0);
 
     public RarityWeights {
         EnumMap<ItemClass, Integer> copy = new EnumMap<>(ItemClass.class);
@@ -67,14 +75,22 @@ public record RarityWeights(Map<ItemClass, Integer> weights) {
         weights = Collections.unmodifiableMap(copy);
     }
 
-    /** Builds a set in declaration order — common, uncommon, rare, ultra rare, legendary. */
-    public static RarityWeights of(int common, int uncommon, int rare, int ultraRare, int legendary) {
+    /**
+     * Builds a set in declaration order — common, uncommon, rare, ultra rare, legendary, mythic.
+     *
+     * <p>Every class is named, including the ones you mean to leave at zero. An overload that let
+     * the rarest be omitted would be the convenient thing to write and the wrong thing to have: a
+     * class added later would then be silently absent from every existing call site.
+     */
+    public static RarityWeights of(int common, int uncommon, int rare, int ultraRare, int legendary,
+            int mythic) {
         EnumMap<ItemClass, Integer> map = new EnumMap<>(ItemClass.class);
         map.put(ItemClass.COMMON, common);
         map.put(ItemClass.UNCOMMON, uncommon);
         map.put(ItemClass.RARE, rare);
         map.put(ItemClass.ULTRA_RARE, ultraRare);
         map.put(ItemClass.LEGENDARY, legendary);
+        map.put(ItemClass.MYTHIC, mythic);
         return new RarityWeights(map);
     }
 
@@ -244,7 +260,7 @@ public record RarityWeights(Map<ItemClass, Integer> weights) {
             ItemClass itemClass = ItemClass.parse(String.valueOf(entry.getKey()));
             if (itemClass == null) {
                 throw new IllegalArgumentException(where + ": unknown rarity class '"
-                        + entry.getKey() + "' - valid: common, uncommon, rare, ultra_rare, legendary");
+                        + entry.getKey() + "' - valid: " + ItemClass.keyList());
             }
             if (!(entry.getValue() instanceof Number weight)) {
                 throw new IllegalArgumentException(where + "." + itemClass.key()

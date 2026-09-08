@@ -98,8 +98,7 @@ public record LootItem(String id, ItemClass itemClass, int weight, Material mate
         ItemClass itemClass = ItemClass.parse(section.getString("class", ItemClass.COMMON.key()));
         if (itemClass == null) {
             throw new IllegalArgumentException(where + ": invalid class '"
-                    + section.getString("class") + "' - valid: common, uncommon, rare, ultra_rare, "
-                    + "legendary");
+                    + section.getString("class") + "' - valid: " + ItemClass.keyList());
         }
 
         int weight = section.getInt("weight", 100);

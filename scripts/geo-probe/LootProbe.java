@@ -42,6 +42,7 @@ public class LootProbe {
         tableRules();
         parsing();
         classBoundary();
+        mythicClass();
 
         System.out.println("\n==============================================");
         System.out.println("GECEN: " + pass + "   KALAN: " + fail);
@@ -59,6 +60,8 @@ public class LootProbe {
         check("rare %10", pct(base, ItemClass.RARE, 10.0));
         check("ultra_rare %4", pct(base, ItemClass.ULTRA_RARE, 4.0));
         check("legendary %1", pct(base, ItemClass.LEGENDARY, 1.0));
+        check("mythic SIFIR (taban bolumde yok)", base.weight(ItemClass.MYTHIC) == 0,
+                base.weight(ItemClass.MYTHIC));
         check("rare ve ustu toplami 150", base.rareTotal() == 150, base.rareTotal());
     }
 
@@ -131,7 +134,7 @@ public class LootProbe {
      */
     static void commonRunsOut() {
         section("common yetmiyorsa: sifira iniyor, negatife DUSMUYOR, oranlar korunuyor");
-        RarityWeights thin = RarityWeights.of(50, 250, 100, 40, 10);
+        RarityWeights thin = RarityWeights.of(50, 250, 100, 40, 10, 0);
         int before = thin.total();
         RarityWeights scaled = thin.scaled(5.0);
         check("common tam sifir", scaled.weight(ItemClass.COMMON) == 0,
@@ -152,7 +155,7 @@ public class LootProbe {
 
     static void noCommonAtAll() {
         section("common HIC yoksa: zorluk carpani hicbir sey yapamiyor (belgelenmis davranis)");
-        RarityWeights flat = RarityWeights.of(0, 300, 400, 200, 100);
+        RarityWeights flat = RarityWeights.of(0, 300, 400, 200, 100, 0);
         RarityWeights scaled = flat.scaled(2.5);
         check("dagilim aynen kaliyor", scaled.equals(flat), scaled);
         check("toplam korunuyor", scaled.total() == flat.total(), scaled.total());
@@ -265,7 +268,7 @@ public class LootProbe {
         check("weightsFor = rarity.scaled", table.weightsFor(2.5)
                 .equals(RarityWeights.DEFAULT.scaled(2.5)));
         check("bos rarity reddediliyor", throwsOn(() ->
-                new LootTable("x", CountRange.fixed(1), RarityWeights.of(0, 0, 0, 0, 0))));
+                new LootTable("x", CountRange.fixed(1), RarityWeights.of(0, 0, 0, 0, 0, 0))));
         check("rolls'suz tablo reddediliyor",
                 throwsOn(() -> new LootTable("x", null, RarityWeights.DEFAULT)));
         check("idsiz tablo reddediliyor",
@@ -298,7 +301,16 @@ public class LootProbe {
         check("ultra_rare", ItemClass.parse("ultra_rare") == ItemClass.ULTRA_RARE);
         check("ultra-rare", ItemClass.parse("ultra-rare") == ItemClass.ULTRA_RARE);
         check("ULTRA RARE", ItemClass.parse("ULTRA RARE") == ItemClass.ULTRA_RARE);
-        check("bilinmeyen -> null", ItemClass.parse("mythic") == null);
+        check("mythic", ItemClass.parse("mythic") == ItemClass.MYTHIC);
+        // This check used to spell its unknown class "mythic" -- and mythic then became real.
+        // "epic" is a name from other games' vocabularies that this plugin deliberately does NOT
+        // have, which is what makes it a safe stand-in for a typo.
+        check("bilinmeyen -> null", ItemClass.parse("epic") == null);
+
+        section("ItemClass.keyList(): hata mesajlari enum'dan turetiliyor");
+        check("mythic listede", ItemClass.keyList().contains("mythic"), ItemClass.keyList());
+        check("her sinif listede", ItemClass.keyList().split(", ").length
+                == ItemClass.values().length, ItemClass.keyList());
     }
 
     /**
@@ -312,6 +324,100 @@ public class LootProbe {
         check("rare rare", ItemClass.RARE.isRare());
         check("ultra_rare rare", ItemClass.ULTRA_RARE.isRare());
         check("legendary rare", ItemClass.LEGENDARY.isRare());
+        check("mythic rare", ItemClass.MYTHIC.isRare());
+        check("mythic EN NADIR (sonuncu)",
+                ItemClass.values()[ItemClass.values().length - 1] == ItemClass.MYTHIC);
+    }
+
+    // ---------------------------------------------------------------- 9. mythic
+
+    /**
+     * The shipped {@code boss_chest} block, written out here so the file and the code cannot drift
+     * apart without one of them being caught -- the same thing this probe already does for the
+     * worked example in {@code isleyis.md}.
+     *
+     * <p>Every expectation is the INTEGER the arithmetic actually lands on, never the ideal value.
+     * At weights this small the two differ and the difference is the point: mythic 3 at medium
+     * wants 5.25 and gets 5, an effective 1.67x rather than the nominal 1.75x. Asserting 5.25
+     * rounded "to 1.75x" would be asserting a number the code never produces.
+     */
+    static void mythicClass() {
+        section("mythic: sadece boss_chest'te, taban bolumde YOK");
+        RarityWeights room = RarityWeights.DEFAULT;
+        check("room_chest mythic uretemez", room.weight(ItemClass.MYTHIC) == 0);
+        for (double multiplier : new double[] {1.0, 1.75, 2.5}) {
+            check(multiplier + "x sonrasi da uretemez (sifirin carpani sifir)",
+                    room.scaled(multiplier).weight(ItemClass.MYTHIC) == 0);
+        }
+
+        section("boss_chest: loot.yml'deki agirliklarin BIREBIR ayni cikmasi");
+        RarityWeights boss = RarityWeights.of(617, 150, 160, 55, 15, 3);
+        check("toplam 1000", boss.total() == 1000, boss.total());
+        check("mythic 3", boss.weight(ItemClass.MYTHIC) == 3, boss.weight(ItemClass.MYTHIC));
+        check("mythic legendary'nin 1/5'i", boss.weight(ItemClass.LEGENDARY) == 15
+                && boss.weight(ItemClass.MYTHIC) == 3);
+        check("rare ve ustu toplami 233 (mythic dahil)", boss.rareTotal() == 233, boss.rareTotal());
+        // The ceiling the shipped defaults were once written below. common must be able to pay for
+        // the whole increase at the HIGHEST multiplier, or medium and hard produce the same table.
+        check("common tavani rahat: 617 >= 1.5 x 233 = 350",
+                boss.weight(ItemClass.COMMON) >= Math.ceil(1.5 * boss.rareTotal()),
+                boss.weight(ItemClass.COMMON));
+
+        section("boss_chest medium (1.75x) -- yuvarlamanin GERCEK sonucu");
+        RarityWeights bossMedium = boss.scaled(1.75);
+        check("rare 280", bossMedium.weight(ItemClass.RARE) == 280,
+                bossMedium.weight(ItemClass.RARE));
+        check("ultra_rare 96 (96.25 asagi)", bossMedium.weight(ItemClass.ULTRA_RARE) == 96,
+                bossMedium.weight(ItemClass.ULTRA_RARE));
+        check("legendary 26 (26.25 asagi)", bossMedium.weight(ItemClass.LEGENDARY) == 26,
+                bossMedium.weight(ItemClass.LEGENDARY));
+        check("mythic 5 (5.25 asagi -- etkin carpan 1.67x, ilan edilen 1.75x degil)",
+                bossMedium.weight(ItemClass.MYTHIC) == 5, bossMedium.weight(ItemClass.MYTHIC));
+        check("common 443", bossMedium.weight(ItemClass.COMMON) == 443,
+                bossMedium.weight(ItemClass.COMMON));
+        check("toplam hala 1000", bossMedium.total() == 1000, bossMedium.total());
+
+        section("boss_chest hard (2.5x)");
+        RarityWeights bossHard = boss.scaled(2.5);
+        check("rare 400", bossHard.weight(ItemClass.RARE) == 400, bossHard.weight(ItemClass.RARE));
+        check("ultra_rare 138 (137.5 yukari)", bossHard.weight(ItemClass.ULTRA_RARE) == 138,
+                bossHard.weight(ItemClass.ULTRA_RARE));
+        check("legendary 38 (37.5 yukari)", bossHard.weight(ItemClass.LEGENDARY) == 38,
+                bossHard.weight(ItemClass.LEGENDARY));
+        check("mythic 8 (7.5 yukari -- etkin carpan 2.67x)",
+                bossHard.weight(ItemClass.MYTHIC) == 8, bossHard.weight(ItemClass.MYTHIC));
+        check("common 266", bossHard.weight(ItemClass.COMMON) == 266,
+                bossHard.weight(ItemClass.COMMON));
+        check("toplam hala 1000", bossHard.total() == 1000, bossHard.total());
+        check("common tavana CARPMIYOR", bossHard.weight(ItemClass.COMMON) > 0);
+
+        section("mythic zorlukla artiyor ve legendary'yi HIC gecmiyor");
+        check("3 -> 5 -> 8", boss.weight(ItemClass.MYTHIC) < bossMedium.weight(ItemClass.MYTHIC)
+                && bossMedium.weight(ItemClass.MYTHIC) < bossHard.weight(ItemClass.MYTHIC));
+        for (RarityWeights weights : new RarityWeights[] {boss, bossMedium, bossHard}) {
+            check("mythic < legendary < ultra_rare",
+                    weights.weight(ItemClass.MYTHIC) < weights.weight(ItemClass.LEGENDARY)
+                            && weights.weight(ItemClass.LEGENDARY)
+                                    < weights.weight(ItemClass.ULTRA_RARE), weights);
+        }
+
+        section("sandik basina mythic ihtimali (4-6 cekilis)");
+        checkNear("easy  ~%1.5", chestChance(boss, ItemClass.MYTHIC), 1.49);
+        checkNear("medium ~%2.5", chestChance(bossMedium, ItemClass.MYTHIC), 2.47);
+        checkNear("hard  ~%3.9", chestChance(bossHard, ItemClass.MYTHIC), 3.95);
+    }
+
+    /**
+     * The chance that a chest of 4-6 draws contains at least one item of this class, as a
+     * percentage. This is the number a player experiences; the per-draw weight is not.
+     */
+    static double chestChance(RarityWeights weights, ItemClass itemClass) {
+        double miss = 1.0 - weights.share(itemClass);
+        double total = 0;
+        for (int draws = 4; draws <= 6; draws++) {
+            total += 1.0 - Math.pow(miss, draws);
+        }
+        return 100.0 * total / 3.0;
     }
 
     // ---------------------------------------------------------------- yardimcilar
@@ -344,6 +450,12 @@ public class LootProbe {
 
     static void check(String what, boolean ok) {
         check(what, ok, null);
+    }
+
+    /** For a computed probability: 0.05 points of slack, so a rounding change shows up. */
+    static void checkNear(String what, double actual, double expected) {
+        check(what + " (" + String.format("%.2f", actual) + ")",
+                Math.abs(actual - expected) < 0.05, actual);
     }
 
     static void check(String what, boolean ok, Object actual) {

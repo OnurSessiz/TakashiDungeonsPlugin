@@ -16,6 +16,13 @@ import java.util.Locale;
  * multiplier is applied to rare and above <b>only</b>, and the weight it adds is taken back out of
  * {@link #COMMON}. Reordering these constants silently rewrites that rule, so anything that depends
  * on the order says so out loud rather than assuming it.
+ *
+ * <h2>MYTHIC is a class like any other</h2>
+ * It is rarer than {@link #LEGENDARY} and nothing else about it is special — there is no hiding, no
+ * announcement and no separate code path. What makes it rare is its weight, and only the shipped
+ * {@code boss_chest} carries one: the base split leaves it at zero, so an ordinary room chest can
+ * never produce a mythic. That is a {@code loot.yml} decision, not a rule in here, and an operator
+ * who wants mythics in room chests only has to write the weight.
  */
 public enum ItemClass {
 
@@ -23,7 +30,8 @@ public enum ItemClass {
     UNCOMMON("uncommon"),
     RARE("rare"),
     ULTRA_RARE("ultra_rare"),
-    LEGENDARY("legendary");
+    LEGENDARY("legendary"),
+    MYTHIC("mythic");
 
     private final String key;
 
@@ -44,6 +52,26 @@ public enum ItemClass {
      */
     public boolean isRare() {
         return ordinal() >= RARE.ordinal();
+    }
+
+    /**
+     * Every class key in declaration order, comma-separated — the "valid: ..." half of the error
+     * message a typo earns.
+     *
+     * <p>Built from the enum rather than written out at each call site. Three places listed these
+     * by hand and all three would have started lying the moment {@link #MYTHIC} was added, which is
+     * the failure this project treats as its most expensive: a message that tells an operator the
+     * thing they just typed correctly is invalid.
+     */
+    public static String keyList() {
+        StringBuilder text = new StringBuilder();
+        for (ItemClass itemClass : values()) {
+            if (!text.isEmpty()) {
+                text.append(", ");
+            }
+            text.append(itemClass.key);
+        }
+        return text.toString();
     }
 
     /**

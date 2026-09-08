@@ -7,10 +7,16 @@
 # After editing:  /tdungeons loot reload   (or /tdungeons reload for everything)
 #
 # ===============================================================================================
-# CLASS (class):  common | uncommon | rare | ultra_rare | legendary
+# CLASS (class):  common | uncommon | rare | ultra_rare | legendary | mythic
 #
 # A class is a POOL TAG, not a multiplier - the same rule mobs.yml states. It answers "which pool
 # may a draw take this from"; what the item actually is comes from its own entry below.
+#
+# MYTHIC is rarer than legendary and nothing else about it is special: no hiding, no announcement,
+# no separate code path. It is rare because its weight is small. The base split below leaves it at
+# ZERO and only boss_chest declares a weight for it, so a mythic is something you get for killing a
+# boss and never something a room chest hands you. Change that by writing a weight - it is a number
+# here, not a rule in the code.
 #
 # WEIGHT (weight): the share inside that pool. Same meaning everywhere in this plugin: an item at
 # 200 turns up twice as often as one at 100. Only compared against others in the SAME class.
@@ -31,6 +37,7 @@ rarity:
   rare: 100          # 10%
   ultra_rare: 40     # 4%
   legendary: 10      # 1%
+  mythic: 0          # boss_chest only - see the note above the class list
 
 # ===============================================================================================
 # DIFFICULTY - and the one thing about it that is not obvious
@@ -77,25 +84,30 @@ tables:
 
   # The boss. More draws and a heavier lean than a room chest, and it still scales with difficulty:
   #
-  #     easy 23% rare+   ->   medium 40%   ->   hard 58%      (room chest: 15 -> 26 -> 37.5)
+  #     easy 23% rare+   ->   medium 41%   ->   hard 58%      (room chest: 15 -> 26 -> 37.5)
+  #
+  # The ONLY table that can produce a mythic, and the weight is deliberately tiny: 3 in 1000 per
+  # draw, which over 4-6 draws is roughly one boss chest in 67 at easy, 1 in 40 at medium and
+  # 1 in 25 at hard. A mythic is meant to be a thing that happens to somebody else.
   #
   # Where those numbers come from, and the trap in writing your own: common has to be able to PAY
   # for the increase. At multiplier m the rare classes want (m - 1) x their total, and common is
   # the only source. So keep
   #
-  #     common  >=  (highest multiplier - 1)  x  (rare + ultra_rare + legendary)
+  #     common  >=  (highest multiplier - 1)  x  (rare + ultra_rare + legendary + mythic)
   #
   # Below that line, common bottoms out at zero and every multiplier past that point produces the
   # SAME table - medium and hard become identical and nothing says so in play. Here that line is
-  # 1.5 x 230 = 345, and common is 620, so hard applies in full with room to spare.
+  # 1.5 x 233 = 350, and common is 617, so hard applies in full with room to spare.
   boss_chest:
     rolls: [4, 6]
     rarity:
-      common: 620
+      common: 617
       uncommon: 150
       rare: 160
       ultra_rare: 55
       legendary: 15
+      mythic: 3
 
 # ===============================================================================================
 # ITEMS
@@ -326,3 +338,39 @@ items:
       looting: 3
       fire_aspect: 2
     hide: [HIDE_ATTRIBUTES, HIDE_UNBREAKABLE]
+
+  # ------------------------------------------------------------------------------- mythic
+  # Boss chests only, and roughly one boss chest in forty at medium. These are chosen to be things
+  # a player cannot get on the way to the dungeon: each one normally costs a wither fight, an End
+  # journey or a raid on a fortress. That is the bar - a mythic should be a story, not an upgrade.
+  #
+  # The pool must not be empty. A draw that lands on a class with nothing in it produces NOTHING
+  # (see the note above 'tables'), so deleting all three here would quietly void every mythic roll
+  # - the console warns at startup, but the roll is still wasted.
+
+  nether_star_prize:
+    material: NETHER_STAR
+    class: mythic
+    weight: 100
+    name: "<gradient:#ffffff:#88ddff><bold>Star of the Deep</bold></gradient>"
+    lore:
+      - "<dark_gray>It was not made here. It was buried here.</dark_gray>"
+
+  elytra_prize:
+    material: ELYTRA
+    class: mythic
+    weight: 70
+    name: "<gradient:#c8a2ff:#7a5cff><bold>Wings of the Vault</bold></gradient>"
+    lore:
+      - "<dark_gray>Whoever wore these last did not make it out either.</dark_gray>"
+    unbreakable: true
+    hide: [HIDE_UNBREAKABLE]
+
+  dragon_egg_trophy:
+    material: DRAGON_EGG
+    class: mythic
+    weight: 40
+    name: "<gradient:#2b0a3d:#a020f0><bold>Dragon Egg</bold></gradient>"
+    lore:
+      - "<dark_gray>There is no second one.</dark_gray>"
+      - "<dark_purple>A trophy. Nothing more, and nothing less.</dark_purple>"
