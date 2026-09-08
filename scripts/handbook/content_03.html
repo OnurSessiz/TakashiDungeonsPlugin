@@ -28,10 +28,10 @@ says so explicitly, because "silently" is the operative word.
 @@CODE java|Direction — the enum body. The clockwise order IS the rotation maths.@@
 public enum Direction {
 
-    NORTH(0, 0, -1, "kuzey"),
-    EAST(1, 0, 0, "doğu"),
-    SOUTH(0, 0, 1, "güney"),
-    WEST(-1, 0, 0, "batı");
+    NORTH(0, 0, -1, "north"),
+    EAST(1, 0, 0, "east"),
+    SOUTH(0, 0, 1, "south"),
+    WEST(-1, 0, 0, "west");
 
     /** {@code opposite(d) = (d + 2) mod 4}. */
     public Direction opposite() {

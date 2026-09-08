@@ -298,7 +298,7 @@ public final class PortalManager {
         portal.state(PortalState.OCCUPIED);
         // enter() refuses rather than throws — a dead instance, or a dungeon world that went away
         // mid-generation. Ignoring the answer would leave the player standing at the portal after
-        // "Dungeon hazırlanıyor…" with nothing else ever said, which reads as a frozen plugin.
+        // "Preparing your dungeon..." with nothing else ever said, which reads as a frozen plugin.
         if (!plugin.getInstanceManager().enter(player, instance)) {
             player.sendMessage(plugin.getMessages().get("portal.enter-failed"));
             plugin.getLogger().warning("Entry through gateway refused (" + portal + "): " + instance);

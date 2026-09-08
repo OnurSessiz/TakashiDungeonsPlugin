@@ -1270,7 +1270,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
      *
      * <p>The disabled block is not an afterthought — it is the whole diagnostic. An operator whose
      * MythicMobs boss never turns up needs one place that says why, and a count without reasons
-     * ("3 devre dışı") tells them something is wrong without telling them what.
+     * ("3 disabled") tells them something is wrong without telling them what.
      */
     private void mobList(CommandSender sender, String[] args) {
         MobRegistry registry = plugin.getMobRegistry();

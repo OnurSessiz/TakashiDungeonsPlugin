@@ -1,111 +1,117 @@
-# TakashiDungeons — mob kaydı
+# TakashiDungeons — mob catalogue
 #
-# Bu dosya config.yml'den AYRI. Sebep: FAZ 9'da GUI editör bu dosyayı YAZACAK, ve bir programın
-# yeniden yazdığı dosyada yorumlar kalmaz. config.yml'deki açıklamaların hayatta kalması için
-# mob seti kendi dosyasında duruyor.
+# Separate from config.yml. Reason: in PHASE 9 the GUI editor will WRITE this file, and a program
+# that rewrites a file leaves no comments behind. The mob set lives in its own file so that the
+# explanations in config.yml survive.
 #
-# Değişiklikten sonra: /tdungeons reload
-#
-# ---------------------------------------------------------------------------------------------
-# ADRESLEME:  mob: <sağlayıcı>:<anahtar>
-#
-#   vanilla:ZOMBIE            → vanilla entity registry (her zaman çalışır)
-#   mythicmobs:SkeletalKnight → MythicMobs (kurulu değilse bu GİRDİ DEVRE DIŞI kalır)
-#
-# Sağlayıcı yoksa girdi sessizce vanilla'ya DÜŞMEZ; devre dışı kalır ve sebebi hem konsola hem
-# /tdungeons mob list'e düşer. Sessiz fallback "boss neden normal zombi çıktı" hatasını üretir ve
-# o hata haftalar sonra denge şikâyeti olarak geri gelir.
-#
-# Aşağıdaki set tamamen VANILLA — hiçbir mob plugin'i olmayan bir sunucuda eksiksiz çalışır.
-# ---------------------------------------------------------------------------------------------
-#
-# SINIF (class):  weak | normal | strong | super_strong | boss
-#
-# Sınıf bir ÇARPAN DEĞİL, bir HAVUZ ETİKETİ. "Hangi havuzdan çekilebilir" sorusunu cevaplıyor;
-# statlar mob'un kendi aralığından geliyor. Sınıfa da çarpan koysaydık yazdığın health: [40, 50]
-# oyunda 120 çıkardı ve nereden çıktığı görünmezdi.
-#
-# boss sınıfı SADECE boss odasında kullanılır — koridorda çıkabilen şey boss değildir.
-#
-# AĞIRLIK (weight): aynı havuz içindeki çekiliş payı. Oda şablonlarındaki ve (FAZ 4) loot'taki
-# ile aynı anlam: 200 ağırlıklı bir mob, 100 ağırlıklı birinin iki katı sıklıkta çıkar.
-#
-# STATLAR: tek sayı ya da [min, max] aralığı. Aralık her spawn'da yeniden atılıyor — aynı odadaki
-# iki zombi birbirinin kopyası gibi durmasın diye. Yazılmayan stat mob'un doğal değerinde kalır.
-#   health → maksimum can (vanilla zombi: 20)
-#   damage → vuruş hasarı (vanilla zombi: 3)
-#   speed  → hareket hızı (vanilla zombi: 0.23) — küçük sayılar, dikkatli oyna
-#
-# statOverride: YAZILMAZSA sağlayıcı karar verir — vanilla'da true, MythicMobs'ta false.
-#   true  → yukarıdaki statlar ve zorluk çarpanı uygulanır
-#   false → mob'un kendi plugin'inin statları KORUNUR (anahedef.md §4)
+# After editing: /tdungeons reload
 #
 # ---------------------------------------------------------------------------------------------
-# DUNGEON DÜNYASI HAKKINDA BİLİNMESİ GEREKENLER (mob seçerken)
-#   - Dünya Environment.NORMAL. PIGLIN ve PIGLIN_BRUTE burada zombileşir — bu yüzden sette yok.
-#   - mobGriefing kapalı: creeper patlaması blok kırmaz, odayı delmez.
-#   - Gün döngüsü kapalı, saat öğlende sabit. Odalar kapalı olduğu için gökyüzü ışığı yok;
-#     zombi/iskelet yanmıyor. Tavanı açık bir oda schematic'i yaparsan bu değişir.
+# ADDRESSING:  mob: <provider>:<key>
+#
+#   vanilla:ZOMBIE            → the vanilla entity registry (always works)
+#   mythicmobs:SkeletalKnight → MythicMobs (if it is not installed THIS ENTRY IS DISABLED)
+#
+# When a provider is missing the entry does NOT quietly fall back to vanilla; it is disabled, and
+# the reason reaches both the console and /tdungeons mob list. A silent fallback produces the "why
+# did the boss turn out to be an ordinary zombie" bug, and that bug comes back weeks later dressed
+# as a balance complaint.
+#
+# The set below is entirely VANILLA — it works in full on a server with no mob plugin at all.
+# ---------------------------------------------------------------------------------------------
+#
+# CLASS (class):  weak | normal | strong | super_strong | boss
+#
+# A class is NOT A MULTIPLIER, it is a POOL TAG. It answers "which pool may this be drawn from";
+# the stats come from the mob's own ranges. Had the class carried a multiplier too, the
+# health: [40, 50] you wrote would turn up as 120 in game with no visible reason why.
+#
+# The boss class is used in the boss room ONLY — a thing that can turn up in a corridor is not a
+# boss.
+#
+# WEIGHT (weight): the share of a draw inside the same pool. The same meaning it has in the room
+# templates and in loot.yml: a mob at 200 turns up twice as often as one at 100.
+#
+# STATS: a single number or a [min, max] range. A range is rolled again on every spawn, so that
+# two zombies in the same room do not look like copies of each other. A stat you leave out keeps
+# the mob's natural value.
+#   health → maximum health (vanilla zombie: 20)
+#   damage → attack damage (vanilla zombie: 3)
+#   speed  → movement speed (vanilla zombie: 0.23) — small numbers, tread carefully
+#
+# statOverride: LEFT OUT, the provider decides — true for vanilla, false for MythicMobs.
+#   true  → the stats above and the difficulty multiplier are applied
+#   false → the mob's own plugin's stats are PRESERVED (anahedef.md §4)
+#
+# ---------------------------------------------------------------------------------------------
+# WHAT TO KNOW ABOUT THE DUNGEON WORLD (when picking mobs)
+#   - The world is Environment.NORMAL. PIGLIN and PIGLIN_BRUTE zombify here — which is why they
+#     are not in the set.
+#   - mobGriefing is off: a creeper explosion breaks no blocks and cannot hole through a room.
+#   - The daylight cycle is off and the time is fixed at noon. The rooms are enclosed, so there is
+#     no sky light and zombies/skeletons do not burn. Build a room schematic with an open ceiling
+#     and that changes.
 # ---------------------------------------------------------------------------------------------
 
-# Hangi zorlukla üretileceği söylenmemiş dungeon'lar bunu kullanır.
+# Used by dungeons that were not told which difficulty to generate at.
 default-difficulty: medium
 
 # ---------------------------------------------------------------------------------------------
-# ODALARA YERLEŞTİRME
+# PLACING MOBS IN ROOMS
 #
-# KAÇ MOB → odanın YÜRÜNEBİLİR SÜTUN sayısı / density. Oda büyüklüğü oyuncunun gördüğü şey:
-# boş duran büyük salon da tıklım duran koridor da hata gibi okunur, ve ikisi de odanın ne kadar
-# derinde olduğunu bilmekle düzelmez. Derinlik odada NE olduğunu değiştiriyor, kaç tane olduğunu
-# değil.
+# HOW MANY → the room's WALKABLE COLUMN count / density. Room size is what the player sees: a
+# great hall standing empty and a corridor packed shoulder to shoulder both read as a bug, and
+# neither is fixed by knowing how deep the room is. Depth changes WHAT is in a room, not how many.
 #
-# "Yürünebilir sütun", kutunun alanı değil: haç şeklinde bir odanın kutusu çoğunlukla duvardır ve
-# kutuya göre ölçmek haçın dört koluna bir salon dolusu mob koyardı. Sayım odanın merkezinden
-# yürüyerek ulaşılabilen zemine bakıyor — duvar ardındaki mühürlü niş sayılmıyor, oraya mob da
-# konmuyor.
+# "Walkable column" is not the area of the bounding box: the box of a cross-shaped room is mostly
+# wall, and measuring by the box would put a hall's worth of mobs into each of the four arms. The
+# count looks at floor reachable on foot from the room's centre — a sealed alcove behind a wall is
+# not counted, and no mob is placed there either.
 #
-# HANGİ SINIF → odanın ORANSAL derinliği (depth / maxDepth). Mutlak eşikte 4 odalık bir small
-# dungeon baştan sona weak kalırdı; "small" kısa demek, zararsız demek değil.
+# WHICH CLASS → the room's PROPORTIONAL depth (depth / maxDepth). On an absolute threshold a
+# 4-room small dungeon would stay weak from end to end; "small" means short, not harmless.
 # ---------------------------------------------------------------------------------------------
 spawn:
-  # Kaç yürünebilir bloğa bir mob. Büyütmek odaları seyreltir.
+  # One mob per this many walkable blocks. Raising it thins the rooms out.
   density: 45
 
-  # Oda başına alt ve üst sınır. min, zemini olan odalar için geçerli: zemini hiç olmayan bir oda
-  # boş kalır, içine bir mob sıkıştırılmaz.
+  # Lower and upper bound per room. The minimum applies to rooms that have a floor: a room with no
+  # floor at all stays empty rather than having a mob wedged into it.
   min-per-room: 1
   max-per-room: 8
 
-  # Giriş odasına mob konsun mu. Varsayılan KAPALI: oyuncu oraya ışınlanıyor ve dövüşün ortasına
-  # düşmemeli, ayrıca party orada toplanıyor.
+  # Whether the entrance room gets mobs. Default OFF: the player is teleported in there and should
+  # not land in the middle of a fight, and it is also where the party gathers.
   entrance: false
 
-  # BOSS ODASI — yukarıdaki kuralların HİÇBİRİ burada geçerli değil.
+  # THE BOSS ROOM — NONE of the rules above apply here.
   #
-  # Yoğunluk ve derinlik bandı boss odasına uygulansaydı: büyük bir boss salonu 8 mob hak ederdi
-  # ve en derin bant onları strong/super_strong karışımından çekerdi — kalabalığın içinde duran
-  # bir boss. Boss odası tam da bu olmamalı. Bu yüzden sayı ve sınıf burada TEK TEK yazılıyor.
+  # Had density and the depth band been applied to it: a large boss hall would earn 8 mobs, and
+  # the deepest band would draw them from a strong/super_strong mix — a boss standing in a crowd.
+  # A boss room should be precisely not that. So the count and the class are written out ONE BY
+  # ONE here.
   #
-  # Boss odanın MERKEZİNE en yakın durulabilir sütuna konuyor (flood fill'in tohumu). Oyuncu
-  # kapıdan girdiğinde karşısında duruyor, köşede bir sütunun arkasında değil.
+  # The boss is placed on the standable column nearest the room's CENTRE (the flood fill's seed).
+  # It is facing the player as they come through the door, not tucked behind a pillar in a corner.
   #
-  # Boss havuzu boşsa oda BOŞ kalıyor ve sebebi konsola düşüyor — super_strong'dan çekilmiyor.
-  # Sessiz ikame, operatörün haftalar sonra "son oda bir öncekinden farksız" diye fark edeceği
-  # türden bir hatadır.
+  # If the boss pool is empty the room is left EMPTY and the reason reaches the console — it does
+  # not draw from super_strong instead. A silent substitution is the kind of bug an operator finds
+  # out about weeks later, as "the last room is no different from the one before it".
   boss:
-    # Kapatılırsa boss odası boş kalır. Sıradan oda spawner'ına DEVREDİLMEZ.
+    # Turn this off and the boss room stays empty. It is NOT handed to the ordinary room spawner.
     enabled: true
 
-    # Boss'un yanındaki muhafız sayısı. Bilerek küçük: odayı "korunuyor" gibi göstermek için
-    # varlar, dövüşün kendisi olmak için değil.
+    # How many guards stand with the boss. Deliberately small: they are there to make the room
+    # look guarded, not to be the fight itself.
     guards: 2
 
-    # Muhafızlar hangi havuzdan çekilsin. Derinlik bandından alınmıyor: en derin bant bir
-    # KARIŞIM, ve boss odasında bazen iki weak zombi çıkması spawner sızıntısı gibi görünür.
+    # Which pool the guards are drawn from. Not taken from the depth band: the deepest band is a
+    # MIX, and two weak zombies turning up in the boss room reads as a spawner leak.
     guard-class: strong
 
-  # Derinlik bantları. until = depth/maxDepth üst sınırı (dahil), classes = o bantta hangi
-  # sınıftan ne oranda çekileceği. Ağırlık anlamı her yerde aynı: 70/30 demek 70'e 30 demek.
+  # Depth bands. until = the upper bound of depth/maxDepth (inclusive); classes = the share each
+  # class is drawn at within that band. Weight means what it means everywhere else: 70/30 is
+  # 70 against 30.
   bands:
     - until: 0.25
       classes: { weak: 70, normal: 30 }
@@ -116,16 +122,16 @@ spawn:
     - until: 1.00
       classes: { normal: 20, strong: 55, super_strong: 25 }
 
-# Zorluk çarpanları. Sınıfın aksine bunlar GERÇEKTEN çarpan — ama üçü ayrı, çünkü hız canla aynı
-# oranda ölçeklenirse dungeon bir koşu yarışına döner: 2.2× hızda hiçbir şeyden kaçılamaz, hiçbir
-# şey kite edilemez ve dövüş dövüş olmaktan çıkar. Can büyük çarpanı kaldırır, hasar orta, hız
-# neredeyse hiç.
+# Difficulty multipliers. Unlike a class these REALLY ARE multipliers — but there are three of
+# them, because if speed scaled with health the dungeon would turn into a footrace: at 2.2× speed
+# nothing can be fled from, nothing can be kited, and a fight stops being a fight. Health takes
+# the big multiplier, damage a middling one, speed almost none.
 #
-# Zırh zorluğun GÖRÜNEN yarısı: elmas zırhlı bir mob odanın öbür ucundan tehlikeli okunur. Hasar
-# azalması yan etki, asıl mesele okunabilirlik.
+# Armour is the VISIBLE half of difficulty: a mob in diamond armour reads as dangerous from across
+# the room. The damage reduction is a side effect; legibility is the point.
 #
-# Zorluk çarpanı da statOverride'a tabidir — başkasının yazdığı boss'a çarpan uygulamak da
-# ezmektir.
+# The difficulty multiplier obeys statOverride too — applying a multiplier to somebody else's boss
+# is overriding it just the same.
 difficulty:
   easy:
     health: 1.0
@@ -137,7 +143,7 @@ difficulty:
     damage: 1.25
     speed: 1.05
     armor: leather
-    # Herkese zırh verilmiyor: %35'te zırh "tehlike", %100'de "üniforma" gibi okunuyor.
+    # Not everyone gets armour: at 35% armour reads as "danger", at 100% it reads as a uniform.
     armor-chance: 0.35
   hard:
     health: 2.2
@@ -149,8 +155,8 @@ difficulty:
 mobs:
 
   # ----------------------------------------------------------------------------- weak
-  # Giriş odaları ve sığ derinlik. Oyuncuyu ölçmek için değil, dungeon'ın canlı olduğunu
-  # göstermek için varlar.
+  # Entrance rooms and shallow depth. They are not there to take the player's measure, they are
+  # there to show that the dungeon is alive.
 
   crypt_zombie:
     mob: vanilla:ZOMBIE
@@ -172,10 +178,10 @@ mobs:
     weight: 80
     health: [12, 16]
     damage: [2, 2]
-    # Örümcek zaten hızlı; hıza dokunmuyoruz.
+    # Spiders are fast already; we leave speed alone.
 
   # ----------------------------------------------------------------------------- normal
-  # Dungeon'ın gövdesi. Oyuncunun çoğu vaktini bunlarla geçirmesi bekleniyor.
+  # The body of the dungeon. The player is expected to spend most of their time on these.
 
   husk_raider:
     mob: vanilla:HUSK
@@ -212,7 +218,7 @@ mobs:
     damage: [3, 4]
 
   # ----------------------------------------------------------------------------- strong
-  # Derin odalar ve yan dalların sonu. Tek başına oyuncuyu zorlamalı.
+  # Deep rooms and the ends of side branches. One of these alone should give the player trouble.
 
   wither_skeleton_guard:
     mob: vanilla:WITHER_SKELETON
@@ -220,7 +226,7 @@ mobs:
     weight: 100
     health: [40, 50]
     damage: [6, 8]
-    name: "<gray>Kül Muhafızı</gray>"
+    name: "<gray>Ash Warden</gray>"
 
   vindicator_enforcer:
     mob: vanilla:VINDICATOR
@@ -228,14 +234,14 @@ mobs:
     weight: 90
     health: [38, 46]
     damage: [7, 9]
-    name: "<gray>Balta Ustası</gray>"
+    name: "<gray>Axemaster</gray>"
 
   blaze_sentry:
     mob: vanilla:BLAZE
     class: strong
     weight: 55
     health: [30, 36]
-    name: "<gold>Alev Nöbetçisi</gold>"
+    name: "<gold>Flame Sentry</gold>"
 
   enderman_stalker:
     mob: vanilla:ENDERMAN
@@ -245,15 +251,15 @@ mobs:
     damage: [6, 8]
 
   # ----------------------------------------------------------------------------- super_strong
-  # Nadir. Bir odada birden fazlası çıkarsa bu bir hata, bir zorluk ayarı değil — dağılımı
-  # yukarıdaki derinlik bantları belirliyor.
+  # Rare. More than one of these in a single room is a bug, not a difficulty setting — the depth
+  # bands above decide the spread.
 
   evoker_warlock:
     mob: vanilla:EVOKER
     class: super_strong
     weight: 70
     health: [70, 85]
-    name: "<dark_purple>Büyücü</dark_purple>"
+    name: "<dark_purple>Warlock</dark_purple>"
 
   ravager_bull:
     mob: vanilla:RAVAGER
@@ -262,11 +268,11 @@ mobs:
     health: [90, 110]
     damage: [9, 12]
     speed: 0.28
-    name: "<red>Yıkıcı</red>"
+    name: "<red>Destroyer</red>"
 
   # ----------------------------------------------------------------------------- boss
-  # Sadece boss odasında. Sayılar bilerek yüksek: boss odası dungeon'ın sonu, aşılması gereken
-  # duvar o.
+  # The boss room only. The numbers are high on purpose: the boss room is the end of the dungeon,
+  # and the boss is the wall that has to be got past.
 
   bone_lord:
     mob: vanilla:WITHER_SKELETON
@@ -275,7 +281,7 @@ mobs:
     health: [220, 260]
     damage: [12, 15]
     speed: 0.26
-    name: "<dark_red><bold>Kemik Lordu</bold></dark_red>"
+    name: "<dark_red><bold>Bone Lord</bold></dark_red>"
 
   ravager_warlord:
     mob: vanilla:RAVAGER
@@ -284,18 +290,19 @@ mobs:
     health: [280, 340]
     damage: [14, 18]
     speed: 0.3
-    name: "<dark_red><bold>Savaş Yıkıcısı</bold></dark_red>"
+    name: "<dark_red><bold>War Destroyer</bold></dark_red>"
 
   arch_evoker:
     mob: vanilla:EVOKER
     class: boss
     weight: 70
     health: [200, 240]
-    name: "<dark_red><bold>Baş Büyücü</bold></dark_red>"
+    name: "<dark_red><bold>Arch Evoker</bold></dark_red>"
 
-  # ----------------------------------------------------------------------------- örnek: MythicMobs
-  # MythicMobs kurulu değilse bu girdi devre dışı kalır ve sebebi loglanır — set bozulmaz.
-  # statOverride yazılmadığı için MythicMobs'un kendi statları KORUNUR.
+  # ----------------------------------------------------------------------------- example: MythicMobs
+  # If MythicMobs is not installed this entry is disabled and the reason is logged — the set is
+  # not broken by it.
+  # statOverride is left out, so MythicMobs' own stats are PRESERVED.
   #
   # mythic_knight:
   #   mob: mythicmobs:SkeletalKnight

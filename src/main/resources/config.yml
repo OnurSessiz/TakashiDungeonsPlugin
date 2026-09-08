@@ -42,11 +42,11 @@ dungeon-world:
   reset-on-start: true
 
 schematics:
-  # Jar ile gelen odaları ilk açılışta (ve sonraki açılışlarda eksik olanları)
-  # plugins/TakashiDungeons/schematics/ altına çıkarır. Kapatırsan temiz bir kurulumda
-  # SIFIR oda olur ve generation hiçbir şey üretemez — sadece kendi oda setini elle
-  # yöneten sunucular kapatmalı. Var olan dosyanın üzerine ASLA yazılmaz; elle yeniden
-  # yazdırmak için /tdungeons extract force.
+  # Unpack the rooms shipped inside the jar into plugins/TakashiDungeons/schematics/ on first
+  # start — and on later starts, any of them that have gone missing. Turn it off and a clean
+  # install has ZERO rooms, so generation can produce nothing; only servers that manage their
+  # own room set by hand should do that. An existing file is NEVER overwritten; to force the
+  # bundled copies back onto disk, use /tdungeons extract force.
   extract-bundled: true
 
   # true: paste on the main thread even when FAWE is installed.
@@ -79,126 +79,125 @@ generation:
   plug-open-doors: true
 
 instance:
-  # Bir dungeon ne kadar ayakta kalır. Süre dolunca içerideki herkes girdiği yere ışınlanır
-  # ve dungeon silinir — bloklar dahil.
-  # TEST DEĞERİ — yayın öncesi 1800'e geri alınacak.
+  # How long a dungeon stays up. When the clock runs out everyone inside is teleported back to
+  # where they entered from and the dungeon is deleted, blocks included.
+  # TEST VALUE — put back to 1800 before release.
   duration-seconds: 300
 
-  # İçinde kimse kalmayınca kaç saniye sonra kapansın. 0 = kapanmasın, süresini doldursun.
+  # How many seconds after the last player leaves the dungeon closes. 0 = never; let it run its
+  # full duration instead.
   #
-  # Sayaç ancak dungeon'a BİR KEZ girildikten sonra işlemeye başlar: operatörün üretip
-  # bakmakta olduğu, hiç girilmemiş bir dungeon bu yüzden ayağının altından silinmez.
-  # TEST DEĞERİ — yayın öncesi 300'e geri alınacak.
+  # The countdown only starts once the dungeon has been entered AT LEAST ONCE, so a dungeon an
+  # operator generated and is standing in to inspect is not deleted out from under them.
+  # TEST VALUE — put back to 300 before release.
   empty-timeout-seconds: 60
 
-  # Kalan süre uyarıları, saniye cinsinden. Her eşik bir kez duyurulur ve sadece içeride
-  # oyuncu varken. Boş bırakılırsa uyarı çıkmaz.
-  # TEST DEĞERİ — 5 dakikalık süreye göre. Yayın öncesi [300, 60, 10]'a geri alınacak.
+  # Time-remaining warnings, in seconds. Each threshold is announced once, and only while there
+  # are players inside. Leave the list empty for no warnings.
+  # TEST VALUE — sized for the 5-minute duration. Put back to [300, 60, 10] before release.
   warn-seconds: [120, 60, 10]
 
-  # Boss öldürüldükten sonra dungeon kaç saniye daha ayakta kalır.
+  # How many seconds the dungeon stays up after the boss is killed.
   #
-  # Süre TAVAN, yenileme değil: 40 saniyesi kalmış bir dungeon boss ölünce 60 saniyeye ÇIKMAZ.
-  # Uzatılabilen bir sayaç sayaç değildir.
+  # This is a CEILING, not a refill: a dungeon with 40 seconds left does NOT jump back up to 60
+  # when the boss dies. A timer you can extend is not a timer.
   #
-  # 0 yazılırsa süre hiç kısalmaz, dungeon sadece "temizlendi" işaretlenir. Kısaltmanın sebebi
-  # şu: tam süre bırakılırsa boss'u öldürmek hiçbir şeyi değiştirmez, yani bir son değildir;
-  # anında kapatılırsa da party kazandığı anda odadan atılır ve dövüşün düşürdüğünü (FAZ 4'te
-  # loot o odaya konacak) toplayamaz.
+  # Write 0 and the time is never shortened — the dungeon is merely marked "cleared". The reason
+  # for shortening it at all: leave the full duration and killing the boss changes nothing, so it
+  # is not an ending; close instantly and the party is thrown out of the room the moment they win,
+  # unable to pick up what the fight dropped (PHASE 4 puts loot in that room).
   clear-grace-seconds: 60
 
   boss-bar:
-    # Ekranın üstünde kalan süreyi gösteren çubuk. Kapatılırsa süre sistemi aynen çalışır,
-    # sadece görünmez olur.
+    # The bar across the top of the screen showing the time left. Turn it off and the timer system
+    # works exactly the same, it just becomes invisible.
     #
-    # Çubuğun YAZISI burada değil: lang/<dil>.yml -> instance.boss-bar (ve boss ölünce
-    # instance.boss-bar-cleared). Oyuncunun okuduğu her kelime orada.
+    # The bar's TEXT is not here: lang/<code>.yml -> instance.boss-bar (and, once the boss is
+    # dead, instance.boss-bar-cleared). Every word a player reads lives there.
     enabled: true
 
 portal:
   # ---------------------------------------------------------------------------------------
-  # GEÇİCİ GÖRÜNÜM. Ametist blok + üstünde dönen bir ametist shard + "Dungeon" yazısı.
-  # Kalıcı görsel geldiğinde burası değişir, kod değişmez.
+  # PLACEHOLDER LOOK. An amethyst block, an amethyst shard spinning above it, and the word
+  # "Dungeon". When the final art arrives this is what changes — the code does not.
   #
-  # Yazı ve shard birer Display entity: hitbox'ları, ağırlıkları, çarpışmaları yok. Tam da bu
-  # yüzden görselin üstüne ayrı bir Interaction hitbox konuyor — oyuncu havadaki shard'a nişan
-  # alıyor ve tıklanamayan bir şeye tıklamak bozuk geçit gibi görünürdü.
+  # The text and the shard are Display entities: no hitbox, no weight, no collision. That is
+  # exactly why a separate Interaction hitbox is placed over the whole thing — players aim at
+  # the shard floating in the air, and clicking something unclickable reads as a broken gateway.
   # ---------------------------------------------------------------------------------------
-  # Geçidin YAZISI burada değil: lang/<dil>.yml -> portal.label
+  # The gateway's TEXT is not here: lang/<code>.yml -> portal.label
   block: AMETHYST_BLOCK
   item: AMETHYST_SHARD
 
-  # Sağ tıkta açılacak dungeon'ın boyutu.
+  # Size of the dungeon a right-click opens.
   size: medium
 
-  # Hangi temadan üretilecek. Boş bırakılırsa: tek tema varsa o kullanılır, birden fazlaysa
-  # geçit açılmaz ve sebebini söyler — sessizce yanlış havuzdan çekmek "neden crypt odaları
-  # geldi" hatası üretir.
+  # Which theme it is generated from. Left empty: if there is exactly one theme it is used; if
+  # there are several the gateway does not open and says why — silently drawing from the wrong
+  # pool produces the "why did I get crypt rooms" bug.
   theme: ""
 
   lobby:
-    # Kullanılmış bir lobby geçidi günün hangi saatlerinde yenilenir. Süre değil SAAT:
-    # lobby ortak bir yer, "zindanlar 12'de ve gece yarısı yenilenir" duyurulabilir ve
-    # oyuncu buna göre plan yapar. Kayan bir sayaçta her geçit başka bir anda dönerdi.
-    # Liste boş bırakılırsa dungeon biter bitmez yenilenir.
+    # At which hours of the day a used lobby gateway comes back. These are HOURS, not a duration:
+    # a lobby is a shared place, "the dungeons refresh at noon and midnight" can be announced, and
+    # players plan around it. On a sliding countdown every gateway would come back at its own
+    # private moment. Leave the list empty and it refreshes as soon as its dungeon ends.
     refresh-hours: [0, 12]
 
-    # Açılışta kurulacak sabit geçitler. Geçitler restart'ı atlatmıyor (kalıcılık FAZ 7'de),
-    # bu yüzden lobby geçidinin kalıcı adresi burası.
+    # Fixed gateways created at startup. Gateways do not survive a restart (persistence is
+    # PHASE 7), so this is the lobby gateway's permanent address.
     #   - world: world
     #     x: 100
     #     y: 64
     #     z: 100
-    #     size: medium      # opsiyonel
-    #     theme: default    # opsiyonel
+    #     size: medium      # optional
+    #     theme: default    # optional
     points: []
 
   wild:
-    # Doğada kendiliğinden doğan geçitler. Bunlar tek kullanımlık: bağlı oldukları dungeon
-    # bitince geçit de silinir. Bulunacak bir şeyin aynı yerde yeniden doğması onu
-    # bulunacak bir şey olmaktan çıkarır.
+    # Gateways that appear out in the world on their own. These are single-use: when the dungeon
+    # behind one ends, the gateway is deleted too. Something that respawns in the same spot stops
+    # being something you find.
     enabled: true
 
-    # Boş bırakılırsa her dünyada doğabilir.
+    # Leave empty to allow every world.
     worlds: [world]
 
-    # Kaç dakikada bir doğma denemesi yapılır. En az 1 dakikaya sıkıştırılır.
+    # How many minutes between spawn attempts. Clamped to at least 1 minute.
     interval-minutes: 10
 
-    # Aynı anda doğada en fazla kaç geçit durabilir.
+    # How many wild gateways may stand at the same time.
     max: 3
 
-    # Geçit rastgele bir ONLINE oyuncunun etrafında doğar, spawn'ın etrafında değil: kimsenin
-    # olmadığı yerde beliren dungeon kimsenin bulmadığı dungeon'dır. Kimse online değilse
-    # hiçbir şey doğmaz.
+    # A gateway spawns around a random ONLINE player, not around spawn: a dungeon that appears
+    # where nobody is, is a dungeon nobody finds. With nobody online, nothing spawns.
     min-distance: 64
     max-distance: 256
 
-    # İki geçit arasındaki en az mesafe.
+    # Minimum distance between two gateways.
     spacing: 128
 
 hud:
-  # Sağ taraftaki sidebar HUD'u. false ise hiçbir oyuncuya gösterilmez ve /hud da çalışmaz.
+  # The sidebar HUD on the right. false hides it from every player and disables /hud as well.
   enabled: true
 
-  # Oyuncu sunucuya girdiğinde HUD açık mı gelsin. Her oyuncu kendi tarafında /hud ile
-  # kapatabilir; bu tercih şimdilik oturum boyunca hatırlanır (kalıcı olması SQL katmanını,
-  # yani FAZ 7'yi bekliyor — player data YAML'a yazılmaz).
+  # Whether the HUD is on when a player joins. Each player can turn it off for themselves with
+  # /hud; for now that choice is remembered for the session only (making it stick waits on the
+  # SQL layer, i.e. PHASE 7 — player data is never written to YAML).
   show-by-default: true
 
-  # Kaç tick'te bir tazelenir. 20 tick = 1 saniye. Bugün satırların hepsi sabit; coin ve XP
-  # gerçek değer döndürmeye başladığında bu değer önem kazanacak. Çok düşürmenin anlamı yok.
+  # How many ticks between refreshes. 20 ticks = 1 second. Today every line is static; this value
+  # will start to matter once coin and XP return real numbers. There is no point lowering it much.
   refresh-ticks: 20
 
-  # Bu ikisi operatör komutuyla da değiştirilebilir ve buraya geri yazılır:
-  #   /tdungeons hud name <metin>
-  #   /tdungeons hud ip <metin>
-  # Düz metin yazılırsa başlık altın sarısı + kalın çıkar; MiniMessage etiketi yazılırsa
-  # kendi rengini korur.
+  # These two can also be changed by operator command, which writes them back here:
+  #   /tdungeons hud name <text>
+  #   /tdungeons hud ip <text>
+  # Plain text is rendered gold and bold; a MiniMessage tag keeps its own colours.
   server-name: "<gradient:#ffd45e:#ff8a3d>TAKASHI</gradient>"
-  server-ip: "play.sunucun.net"
+  server-ip: "play.example.net"
 
-  # SATIR DÜZENİ burada değil: lang/<dil>.yml -> hud.lines
+  # The LINE LAYOUT is not here: lang/<code>.yml -> hud.lines
   #
-  # Sebep: düzendeki kelimeler — Oyuncu, Coin, Rank — tam da çevrilmesi gereken kelimeler.
-  # Gösterdiği değerler (yukarıdaki server-name ve server-ip) burada kalıyor.
+  # Reason: the words in the layout — Player, Coin, Rank — are exactly the words that need
+  # translating. The values it shows (server-name and server-ip above) stay here.

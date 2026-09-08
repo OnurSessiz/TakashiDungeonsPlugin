@@ -1,10 +1,10 @@
-# entrance_small — kucuk giris odasi, iki kapi (kuzey + bati)
+# entrance_small - small entrance room, two doors (north + west)
 #
-# origin (//copy anindaki ayak blogu):  -6, 89, 256
-#   door 0:  -6, 89, 251  ->  [ 0, 0, -5]   kuzey duvari
-#   door 1: -11, 89, 253  ->  [-5, 0, -3]   bati duvari
+# origin (the block under your feet at //copy time):  -6, 89, 256
+#   door 0:  -6, 89, 251  ->  [ 0, 0, -5]   north wall
+#   door 1: -11, 89, 253  ->  [-5, 0, -3]   west wall
 #
-# Kutu (origin'e gore): X -5..6  Y -1..5  Z -5..5
+# Box (relative to origin): X -5..6  Y -1..5  Z -5..5
 
 type: entrance
 weight: 100

@@ -32,7 +32,7 @@ private void tick() {
             continue;
         }
         if (instance.isExpired()) {
-            expire(instance, "Süre doldu");
+            expire(instance, "instance.reason-expired");
             continue;
         }
         // An instance nobody is in is holding a slot for nothing. Only armed once somebody
@@ -40,7 +40,7 @@ private void tick() {
         // birth, and closing it on that basis would delete the rooms they are standing in.
         if (emptyTimeout > 0 && instance.everOccupied() && instance.playerCount() == 0
                 && instance.emptyMillis() >= emptyTimeout) {
-            expire(instance, "İçeride kimse kalmadı");
+            expire(instance, "instance.reason-empty");
             continue;
         }
         updateBossBar(instance);
@@ -52,14 +52,10 @@ private void tick() {
 <h2>22.2 &nbsp;Expiry sends people home first</h2>
 
 @@CODE java|expire — note the comment on why sendEveryoneHome is called before close.@@
-private void expire(DungeonInstance instance, String reason) {
-    for (UUID uuid : instance.players()) {
-        Player player = plugin.getServer().getPlayer(uuid);
-        if (player != null) {
-            player.sendMessage(Component.text(reason + " — dungeon kapanıyor.",
-                    NamedTextColor.YELLOW));
-        }
-    }
+private void expire(DungeonInstance instance, String reasonKey) {
+    Messages messages = plugin.getMessages();
+    broadcast(instance, messages.get("instance.closing", Placeholder.component("reason",
+            messages.get(reasonKey))));
     // Players first, and to THEIR OWN return location — close() only knows the generic way
     // out and would drop everyone at world spawn.
     sendEveryoneHome(instance);
