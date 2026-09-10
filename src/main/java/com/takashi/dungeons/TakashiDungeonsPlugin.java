@@ -24,6 +24,9 @@ import com.takashi.dungeons.party.PartyManager;
 import com.takashi.dungeons.portal.PortalListener;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.schematic.BundledRooms;
+import com.takashi.dungeons.shop.ShopListener;
+import com.takashi.dungeons.shop.ShopManager;
+import com.takashi.dungeons.shop.ShopRegistry;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
@@ -78,6 +81,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private LootService lootService;
     private LootPopulator lootPopulator;
     private DungeonChestTag dungeonChestTag;
+    private ShopRegistry shopRegistry;
+    private ShopManager shopManager;
     private MobDropService mobDropService;
     private Messages messages;
 
@@ -102,6 +107,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupMobs();
         setupLoot();
         setupInstances();
+        setupShop();
         setupParty();
         setupPortals();
         setupHud();
@@ -262,6 +268,29 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     }
 
     /**
+     * The supply merchant's catalogue.
+     *
+     * <p>Built after the loot layer because a stock entry may reference a {@code loot.yml} item by
+     * id, and that reference is resolved at load — an unresolvable one has to be reported as a
+     * broken entry rather than silently sold as something else.
+     */
+    private void setupShop() {
+        shopRegistry = new ShopRegistry(this);
+        shopRegistry.load();
+        shopManager = new ShopManager(this);
+        getServer().getPluginManager().registerEvents(new ShopListener(this), this);
+        // The merchant belongs to its instance and dies with it. Wired here, like every other
+        // cross-layer signal in this plugin, so neither class has to know the other exists.
+        instanceManager.onClosed(instance -> {
+            shopManager.forget(instance.id());
+            // A window left open over a dungeon that is gone would keep offering goods. The click
+            // handler refuses them anyway — that is the guarantee — but a window that answers
+            // every click with "this dungeon is gone" is worse than one that simply closes.
+            shopManager.closeMenus(instance.id());
+        });
+    }
+
+    /**
      * The party layer. No external dependency and no dependency on WorldEdit either: a party is
      * people, and people can be grouped on a server that cannot generate a single room.
      *
@@ -404,6 +433,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The instance registry. Always built — it reports its own missing dependencies. */
     public InstanceManager getInstanceManager() {
         return instanceManager;
+    }
+
+    /** The supply merchant's catalogue. Always built — it reports its own problems. */
+    public ShopRegistry getShopRegistry() {
+        return shopRegistry;
+    }
+
+    /** Places merchants and knows which entity is one. Always built. */
+    public ShopManager getShopManager() {
+        return shopManager;
     }
 
     /** The party registry. Always built — grouping players needs nothing installed. */

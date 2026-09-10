@@ -1,0 +1,128 @@
+# TakashiDungeons - the supply merchant
+#
+# One merchant stands in the ENTRANCE room of a dungeon and sells supplies for the run. The
+# entrance is the only room that is otherwise left empty (no mobs, no chests), so this is the one
+# place a merchant can stand without competing with anything.
+#
+# THIS FILE IS SELF-CONTAINED: the merchant, the currency and the stock all live here and
+# config.yml holds nothing about the shop. Same shape as mobs.yml and loot.yml - a catalogue
+# carries the rules that only make sense next to it.
+#
+# It is NEVER overwritten once it exists, so your edits survive plugin updates.
+#
+# ---------------------------------------------------------------------------------------------
+# TWO TRAPS THIS FILE EXISTS TO AVOID
+#
+#   * Do NOT put shop-only items in loot.yml. Every entry there belongs to a rarity pool, so it
+#     would start turning up in chests. Define the item HERE instead - the block below understands
+#     the same fields loot.yml does. To sell something the catalogue already has, use 'loot: <id>'.
+#
+#   * Do NOT put the merchant in mobs.yml. Every entry there belongs to a class pool and the
+#     populator draws from those pools by class - your merchant would spawn in the rooms, as an
+#     enemy, with rolled stats. The 'keeper' block below addresses a mob without registering one.
+# ---------------------------------------------------------------------------------------------
+
+# false: no merchant is spawned, in any dungeon. Everything else here is still read at start, so
+# a typo is reported now rather than the first time somebody switches this on.
+enabled: true
+
+keeper:
+  # <provider>:<mob> - the same addressing mobs.yml uses. Providers today: vanilla, mythicmobs.
+  # A MythicMobs NPC as your merchant is this line and nothing else.
+  mob: "vanilla:VILLAGER"
+
+  # The name floating over it. MiniMessage. Leave it out to keep the mob's own name.
+  name: "<gold>Supply Merchant</gold>"
+
+  # Chance that a generated dungeon gets one. 1.0 = always, 0.5 = half the time.
+  chance: 1.0
+
+  # How far from the spot players land on, in blocks. Without this the merchant can be standing
+  # in the face of everyone who walks in, because the entrance room's centre is also where the
+  # search for a standable spot starts.
+  min-distance: 3
+
+# What players pay with.
+#
+# An ITEM, because a fresh server has no economy plugin installed and the shop still has to work.
+# It also closes a loop the plugin already owns: loot.yml ships emerald_shard in the uncommon pool,
+# so what comes out of a chest is what gets spent here - roughly 3-4 emeralds per medium dungeon,
+# which is what the prices below are calibrated against.
+#
+# Any PLAIN stack of this material pays. An emerald with a custom name, lore or enchantment does
+# not: it is somebody's keepsake or a loot item that happens to be made of the same stuff, and
+# spending it by accident cannot be undone.
+#
+# A real coin - one that is not an item at all - arrives with the TakashiMarket addon and plugs
+# into the same seam; nothing here has to change when it does.
+currency:
+  material: EMERALD
+  name: "Emerald"
+
+# ---------------------------------------------------------------------------------------------
+# STOCK. The order here is the order the goods sit in the menu.
+#
+# Each entry takes:
+#   price     required, at least 1. What ONE purchase costs.
+#   amount    how many the purchase hands over. A single number, not a range: a fixed price that
+#             buys a random amount is a slot machine, not a shop.
+#   limit     how many times ONE PLAYER may buy this in ONE dungeon. 0 or absent = no limit.
+#   enabled   false to switch an entry off without deleting it.
+#   loot      sell an item defined in loot.yml, by its id, instead of describing it here.
+#
+# Everything else is the same item block loot.yml uses: material, name, lore, enchantments,
+# unbreakable, custom-model-data, glow, hide.
+#
+# NOT SUPPORTED YET: potion effects. A 'POTION' here comes out as a water bottle, because the item
+# block has no potion data field. Use GOLDEN_APPLE for healing until it does.
+# ---------------------------------------------------------------------------------------------
+stock:
+
+  bread_rations:
+    material: BREAD
+    amount: 8
+    price: 1
+
+  cooked_meat:
+    material: COOKED_BEEF
+    amount: 6
+    price: 2
+
+  torch_bundle:
+    material: TORCH
+    amount: 16
+    price: 1
+
+  arrow_quiver:
+    material: ARROW
+    amount: 32
+    price: 2
+
+  # Limited on purpose. A party that can buy twelve golden apples at the door has bought its way
+  # out of the boss fight, and the fight is the dungeon.
+  golden_apple:
+    material: GOLDEN_APPLE
+    amount: 1
+    price: 5
+    limit: 2
+
+  escape_pearls:
+    material: ENDER_PEARL
+    amount: 2
+    price: 4
+    limit: 2
+
+  battered_shield:
+    material: SHIELD
+    amount: 1
+    price: 4
+    limit: 1
+    name: "<gray>Battered Shield</gray>"
+
+  # Selling something loot.yml already defines: the name, lore and enchantments come from there,
+  # the price and the limit from here. This is the reference form - no material line needed.
+  crypt_blade:
+    loot: crypt_blade
+    amount: 1
+    price: 16
+    limit: 1

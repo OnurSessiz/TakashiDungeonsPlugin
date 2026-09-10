@@ -78,8 +78,18 @@ public record LootItem(String id, ItemClass itemClass, int weight, Material mate
      * field, so the operator has one line to look at instead of a set that loaded and behaves wrong.
      */
     public static LootItem parse(ConfigurationSection section, String id) {
-        String where = "items." + id;
+        return parse(section, id, "items." + id);
+    }
 
+    /**
+     * The same parse, told where it is reading from.
+     *
+     * <p>{@code shop.yml} reuses this parser for its stock — an item is an item, and duplicating
+     * material/name/lore/enchantment handling would mean two places to fix a bug in. What it cannot
+     * reuse is the path in the error message: a shop entry reported as {@code items.bread} sends
+     * the operator to the wrong file.
+     */
+    public static LootItem parse(ConfigurationSection section, String id, String where) {
         String materialName = section.getString("material");
         if (materialName == null || materialName.isBlank()) {
             throw new IllegalArgumentException(where + ": the 'material' field is required - "

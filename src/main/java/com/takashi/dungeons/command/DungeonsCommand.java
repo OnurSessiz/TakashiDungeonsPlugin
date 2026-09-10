@@ -30,6 +30,10 @@ import com.takashi.dungeons.portal.PortalKind;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.portal.PortalState;
 import com.takashi.dungeons.schematic.BundledRooms;
+import com.takashi.dungeons.shop.KeeperSpec;
+import com.takashi.dungeons.shop.ShopCurrency;
+import com.takashi.dungeons.shop.ShopEntry;
+import com.takashi.dungeons.shop.ShopRegistry;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.generation.RoomTemplate;
 import com.takashi.dungeons.generation.RoomTemplateStore;
@@ -58,6 +62,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -84,7 +89,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "mob", "loot", "parties", "slots", "free", "reload", "hud",
+                    "portal", "mob", "loot", "shop", "parties", "slots", "free", "reload", "hud",
                     "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
@@ -94,6 +99,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
     private static final List<String> LOOT_ACTIONS =
             List.of("list", "info", "tables", "roll", "give", "reload");
+
+    private static final List<String> SHOP_ACTIONS = List.of("list", "info", "reload");
 
     private static final List<String> DIFFICULTIES = List.of("easy", "medium", "hard");
 
@@ -139,6 +146,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "portal" -> portal(sender, label, args);
             case "mob" -> mob(sender, label, args);
             case "loot" -> loot(sender, label, args);
+            case "shop" -> shop(sender, label, args);
             case "parties" -> parties(sender);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
@@ -738,6 +746,12 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (plugin.getLootRegistry() != null) {
             lootReload(sender);
         }
+        // The shop too, and for the same reason again: shop.yml has no WorldEdit dependency. It
+        // reloads AFTER loot, because a stock entry may reference a loot.yml item by id and the
+        // reference is resolved at load — against the freshly read catalogue, not the old one.
+        if (plugin.getShopRegistry() != null) {
+            shopReload(sender);
+        }
         // Parties re-read their limits. Existing parties are LEFT ALONE, including any that are
         // now over a lowered max-size: a reload is a settings change, and breaking up a group
         // mid-dungeon to satisfy a number the operator has just typed is not one.
@@ -849,6 +863,125 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         sender.sendMessage(Component.text("  /tdungeons enter <id> | leave | close <id|all>",
                 NamedTextColor.DARK_GRAY));
+    }
+
+    // ------------------------------------------------------------------ shop
+
+    private void shop(CommandSender sender, String label, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /" + label + " shop <"
+                    + String.join("|", SHOP_ACTIONS) + ">", NamedTextColor.RED));
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "list" -> shopList(sender);
+            case "info" -> shopInfo(sender, label, args);
+            case "reload" -> shopReload(sender);
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " shop <"
+                    + String.join("|", SHOP_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * The whole shop in one screen.
+     *
+     * <p>An operator cannot walk up to a merchant from the console, so this listing is the only way
+     * to see what the file actually produced — including the entries that did not survive it.
+     */
+    private void shopList(CommandSender sender) {
+        ShopRegistry shop = plugin.getShopRegistry();
+        if (shop == null) {
+            sender.sendMessage(Component.text("The shop layer is not available.", NamedTextColor.RED));
+            return;
+        }
+        if (shop.loadError() != null) {
+            sender.sendMessage(Component.text(shop.loadError(), NamedTextColor.RED));
+        }
+        if (!shop.isEnabled()) {
+            sender.sendMessage(Component.text("The shop is switched off (shop.yml -> enabled: false).",
+                    NamedTextColor.YELLOW));
+        }
+
+        KeeperSpec keeper = shop.keeper();
+        ShopCurrency currency = shop.currency();
+        sender.sendMessage(Component.text("Merchant: ", NamedTextColor.GOLD)
+                .append(Component.text(keeper == null ? "not defined" : keeper.toString(),
+                        keeper == null ? NamedTextColor.RED : NamedTextColor.WHITE)));
+        sender.sendMessage(Component.text("Currency: ", NamedTextColor.GOLD)
+                .append(currency == null
+                        ? Component.text("not defined", NamedTextColor.RED)
+                        : currency.format(1).color(NamedTextColor.WHITE)));
+
+        Collection<ShopEntry> stock = shop.stock();
+        sender.sendMessage(Component.text("Stock (" + stock.size() + "):", NamedTextColor.GOLD));
+        for (ShopEntry entry : stock) {
+            sender.sendMessage(Component.text("  " + entry.id(), NamedTextColor.WHITE)
+                    .append(Component.text("  " + entry.amount() + "x " + entry.item().material(),
+                            NamedTextColor.GRAY))
+                    .append(Component.text("  " + entry.price(), NamedTextColor.YELLOW))
+                    .append(entry.hasLimit()
+                            ? Component.text("  limit " + entry.limit(), NamedTextColor.DARK_GRAY)
+                            : Component.empty()));
+        }
+
+        for (ShopRegistry.Disabled bad : shop.disabled()) {
+            sender.sendMessage(Component.text("  disabled: " + bad.id() + " - " + bad.reason(),
+                    NamedTextColor.RED));
+        }
+        // Said out loud, because "usable" is the difference between a merchant standing in the
+        // entrance and no merchant at all, and every reason for it is somewhere else on screen.
+        sender.sendMessage(Component.text("  -> " + (shop.isUsable()
+                ? "usable: a merchant will be placed"
+                : "NOT usable: no merchant will be placed"),
+                shop.isUsable() ? NamedTextColor.GREEN : NamedTextColor.RED));
+        // The only way to see a merchant from a console: it is standing in a world nobody is in.
+        sender.sendMessage(Component.text("  standing right now: "
+                + plugin.getShopManager().liveCount(), NamedTextColor.GRAY));
+    }
+
+    private void shopInfo(CommandSender sender, String label, String[] args) {
+        if (args.length < 3) {
+            sender.sendMessage(Component.text("Usage: /" + label + " shop info <id>",
+                    NamedTextColor.RED));
+            return;
+        }
+        ShopEntry entry = plugin.getShopRegistry().entry(args[2]);
+        if (entry == null) {
+            sender.sendMessage(Component.text("No stock entry called '" + args[2] + "'.",
+                    NamedTextColor.RED));
+            return;
+        }
+        LootItem item = entry.item();
+        sender.sendMessage(Component.text(entry.id(), NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  item: " + entry.amount() + "x " + item.material(),
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  price: " + entry.price(), NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  limit: "
+                + (entry.hasLimit() ? entry.limit() + " per player per dungeon" : "none"),
+                NamedTextColor.GRAY));
+        if (item.displayName() != null) {
+            sender.sendMessage(Component.text("  name: ", NamedTextColor.GRAY)
+                    .append(MiniMessage.miniMessage().deserialize(item.displayName())));
+        }
+        for (String line : item.lore()) {
+            sender.sendMessage(Component.text("  lore: ", NamedTextColor.DARK_GRAY)
+                    .append(MiniMessage.miniMessage().deserialize(line)));
+        }
+        item.enchantments().forEach((enchantment, level) -> sender.sendMessage(
+                Component.text("  enchant: " + enchantment.getKey().getKey() + " " + level,
+                        NamedTextColor.GRAY)));
+    }
+
+    private void shopReload(CommandSender sender) {
+        ShopRegistry shop = plugin.getShopRegistry();
+        if (shop == null) {
+            sender.sendMessage(Component.text("The shop layer is not available.", NamedTextColor.RED));
+            return;
+        }
+        shop.load();
+        sender.sendMessage(Component.text("shop.yml reloaded - " + shop.stock().size()
+                + " for sale" + (shop.isUsable() ? "" : " (NOT usable - see /tdungeons shop list)"),
+                shop.isUsable() ? NamedTextColor.GREEN : NamedTextColor.YELLOW));
     }
 
     /**
@@ -1923,6 +2056,17 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             }
             if (args.length == 4 && action.equals("roll")) {
                 return DIFFICULTIES.stream().filter(d -> d.startsWith(prefix)).toList();
+            }
+            return List.of();
+        }
+        if (sub.equals("shop")) {
+            String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
+            if (args.length == 2) {
+                return SHOP_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+            }
+            if (args.length == 3 && args[1].equalsIgnoreCase("info")) {
+                return plugin.getShopRegistry().stock().stream().map(ShopEntry::id)
+                        .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
             }
             return List.of();
         }

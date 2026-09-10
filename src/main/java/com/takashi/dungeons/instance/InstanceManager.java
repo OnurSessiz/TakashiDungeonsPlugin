@@ -232,6 +232,22 @@ public final class InstanceManager {
             } catch (RuntimeException error) {
                 plugin.getLogger().warning("Chest placement failed (" + instance + "): " + error);
             }
+            // The merchant, in the same pass and its own try for the third time. It is the least
+            // important of the three -- a dungeon with no shop is a dungeon; the other two are
+            // what the player came for -- so it must not be able to cost either of them.
+            try {
+                var shop = plugin.getShopManager().place(instance, world);
+                if (shop.placed()) {
+                    plugin.getLogger().info("Merchant placed: instance#" + instance.id());
+                } else if (shop.reason() != null && !shop.reason().equals("chance")) {
+                    // "chance" is the operator's own dice and says nothing; anything else is a
+                    // reason they would want to know about.
+                    plugin.getLogger().info("No merchant in instance#" + instance.id() + ": "
+                            + shop.reason());
+                }
+            } catch (RuntimeException error) {
+                plugin.getLogger().warning("Merchant placement failed (" + instance + "): " + error);
+            }
             done.complete(instance);
         });
         return done;

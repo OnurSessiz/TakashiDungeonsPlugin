@@ -82,6 +82,49 @@ loot:
   # Boss öldü ve ödül sandığı düştüğü yerde belirdi. Tag: <boss>
   boss-reward: "<gold><boss> düştüğü yerde bir hazine bıraktı.</gold>"
 
+shop:
+
+  # ---------------------------------------------------------------------------------------------
+  # Supply tuccari. NE sattigi ve NE kadara sattigi burada DEGIL - o operatorun yazdigi icerik ve
+  # shop.yml'de fiyatinin yaninda duruyor, tipki bir item'in adinin loot.yml'de agirliginin
+  # yaninda durdugu gibi. Burada olan sey: satin alma hakkinda PLUGIN'in soyledigi her kelime.
+  # ---------------------------------------------------------------------------------------------
+
+  # Pencere. Plugin kendi penceresini nesne kimliginden buluyor, bu metinden degil - yani bunu
+  # cevirmek dukkani bozamaz.
+  menu-title: "<dark_gray>Supply Tuccari</dark_gray>"
+
+  # Her item'in kendi lore'unun altina eklenen fiyat etiketi. <amount> para birimi tarafindan
+  # zaten bicimlendirilmis fiyat ("5 Zumrut").
+  menu-price: "<yellow>Fiyat: <amount></yellow>"
+
+  # Sadece limiti olan girdilerde. <left> <limit>
+  menu-left: "<gray>Senin icin <limit> taneden <left> kaldi</gray>"
+  menu-sold-out: "<red><limit> tanenin hepsini aldin</red>"
+
+  menu-click: "<dark_gray>Almak icin tikla</dark_gray>"
+
+  # Alt satir. <amount> oyuncunun tasidigi.
+  menu-balance: "<gold>Sende: <amount></gold>"
+  menu-close: "<red>Kapat</red>"
+
+  # Satin alma gerceklesti. <amount> kac tane, <item> ne, <price> kaca.
+  bought: "<green><amount>x <item> alindi <gray>- <price></gray></green>"
+
+  # Gerceklesmedi. <price>
+  too-poor: "<red>Bunu alamazsin - fiyati <price>.</red>"
+  limit-reached: "<red>Bu dungeon'da bundan alabilecegin kadarini aldin.</red>"
+
+  # Odeme alinmadan ONCE reddediliyor: parayi geri vermenin dolu envanterde patlamayacak bir yolu
+  # yok, o yuzden dukkan once bakiyor ve dolu envantere hicbir zaman satmiyor.
+  no-room: "<red>Envanterin dolu.</red>"
+
+  # Pencere acikken dungeon kapandi.
+  gone: "<red>Bu dungeon artik yok.</red>"
+
+  # Tuccar orada duruyor ama dogdugundan beri shop.yml bir reload ile bozulmus.
+  unavailable: "<red>Tuccarin su an satacak bir seyi yok.</red>"
+
 party:
 
   # ---------------------------------------------------------------------------------------------

@@ -86,6 +86,49 @@ loot:
   # The boss is dead and its reward chest has appeared where it fell. Tag: <boss>
   boss-reward: "<gold><boss> has left a hoard where it fell.</gold>"
 
+shop:
+
+  # ---------------------------------------------------------------------------------------------
+  # The supply merchant. WHAT it sells and WHAT it costs are not here - that is content the
+  # operator authors, and it lives in shop.yml next to the price, exactly as an item's name lives
+  # in loot.yml next to its weight. What is here is every word the PLUGIN says about a purchase.
+  # ---------------------------------------------------------------------------------------------
+
+  # The window. The plugin finds its own window by object identity, never by this text, so
+  # translating it cannot break the shop.
+  menu-title: "<dark_gray>Supply Merchant</dark_gray>"
+
+  # The price tag added under each item's own lore. <amount> is the price, already formatted by
+  # the currency ("5 Emerald").
+  menu-price: "<yellow>Price: <amount></yellow>"
+
+  # Only shown for entries that have a limit. <left> <limit>
+  menu-left: "<gray><left> of <limit> left for you</gray>"
+  menu-sold-out: "<red>You have bought all <limit></red>"
+
+  menu-click: "<dark_gray>Click to buy</dark_gray>"
+
+  # The footer. <amount> is what the player is carrying.
+  menu-balance: "<gold>You have: <amount></gold>"
+  menu-close: "<red>Close</red>"
+
+  # A purchase went through. <amount> how many, <item> what, <price> what it cost.
+  bought: "<green>Bought <amount>x <item> <gray>for <price></gray></green>"
+
+  # It did not. <price>
+  too-poor: "<red>You cannot afford that - it costs <price>.</red>"
+  limit-reached: "<red>You have bought as many of those as this dungeon allows.</red>"
+
+  # Refused BEFORE any payment is taken: there is no way to hand the money back that cannot itself
+  # fail on a full inventory, so the shop checks first and never sells into one.
+  no-room: "<red>Your inventory is full.</red>"
+
+  # The dungeon closed while the window was open.
+  gone: "<red>This dungeon is gone.</red>"
+
+  # The merchant is standing there, but shop.yml has been broken by a reload since it spawned.
+  unavailable: "<red>The merchant has nothing to sell right now.</red>"
+
 party:
 
   # ---------------------------------------------------------------------------------------------
