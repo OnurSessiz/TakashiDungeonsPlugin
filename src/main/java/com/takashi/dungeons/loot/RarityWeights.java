@@ -11,7 +11,7 @@ import java.util.random.RandomGenerator;
  * How a single loot draw is split between the rarity classes, and what difficulty does to it.
  *
  * <h2>Weights, not percentages</h2>
- * The shipped split is 1000-based — 600 / 250 / 100 / 40 / 10 — because adding a class or nudging
+ * The shipped split is 1000-based — 625 / 265 / 85 / 20 / 5 — because adding a class or nudging
  * one share should not force every other number to be retyped. It is the same convention room
  * templates and {@code mobs.yml} already use, so an operator learns {@code weight} once.
  *
@@ -25,10 +25,10 @@ import java.util.random.RandomGenerator;
  * still read against the same denominator. The worked example, at hard (2.5×):
  *
  * <pre>
- *   rare       100 -> 250      uncommon 250 (untouched)
- *   ultra       40 -> 100      common   1000 - 375 - 250 = 375
- *   legendary   10 ->  25
- *   rare total 150 -> 375      legendary: 1% -> 2.5%, common: 60% -> 37.5%
+ *   rare        85 -> 213      uncommon 265 (untouched)
+ *   ultra       20 ->  50      common   625 - 166 = 459
+ *   legendary    5 ->  13
+ *   rare total 110 -> 276      legendary: 0.5% -> 1.3%, common: 62.5% -> 45.9%
  * </pre>
  *
  * <h2>Common is the only source, and it can run out</h2>
@@ -50,7 +50,13 @@ public record RarityWeights(Map<ItemClass, Integer> weights) {
     public static final int TOTAL = 1000;
 
     /**
-     * The shipped split: 60 / 25 / 10 / 4 / 1 percent, and <b>no mythic</b>.
+     * The shipped split: 62.5 / 26.5 / 8.5 / 2 / 0.5 percent, and <b>no mythic</b>.
+     *
+     * <p>The top end is deliberately thin. A medium dungeon holds around a dozen chests, so a
+     * draw's share is multiplied by roughly 36: at the 4% ultra rare this shipped with first, that
+     * was two and a half enchanted diamond swords <i>per run</i>, and a tier that arrives every run
+     * is equipment rather than a find. Halved to 2% it is about one a run, which is what the word
+     * has to mean inside an instance built to be replayed.
      *
      * <p>Mythic is left at zero here on purpose. It is the reward for killing a boss, so only the
      * shipped {@code boss_chest} declares a weight for it; every table that does not override this
@@ -58,7 +64,7 @@ public record RarityWeights(Map<ItemClass, Integer> weights) {
      * enforces that, and an operator who writes a mythic weight into their own table gets exactly
      * what they wrote.
      */
-    public static final RarityWeights DEFAULT = of(600, 250, 100, 40, 10, 0);
+    public static final RarityWeights DEFAULT = of(625, 265, 85, 20, 5, 0);
 
     public RarityWeights {
         EnumMap<ItemClass, Integer> copy = new EnumMap<>(ItemClass.class);

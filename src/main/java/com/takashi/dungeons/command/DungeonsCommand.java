@@ -57,6 +57,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -1651,6 +1652,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
 
         Map<ItemClass, Integer> byClass = new EnumMap<>(ItemClass.class);
+        Map<String, Integer> byItem = new LinkedHashMap<>();
         int draws = 0;
         int empty = 0;
         for (int i = 0; i < count; i++) {
@@ -1662,6 +1664,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             // seeing.
             for (LootService.Drawn drawn : roll.draws()) {
                 byClass.merge(drawn.item().itemClass(), 1, Integer::sum);
+                byItem.merge(drawn.item().id(), 1, Integer::sum);
             }
         }
         RarityWeights expected = table.weightsFor(registry.multiplier(difficulty));
@@ -1679,6 +1682,41 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     + percent(landed == 0 ? 0 : (double) seen / landed) + " seen, "
                     + percent(expected.share(itemClass)) + " expected  (" + seen + ")",
                     NamedTextColor.GRAY));
+            reportItemShare(sender, registry, itemClass, byItem, seen);
+        }
+    }
+
+    /**
+     * The share each item took <b>inside its own class</b>, observed against its weight.
+     *
+     * <p>This is the second of the two weights loot is built on, and until now it was the only
+     * distribution in the system nothing measured: {@code LootProbe} checks the class split over
+     * 200,000 draws, {@code tables} prints the class split, and the block above reports the class
+     * split — while {@code LootRegistry.pick}, which decides <i>which item</i>, had no number
+     * anywhere. A player who keeps finding the same sword had no way to be answered except by
+     * argument, which is exactly the situation this project treats as a bug in the tooling.
+     *
+     * <p>Percentages are within the class, not of the whole roll, because that is the number the
+     * item's {@code weight} actually sets.
+     */
+    private void reportItemShare(CommandSender sender, LootRegistry registry, ItemClass itemClass,
+                                 Map<String, Integer> byItem, int classTotal) {
+        List<LootItem> pool = registry.pool(itemClass);
+        if (pool.size() < 2 || classTotal == 0) {
+            // One item takes 100% of its class by definition, and an empty class has nothing to
+            // report. Printing either would be a line that can never say anything.
+            return;
+        }
+        int weightTotal = 0;
+        for (LootItem item : pool) {
+            weightTotal += item.weight();
+        }
+        for (LootItem item : pool) {
+            int seen = byItem.getOrDefault(item.id(), 0);
+            sender.sendMessage(Component.text("      " + item.id() + ": "
+                    + percent((double) seen / classTotal) + " seen, "
+                    + percent(weightTotal == 0 ? 0 : (double) item.weight() / weightTotal)
+                    + " expected  (" + seen + ")", NamedTextColor.DARK_GRAY));
         }
     }
 

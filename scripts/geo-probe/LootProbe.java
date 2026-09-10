@@ -56,17 +56,25 @@ public class LootProbe {
     // ---------------------------------------------------------------- 1. taban agirliklar
 
     static void baseWeights() {
-        section("Taban agirliklar: 1000 tabanli, 60/25/10/4/1");
+        section("Taban agirliklar: 1000 tabanli, 62.5/26.5/8.5/2/0.5");
         RarityWeights base = RarityWeights.DEFAULT;
         check("toplam 1000", base.total() == 1000, base.total());
-        check("common %60", pct(base, ItemClass.COMMON, 60.0));
-        check("uncommon %25", pct(base, ItemClass.UNCOMMON, 25.0));
-        check("rare %10", pct(base, ItemClass.RARE, 10.0));
-        check("ultra_rare %4", pct(base, ItemClass.ULTRA_RARE, 4.0));
-        check("legendary %1", pct(base, ItemClass.LEGENDARY, 1.0));
+        check("common %62.5", pct(base, ItemClass.COMMON, 62.5));
+        check("uncommon %26.5", pct(base, ItemClass.UNCOMMON, 26.5));
+        check("rare %8.5", pct(base, ItemClass.RARE, 8.5));
+        check("ultra_rare %2", pct(base, ItemClass.ULTRA_RARE, 2.0));
+        check("legendary %0.5", pct(base, ItemClass.LEGENDARY, 0.5));
         check("mythic SIFIR (taban bolumde yok)", base.weight(ItemClass.MYTHIC) == 0,
                 base.weight(ItemClass.MYTHIC));
-        check("rare ve ustu toplami 150", base.rareTotal() == 150, base.rareTotal());
+        check("rare ve ustu toplami 110", base.rareTotal() == 110, base.rareTotal());
+
+        // The reason the top end is this thin, expressed as the number an operator actually feels.
+        // A medium dungeon is ~12 chests x ~3 draws; at the 4% ultra rare that shipped first this
+        // came out at 2.5 enchanted diamond swords PER RUN, which is equipment, not a find.
+        section("Kosum basina ust uc (medium, ~36 cekilis)");
+        RarityWeights medium = base.scaled(1.75);
+        checkNear("ultra_rare ~1.3 adet", 36 * medium.share(ItemClass.ULTRA_RARE), 1.26);
+        checkNear("legendary ~0.3 adet", 36 * medium.share(ItemClass.LEGENDARY), 0.32);
     }
 
     // ---------------------------------------------------------------- 2. isleyis.md ornegi
@@ -78,29 +86,31 @@ public class LootProbe {
     static void hardWorkedExample() {
         section("hard (2.5x) -- isleyis.md'deki ornegin BIREBIR ayni cikmasi");
         RarityWeights hard = RarityWeights.DEFAULT.scaled(2.5);
-        check("rare 100 -> 250", hard.weight(ItemClass.RARE) == 250, hard.weight(ItemClass.RARE));
-        check("ultra_rare 40 -> 100", hard.weight(ItemClass.ULTRA_RARE) == 100,
+        check("rare 85 -> 213 (212.5 yukari)", hard.weight(ItemClass.RARE) == 213,
+                hard.weight(ItemClass.RARE));
+        check("ultra_rare 20 -> 50", hard.weight(ItemClass.ULTRA_RARE) == 50,
                 hard.weight(ItemClass.ULTRA_RARE));
-        check("legendary 10 -> 25", hard.weight(ItemClass.LEGENDARY) == 25,
+        check("legendary 5 -> 13 (12.5 yukari)", hard.weight(ItemClass.LEGENDARY) == 13,
                 hard.weight(ItemClass.LEGENDARY));
-        check("uncommon DOKUNULMUYOR (250)", hard.weight(ItemClass.UNCOMMON) == 250,
+        check("uncommon DOKUNULMUYOR (265)", hard.weight(ItemClass.UNCOMMON) == 265,
                 hard.weight(ItemClass.UNCOMMON));
-        check("common 600 -> 375", hard.weight(ItemClass.COMMON) == 375,
+        check("common 625 -> 459", hard.weight(ItemClass.COMMON) == 459,
                 hard.weight(ItemClass.COMMON));
         check("toplam hala 1000", hard.total() == 1000, hard.total());
-        check("legendary %1 -> %2.5", pct(hard, ItemClass.LEGENDARY, 2.5));
-        check("common %60 -> %37.5", pct(hard, ItemClass.COMMON, 37.5));
+        check("legendary %0.5 -> %1.3", pct(hard, ItemClass.LEGENDARY, 1.3));
+        check("common %62.5 -> %45.9", pct(hard, ItemClass.COMMON, 45.9));
     }
 
     static void mediumMultiplier() {
         section("medium (1.75x)");
         RarityWeights medium = RarityWeights.DEFAULT.scaled(1.75);
-        check("rare 175", medium.weight(ItemClass.RARE) == 175, medium.weight(ItemClass.RARE));
-        check("ultra_rare 70", medium.weight(ItemClass.ULTRA_RARE) == 70,
+        check("rare 149 (148.75 yukari)", medium.weight(ItemClass.RARE) == 149,
+                medium.weight(ItemClass.RARE));
+        check("ultra_rare 35", medium.weight(ItemClass.ULTRA_RARE) == 35,
                 medium.weight(ItemClass.ULTRA_RARE));
-        check("legendary 18 (17.5 yukari yuvarlanir)", medium.weight(ItemClass.LEGENDARY) == 18,
+        check("legendary 9 (8.75 yukari yuvarlanir)", medium.weight(ItemClass.LEGENDARY) == 9,
                 medium.weight(ItemClass.LEGENDARY));
-        check("common 1000 - 263 - 250 = 487", medium.weight(ItemClass.COMMON) == 487,
+        check("common 625 - 83 = 542", medium.weight(ItemClass.COMMON) == 542,
                 medium.weight(ItemClass.COMMON));
         check("toplam hala 1000", medium.total() == 1000, medium.total());
     }
@@ -119,14 +129,15 @@ public class LootProbe {
     static void multiplierBelowOne() {
         section("0.5x ters yone calisiyor (agirlik common'a DONUYOR)");
         RarityWeights half = RarityWeights.DEFAULT.scaled(0.5);
-        check("rare 50", half.weight(ItemClass.RARE) == 50, half.weight(ItemClass.RARE));
-        check("ultra_rare 20", half.weight(ItemClass.ULTRA_RARE) == 20,
+        check("rare 43 (42.5 yukari)", half.weight(ItemClass.RARE) == 43,
+                half.weight(ItemClass.RARE));
+        check("ultra_rare 10", half.weight(ItemClass.ULTRA_RARE) == 10,
                 half.weight(ItemClass.ULTRA_RARE));
-        check("legendary 5", half.weight(ItemClass.LEGENDARY) == 5,
+        check("legendary 3 (2.5 yukari)", half.weight(ItemClass.LEGENDARY) == 3,
                 half.weight(ItemClass.LEGENDARY));
-        check("common 600 -> 675", half.weight(ItemClass.COMMON) == 675,
+        check("common 625 -> 679", half.weight(ItemClass.COMMON) == 679,
                 half.weight(ItemClass.COMMON));
-        check("toplam hala 450+... = 1000", half.total() == 1000, half.total());
+        check("toplam hala 1000", half.total() == 1000, half.total());
     }
 
     // ---------------------------------------------------------------- 3. common tukenirse

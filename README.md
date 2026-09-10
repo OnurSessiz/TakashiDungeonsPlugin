@@ -228,14 +228,20 @@ Rarity is weighted, 1000-based, and the difficulty rule is the part worth readin
 
 | | common | uncommon | rare | ultra rare | legendary |
 |---|---|---|---|---|---|
-| base | 600 | 250 | 100 | 40 | 10 |
-| hard (×2.5) | **375** | 250 | 250 | 100 | 25 |
+| base | 625 | 265 | 85 | 20 | 5 |
+| hard (×2.5) | **459** | 265 | 213 | 50 | 13 |
 
 Multiplying *every* class by the multiplier changes nothing at all — a draw normalises, so ×2.5
 across the board is the distribution you started with. So the multiplier is applied to **rare and
-above only, and the weight it adds is taken back out of common.** Legendary goes 1% → 2.5%;
-common goes 60% → 37.5%; the total stays at 1000 so the shares still read against one
+above only, and the weight it adds is taken back out of common.** Legendary goes 0.5% → 1.3%;
+common goes 62.5% → 45.9%; the total stays at 1000 so the shares still read against one
 denominator.
+
+The top end is deliberately thin, and the reason is arithmetic an operator will otherwise meet the
+hard way: a medium dungeon holds around a dozen chests, so a draw's share is multiplied by roughly
+36. The 4% ultra rare this shipped with first came out at **two and a half enchanted diamond swords
+per run** — a tier that arrives every run is equipment, not a find. At 2% it is about one a run.
+The dungeon's texture is meant to come from *rare* instead, which is still nearly six items a run.
 
 That rule has an edge that cost a rewrite of the shipped defaults: **common is the only source
 and it can run out.** A table needs `common >= (multiplier - 1) × (rare + ultra + legendary)` for
@@ -246,7 +252,7 @@ the numbers, and make the registry **warn at load** with the difficulty it caps 
 value it needs. A comment would not have caught it, because a comment did not catch it.
 
 A draw that lands on a class with no items in it produces **nothing** — it does not slide down to
-a class that does. Sliding would turn the 1% legendary a player just earned into a loaf of bread,
+a class that does. Sliding would turn the legendary a player just earned into a loaf of bread,
 silently, at the worst possible moment.
 
 There is a sixth class above legendary, **mythic**, and nothing about it is special in the code —
@@ -338,8 +344,8 @@ second keeps its arithmetic apart from the Bukkit types it feeds.
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 ```
 
-**249 checks**, split across geometry (53), candidate selection and collision (28), graph
-generation (31), the spawn search (22) and the loot draw (115). They cover rotation round-trips,
+**251 checks**, split across geometry (53), candidate selection and collision (28), graph
+generation (31), the spawn search (22) and the loot draw (117). They cover rotation round-trips,
 wall derivation on square, rectangular and asymmetric rooms, weight distribution over 200,000
 draws, dead-door marking, seed reproducibility, plug coverage, and the out-of-box fallbacks —
 generating with no boss room, no entrance room, no rooms at all, and only single-door rooms.
