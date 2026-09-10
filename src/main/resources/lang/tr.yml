@@ -82,6 +82,159 @@ loot:
   # Boss öldü ve ödül sandığı düştüğü yerde belirdi. Tag: <boss>
   boss-reward: "<gold><boss> düştüğü yerde bir hazine bıraktı.</gold>"
 
+party:
+
+  # ---------------------------------------------------------------------------------------------
+  # /party create diye bir komut YOK - davet göndermek party'yi kuruyor. Ve bağlantı kopması
+  # oyuncuyu party'den çıkarıyor, yani buradaki hiçbir mesaj "çevrimdışı üye" anlatmak zorunda
+  # değil.
+  # ---------------------------------------------------------------------------------------------
+
+  # config.yml -> party.enabled false olduğunda.
+  disabled: "<red>Bu sunucuda party sistemi kapalı.</red>"
+
+  # Adı çözülemeyen oyuncu için - cümlenin ortasında çıkan biri. Bu bir isim değil kelime,
+  # o yüzden çevriliyor.
+  someone: "Biri"
+
+  # --- davetler ------------------------------------------------------------------------------
+
+  # Davet edilen kişiye. <player> daveti gönderen; <accept> ve <deny> plugin'in aşağıdaki dört
+  # anahtardan kurduğu TIKLANABİLİR butonlar. İstediğin yere koy - tıklama davranışı burada
+  # yazmıyor, yani çeviri "kimsenin kabul edemediği davet" üretemez.
+  invite-received: "<gold><player></gold> <yellow>seni party'sine davet etti.</yellow> <accept> <deny>"
+  invite-expires: "<gray>Davet <time> içinde geçersiz olacak.</gray>"
+
+  # Butonlar. label görünen yazı, hover üstüne gelince çıkan.
+  invite-accept-label: "<green>[Kabul Et]</green>"
+  invite-accept-hover: "<green>Party'ye katıl</green>"
+  invite-deny-label: "<red>[Reddet]</red>"
+  invite-deny-hover: "<red>Daveti geri çevir</red>"
+
+  # Daveti gönderene, gönderdikten hemen sonra. <player>
+  invite-sent: "<green><player> oyuncusuna davet gönderildi.</green>"
+
+  # Davet reddedilme sebepleri, /party invite yazana. <player>
+  invite-self: "<red>Kendini davet edemezsin.</red>"
+  invite-already-member: "<red><player> zaten party'nde.</red>"
+  invite-target-busy: "<red><player> zaten bir party'de.</red>"
+  invite-pending: "<red><player> oyuncusunda senden bekleyen bir davet zaten var.</red>"
+
+  # Davetin süresi doldu. İki tarafa da söyleniyor - config.yml -> party.invite-timeout-seconds.
+  invite-expired-target: "<gray><player> oyuncusundan gelen party daveti geçersiz oldu.</gray>"
+  invite-expired-inviter: "<gray><player> party davetini yanıtlamadı.</gray>"
+
+  # --- daveti yanıtlama ----------------------------------------------------------------------
+
+  no-invite: "<red>Bekleyen bir party davetin yok.</red>"
+  no-invite-from: "<red><player> seni davet etmemiş.</red>"
+
+  # Birden fazla davet bekliyor ve isim verilmemiş. Birini seçmek plugin'in hangi party olduğunu
+  # tahmin etmesi olurdu. <count> <label>
+  invite-ambiguous: "<yellow><count> davetin var - /<label> accept <isim> ile yanıtla:</yellow>"
+  invite-ambiguous-entry: "<gray> - <white><player></white> <dark_gray>(<time> kaldı)</dark_gray>"
+
+  accept-sent: "<green>Party'ye katıldın.</green>"
+  deny-sent: "<gray><player> oyuncusunun davetini reddettin.</gray>"
+  already-in-party: "<red>Zaten bir party'desin - önce ondan ayrıl.</red>"
+  invite-too-late: "<red>O davetin süresi dolmuş.</red>"
+  invite-gone: "<red>O party artık yok.</red>"
+
+  # Daveti reddedilen kişiye. <player>
+  denied: "<gray><player> davetini geri çevirdi.</gray>"
+
+  # --- üyelik --------------------------------------------------------------------------------
+
+  # Party'nin tamamına duyuruluyor. <player>
+  joined: "<green><player> party'ye katıldı.</green>"
+  left: "<yellow><player> party'den ayrıldı.</yellow>"
+  quit: "<yellow><player> bağlantısı koptu ve party'den çıktı.</yellow>"
+  kicked-broadcast: "<yellow><player> party'den çıkarıldı.</yellow>"
+  disbanded: "<yellow>Party dağıtıldı.</yellow>"
+
+  # Çıkarılan oyuncuya - artık party'de olmadığı için yukarıdaki satır ona ulaşmıyor.
+  kicked-target: "<red>Party'den çıkarıldın.</red>"
+
+  # /party leave yazan oyuncuya.
+  leave-sent: "<yellow>Party'den ayrıldın.</yellow>"
+
+  # Liderlik. leader-changed devretme, leader-left ise liderin gitmesi. Kural kıdem - en eski üye
+  # devralıyor - çünkü party'nin bunu önceden bilebilmesi gerekiyor. <player>
+  leader-changed: "<gold>Party liderliği artık <player> oyuncusunda.</gold>"
+  leader-left: "<yellow>Lider gitti - party'yi artık <player> yönetiyor.</yellow>"
+
+  # --- party'nin dungeon'ı ---------------------------------------------------------------------
+
+  # Bir üye dungeon'a girdi, yani party'nin artık bir dungeon'ı VAR. Diğerlerine bir kez, oraya
+  # götüren bir butonla haber veriliyor. <player> giren kişi, <join> buton.
+  #
+  # Bu mesaj kimseyi ışınlamıyor - lider bir bloğa tıkladı diye yaptığın işten koparılmak kimsenin
+  # iki kez istediği bir yardım değil, ve dövüşün ortasındaki bir üye oraya ölü varırdı.
+  dungeon-opened: "<gold><player></gold> <yellow>bir dungeon açtı.</yellow> <join>"
+  dungeon-join-label: "<green>[Katıl]</green>"
+  dungeon-join-hover: "<green>Party'nin dungeon'ına ışınlan</green>"
+
+  # /party join ve yukarıdaki buton.
+  joined-dungeon: "<green>Party'nin dungeon'ına katıldın.</green>"
+  no-dungeon: "<red>Party'n bir dungeon'da değil.</red>"
+  already-inside: "<yellow>Zaten party'nin dungeon'ındasın.</yellow>"
+  join-failed: "<red>Party'nin dungeon'ına girilemedi - kapanıyor olabilir.</red>"
+
+  # Party'nin zaten bir dungeon'ı varken herhangi bir geçide sağ tıklamak seni O dungeon'a
+  # götürüyor. İkinci bir dungeon açan party iki slot ve ayrı binalarda duran bir grup demek.
+  sent-to-dungeon: "<yellow>Party'n zaten bir dungeon'da - oraya götürülüyorsun.</yellow>"
+  opening: "<gray>Party'n için zaten bir dungeon hazırlanıyor...</gray>"
+
+  # Sadece config.yml -> party.kick-removes-from-dungeon true iken. Varsayılan kapalı: party'den
+  # ayrılmak ya da çıkarılmak, oyuncunun ortasında olduğu koşuma mal olmamalı.
+  kicked-from-dungeon: "<red>Party'den çıkarıldın ve dungeon'dan dışarı alındın.</red>"
+
+  # --- retler --------------------------------------------------------------------------------
+
+  not-in-party: "<red>Bir party'de değilsin.</red>"
+  not-leader: "<red>Bunu sadece party lideri yapabilir.</red>"
+  not-member: "<red><player> senin party'nde değil.</red>"
+  leader-self: "<red>Bu party'nin lideri zaten sensin.</red>"
+  kick-self: "<red>Kendini çıkarmak için /<label> leave ya da /<label> disband kullan.</red>"
+  target-offline: "<red><player> çevrimiçi değil.</red>"
+  full: "<red>Party dolu (<max>).</red>"
+
+  # Yakalanmayan durum. Oyuncu bunu görüyorsa bir ret kendi satırı olmadan komut katmanına
+  # ulaşmış demektir - issue açmaya değer.
+  failed: "<red>Bu işlem yapılamadı.</red>"
+
+  # --- /party list ---------------------------------------------------------------------------
+
+  # <size> <max>
+  list-header: "<gold>Party</gold> <dark_gray>(<size>/<max>)</dark_gray>"
+  list-leader: "<gray> <gold>*</gold> <white><player></white> <dark_gray>- lider</dark_gray>"
+  list-member: "<gray>   <player></gray>"
+
+  # --- argümansız /party ---------------------------------------------------------------------
+
+  # <label> oyuncunun gerçekten yazdığı alias ile değiştiriliyor (/party, /p, ...).
+  usage:
+    - "/<label> invite <isim>"
+    - "/<label> accept [isim]"
+    - "/<label> deny [isim]"
+    - "/<label> join"
+    - "/<label> leave"
+    - "/<label> kick <isim>"
+    - "/<label> leader <isim>"
+    - "/<label> disband"
+    - "/<label> list"
+  usage-line: "<gray><usage></gray>"
+  usage-one: "<red>Kullanım: <usage></red>"
+
+  # --- /party hud ------------------------------------------------------------------------------
+
+  # Sidebar'ın İÇİNDEKİ party bloğu, ikinci bir HUD değil. /hud "sidebar istiyor muyum", bu ise
+  # "party'm onun içinde olsun mu". Bloğun SATIRLARI aşağıdaki hud: bölümünde.
+  hud-on: "<gray>Party HUD <green>açık</green></gray>"
+  hud-off: "<gray>Party HUD <red>kapalı</red></gray>"
+  hud-unavailable: "<red>HUD sunucu genelinde kapalı.</red>"
+  hud-sidebar-off: "<gray>Sidebar'ın kapalı - party'yi görmek için /hud ile aç.</gray>"
+
 hud:
 
   # Sidebar, yukarıdan aşağı.
@@ -95,10 +248,29 @@ hud:
   #
   # Düzen config.yml'de değil burada, çünkü içindeki kelimeler - Oyuncu, Coin, Rank - tam da
   # çevrilmesi gereken kelimeler. Gösterdiği değerler config.yml'de kalıyor.
+  # Sadece "<party>" yazan bir satır aşağıdaki party bloğuyla DEĞİŞTİRİLİYOR - ne demek olduğu
+  # orada yazıyor. Bu satırı koymazsan party bloğu hiç gösterilmiyor.
   lines:
     - "<dark_gray><strikethrough>                    "
     - "<gray>Oyuncu <white><player>"
     - "<gray>Coin <gold><coin>"
     - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
+    - "<party>"
     - "<dark_gray><strikethrough>                    "
     - "<yellow><ip>"
+
+  # ---------------------------------------------------------------------------------------------
+  # PARTY BLOĞU. Yukarıdaki "<party>" satırının yerine geçiyor ve üye başına bir satıra açılıyor,
+  # ÖNCE LİDER. Party yoksa HİÇBİR ŞEYE açılmıyor - boş başlık da yok, "Party (0)" da yok.
+  #
+  # Tag'ler: başlıkta <size> <max>; üye satırında <player> <health> <max-health>. Can KALP
+  #          cinsinden ve yukarı yuvarlanıyor - oyuncunun kendi çubuğundan okuduğu birim.
+  #
+  # 16 satır tavanı bu bloğu da kapsıyor: uzun düzen + kalabalık party alttan kırpılıyor. Üye
+  # satırlarını kısa tut - sidebar genişliği en uzun satıra göre belirleniyor.
+  #
+  # Başlığı kaldırıp üyeleri tutmak için party-header'ı boş bırak ("").
+  # ---------------------------------------------------------------------------------------------
+  party-header: "<dark_gray><strikethrough>   </strikethrough> <gray>Party <dark_gray>(<size>/<max>)"
+  party-leader: "<gold>*</gold> <white><player> <dark_red>♥<health>"
+  party-member: "<dark_gray>-</dark_gray> <gray><player> <dark_red>♥<health>"

@@ -23,6 +23,13 @@ commands:
     usage: /hud [on|off]
     aliases: [tdhud, dhud]
     permission: takashidungeons.hud
+  party:
+    description: Create and manage a party
+    usage: /party <invite|accept|deny|leave|kick|leader|disband|list>
+    # /p is the alias players expect. It is NOT taken here if another plugin already owns it —
+    # Bukkit hands the loser of an alias clash a namespaced /takashidungeons:party instead.
+    aliases: [p, tdparty]
+    permission: takashidungeons.party
 
 permissions:
   takashidungeons.admin:
@@ -30,6 +37,9 @@ permissions:
     default: op
   takashidungeons.hud:
     description: Ability to toggle your own sidebar HUD
+    default: true
+  takashidungeons.party:
+    description: Ability to form and manage a party
     default: true
   # The admin exception to "no /tp or /tpa inside a dungeon" (anahedef.md 5). Without it the
   # rule would lock staff out of the very instances they need to reach in order to moderate.

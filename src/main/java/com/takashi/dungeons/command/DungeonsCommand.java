@@ -23,6 +23,8 @@ import com.takashi.dungeons.mob.MobDefinition;
 import com.takashi.dungeons.mob.MobProvider;
 import com.takashi.dungeons.mob.MobRegistry;
 import com.takashi.dungeons.mob.MobService;
+import com.takashi.dungeons.party.Party;
+import com.takashi.dungeons.party.PartyManager;
 import com.takashi.dungeons.portal.DungeonPortal;
 import com.takashi.dungeons.portal.PortalKind;
 import com.takashi.dungeons.portal.PortalManager;
@@ -62,6 +64,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -81,7 +84,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "mob", "loot", "slots", "free", "reload", "hud", "extract");
+                    "portal", "mob", "loot", "parties", "slots", "free", "reload", "hud",
+                    "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
@@ -135,6 +139,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "portal" -> portal(sender, label, args);
             case "mob" -> mob(sender, label, args);
             case "loot" -> loot(sender, label, args);
+            case "parties" -> parties(sender);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -733,6 +738,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (plugin.getLootRegistry() != null) {
             lootReload(sender);
         }
+        // Parties re-read their limits. Existing parties are LEFT ALONE, including any that are
+        // now over a lowered max-size: a reload is a settings change, and breaking up a group
+        // mid-dungeon to satisfy a number the operator has just typed is not one.
+        if (plugin.getPartyManager() != null) {
+            plugin.getPartyManager().reload();
+            sender.sendMessage(Component.text("Party settings reloaded - max size "
+                    + plugin.getPartyManager().maxSize()
+                    + (plugin.getPartyManager().isEnabled() ? "" : " (parties are off)"),
+                    NamedTextColor.GREEN));
+        }
 
         SchematicService service = requireSchematics(sender);
         RoomTemplateStore store = plugin.getTemplateStore();
@@ -834,6 +849,46 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         }
         sender.sendMessage(Component.text("  /tdungeons enter <id> | leave | close <id|all>",
                 NamedTextColor.DARK_GRAY));
+    }
+
+    /**
+     * The live parties, for an operator.
+     *
+     * <p>Read-only on purpose: an admin who breaks up somebody's party from the console is a
+     * moderation tool, and this is a window. It exists because a party is invisible from outside —
+     * the console cannot run {@code /party}, and a two-account test needs a third pair of eyes.
+     */
+    private void parties(CommandSender sender) {
+        PartyManager manager = plugin.getPartyManager();
+        if (manager == null) {
+            sender.sendMessage(Component.text("The party layer is not available.", NamedTextColor.RED));
+            return;
+        }
+        if (!manager.isEnabled()) {
+            sender.sendMessage(Component.text("Parties are switched off (config.yml -> party.enabled).",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+        List<Party> live = manager.all();
+        if (live.isEmpty()) {
+            sender.sendMessage(Component.text("No parties.", NamedTextColor.YELLOW));
+            return;
+        }
+        sender.sendMessage(Component.text("Parties (" + live.size() + ", max size "
+                + manager.maxSize() + "):", NamedTextColor.GOLD));
+        for (Party party : live) {
+            StringBuilder names = new StringBuilder();
+            for (UUID member : party.ordered()) {
+                Player online = plugin.getServer().getPlayer(member);
+                String name = online != null ? online.getName() : member.toString();
+                names.append(names.isEmpty() ? "" : ", ")
+                        .append(party.isLeader(member) ? "*" + name : name);
+            }
+            sender.sendMessage(Component.text("  #" + party.id(), NamedTextColor.WHITE)
+                    .append(Component.text("  " + party.size() + "/" + manager.maxSize()
+                            + "  " + names, NamedTextColor.GRAY)));
+        }
+        sender.sendMessage(Component.text("  * = leader", NamedTextColor.DARK_GRAY));
     }
 
     /**

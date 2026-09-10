@@ -2,6 +2,7 @@ package com.takashi.dungeons;
 
 import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.command.HudCommand;
+import com.takashi.dungeons.command.PartyCommand;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
@@ -18,6 +19,8 @@ import com.takashi.dungeons.mob.MobRegistry;
 import com.takashi.dungeons.mob.MobService;
 import com.takashi.dungeons.mob.MythicMobsProvider;
 import com.takashi.dungeons.mob.VanillaMobProvider;
+import com.takashi.dungeons.party.PartyListener;
+import com.takashi.dungeons.party.PartyManager;
 import com.takashi.dungeons.portal.PortalListener;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.schematic.BundledRooms;
@@ -66,6 +69,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private BundledRooms bundledRooms;
     private HudService hudService;
     private InstanceManager instanceManager;
+    private PartyManager partyManager;
     private PortalManager portalManager;
     private MobRegistry mobRegistry;
     private MobService mobService;
@@ -98,6 +102,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupMobs();
         setupLoot();
         setupInstances();
+        setupParty();
         setupPortals();
         setupHud();
         registerCommands();
@@ -114,6 +119,12 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // standing they would be a block a player can click with nothing behind it.
         if (portalManager != null) {
             portalManager.disable();
+        }
+        // Parties are session state and the session is ending — this cancels the invite sweeper
+        // and drops the maps, so a /reload cannot leave a party pointing at players who are about
+        // to be handed a fresh PartyManager.
+        if (partyManager != null) {
+            partyManager.disable();
         }
         if (instanceManager != null) {
             instanceManager.stopClock();
@@ -251,6 +262,24 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     }
 
     /**
+     * The party layer. No external dependency and no dependency on WorldEdit either: a party is
+     * people, and people can be grouped on a server that cannot generate a single room.
+     *
+     * <p>Built after the instance layer and before the portals, because phase 5B's shared entry
+     * runs from a gateway click into {@code InstanceManager.enter} — the two ends have to exist
+     * before the thing that joins them.
+     */
+    private void setupParty() {
+        partyManager = new PartyManager(this);
+        partyManager.enable();
+        getServer().getPluginManager().registerEvents(new PartyListener(this), this);
+        // A dungeon that has closed must stop being "the party's dungeon" — otherwise /party join
+        // points at a number that no longer resolves and the party is told to come to nowhere.
+        // Wired here rather than inside either class, the way the kill signal already is.
+        instanceManager.onClosed(instance -> partyManager.unbindInstance(instance.id()));
+    }
+
+    /**
      * The entrance objects. Built after the instance layer, because a portal's whole job is to
      * open an instance and it registers a close listener on it.
      */
@@ -306,6 +335,15 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         HudCommand hudExecutor = new HudCommand(this);
         hudCommand.setExecutor(hudExecutor);
         hudCommand.setTabCompleter(hudExecutor);
+
+        PluginCommand partyCommand = getCommand("party");
+        if (partyCommand == null) {
+            getLogger().severe("The 'party' command is not declared in plugin.yml - it was not registered.");
+            return;
+        }
+        PartyCommand partyExecutor = new PartyCommand(this);
+        partyCommand.setExecutor(partyExecutor);
+        partyCommand.setTabCompleter(partyExecutor);
     }
 
     private void detectIntegrations() {
@@ -366,6 +404,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** The instance registry. Always built — it reports its own missing dependencies. */
     public InstanceManager getInstanceManager() {
         return instanceManager;
+    }
+
+    /** The party registry. Always built — grouping players needs nothing installed. */
+    public PartyManager getPartyManager() {
+        return partyManager;
     }
 
     /** The entrance objects standing in the world. Always built. */

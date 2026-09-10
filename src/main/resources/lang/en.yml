@@ -86,6 +86,160 @@ loot:
   # The boss is dead and its reward chest has appeared where it fell. Tag: <boss>
   boss-reward: "<gold><boss> has left a hoard where it fell.</gold>"
 
+party:
+
+  # ---------------------------------------------------------------------------------------------
+  # There is no /party create - inviting somebody makes the party. And a disconnect takes a player
+  # out of their party, so no message here ever has to describe an offline member.
+  # ---------------------------------------------------------------------------------------------
+
+  # config.yml -> party.enabled is false.
+  disabled: "<red>Parties are switched off on this server.</red>"
+
+  # Used wherever a name cannot be resolved - a player who left mid-sentence. It is a word, not a
+  # name, so it is translated like one.
+  someone: "Someone"
+
+  # --- invites -------------------------------------------------------------------------------
+
+  # To the person invited. <player> is the inviter; <accept> and <deny> are CLICKABLE buttons the
+  # plugin builds from the four keys below. Put them where you want them - the click itself is not
+  # written here, so a translation cannot produce an invite nobody can accept.
+  invite-received: "<gold><player></gold> <yellow>invited you to their party.</yellow> <accept> <deny>"
+  invite-expires: "<gray>The invite expires in <time>.</gray>"
+
+  # The buttons. The label is what is shown, the hover is what appears when the mouse rests on it.
+  invite-accept-label: "<green>[Accept]</green>"
+  invite-accept-hover: "<green>Join the party</green>"
+  invite-deny-label: "<red>[Deny]</red>"
+  invite-deny-hover: "<red>Turn the invite down</red>"
+
+  # To the inviter, right after sending. <player>
+  invite-sent: "<green>Invite sent to <player>.</green>"
+
+  # Invite refusals, to whoever typed /party invite. <player>
+  invite-self: "<red>You cannot invite yourself.</red>"
+  invite-already-member: "<red><player> is already in your party.</red>"
+  invite-target-busy: "<red><player> is already in a party.</red>"
+  invite-pending: "<red><player> already has an invite from you.</red>"
+
+  # The invite ran out. Both sides are told - see config.yml -> party.invite-timeout-seconds.
+  invite-expired-target: "<gray>The party invite from <player> expired.</gray>"
+  invite-expired-inviter: "<gray><player> did not answer your party invite.</gray>"
+
+  # --- answering an invite -------------------------------------------------------------------
+
+  no-invite: "<red>You have no party invite waiting.</red>"
+  no-invite-from: "<red><player> has not invited you.</red>"
+
+  # More than one invite is waiting and no name was given. Choosing one for them would be the
+  # plugin guessing which party they meant. <count> <label>
+  invite-ambiguous: "<yellow>You have <count> invites - answer with /<label> accept <name>:</yellow>"
+  invite-ambiguous-entry: "<gray> - <white><player></white> <dark_gray>(<time> left)</dark_gray>"
+
+  accept-sent: "<green>You joined the party.</green>"
+  deny-sent: "<gray>You turned down <player>'s invite.</gray>"
+  already-in-party: "<red>You are already in a party - leave it first.</red>"
+  invite-too-late: "<red>That invite has expired.</red>"
+  invite-gone: "<red>That party no longer exists.</red>"
+
+  # To the inviter when their invite is declined. <player>
+  denied: "<gray><player> turned down your invite.</gray>"
+
+  # --- membership ----------------------------------------------------------------------------
+
+  # Announced to the whole party. <player>
+  joined: "<green><player> joined the party.</green>"
+  left: "<yellow><player> left the party.</yellow>"
+  quit: "<yellow><player> disconnected and left the party.</yellow>"
+  kicked-broadcast: "<yellow><player> was removed from the party.</yellow>"
+  disbanded: "<yellow>The party has been disbanded.</yellow>"
+
+  # To the player who was removed - they are not in the party any more, so the line above never
+  # reaches them.
+  kicked-target: "<red>You were removed from the party.</red>"
+
+  # To the player who typed /party leave.
+  leave-sent: "<yellow>You left the party.</yellow>"
+
+  # Leadership. leader-changed is a handover; leader-left is what happens when the leader goes.
+  # The rule is seniority - the longest-standing member takes over - because a party has to be
+  # able to predict it. <player>
+  leader-changed: "<gold><player> is now the party leader.</gold>"
+  leader-left: "<yellow>The leader is gone - <player> now leads the party.</yellow>"
+
+  # --- the party's dungeon -------------------------------------------------------------------
+
+  # A member got into a dungeon, so the party now HAS one. Everyone else is told, once, with a
+  # button that takes them there. <player> is whoever went in; <join> is the button.
+  #
+  # Nobody is teleported by this - being yanked out of what you were doing because your leader
+  # clicked a block is help nobody asks for twice, and a member mid-fight would arrive dead.
+  dungeon-opened: "<gold><player></gold> <yellow>opened a dungeon.</yellow> <join>"
+  dungeon-join-label: "<green>[Join]</green>"
+  dungeon-join-hover: "<green>Teleport to your party's dungeon</green>"
+
+  # /party join, and the button above.
+  joined-dungeon: "<green>You joined your party's dungeon.</green>"
+  no-dungeon: "<red>Your party is not in a dungeon.</red>"
+  already-inside: "<yellow>You are already in your party's dungeon.</yellow>"
+  join-failed: "<red>Your party's dungeon could not be entered - it may be closing.</red>"
+
+  # Right-clicking any gateway while the party already has a dungeon takes you to THAT one. A
+  # party that opens a second dungeon is two slots and a group standing in different buildings.
+  sent-to-dungeon: "<yellow>Your party is already in a dungeon - taking you there.</yellow>"
+  opening: "<gray>A dungeon is already being opened for your party...</gray>"
+
+  # Only when config.yml -> party.kick-removes-from-dungeon is true. Off by default: leaving or
+  # being removed from a party should not cost a player the run they are in the middle of.
+  kicked-from-dungeon: "<red>You were removed from the party and sent out of the dungeon.</red>"
+
+  # --- refusals ------------------------------------------------------------------------------
+
+  not-in-party: "<red>You are not in a party.</red>"
+  not-leader: "<red>Only the party leader can do that.</red>"
+  not-member: "<red><player> is not in your party.</red>"
+  leader-self: "<red>You already lead this party.</red>"
+  kick-self: "<red>To remove yourself, use /<label> leave or /<label> disband.</red>"
+  target-offline: "<red><player> is not online.</red>"
+  full: "<red>The party is full (<max>).</red>"
+
+  # The catch-all. If a player ever sees this, a refusal reached the command layer without a line
+  # of its own - worth an issue.
+  failed: "<red>That did not work.</red>"
+
+  # --- /party list ---------------------------------------------------------------------------
+
+  # <size> <max>
+  list-header: "<gold>Party</gold> <dark_gray>(<size>/<max>)</dark_gray>"
+  list-leader: "<gray> <gold>*</gold> <white><player></white> <dark_gray>- leader</dark_gray>"
+  list-member: "<gray>   <player></gray>"
+
+  # --- /party with no arguments --------------------------------------------------------------
+
+  # <label> is replaced with the alias the player actually typed (/party, /p, ...).
+  usage:
+    - "/<label> invite <name>"
+    - "/<label> accept [name]"
+    - "/<label> deny [name]"
+    - "/<label> join"
+    - "/<label> leave"
+    - "/<label> kick <name>"
+    - "/<label> leader <name>"
+    - "/<label> disband"
+    - "/<label> list"
+  usage-line: "<gray><usage></gray>"
+  usage-one: "<red>Usage: <usage></red>"
+
+  # --- /party hud ------------------------------------------------------------------------------
+
+  # The party block inside the sidebar, not a second HUD. /hud is "do I want a sidebar"; this is
+  # "do I want my party in it". The block's LINES are under hud: below.
+  hud-on: "<gray>Party HUD <green>on</green></gray>"
+  hud-off: "<gray>Party HUD <red>off</red></gray>"
+  hud-unavailable: "<red>The HUD is switched off server-wide.</red>"
+  hud-sidebar-off: "<gray>Your sidebar is off - turn it on with /hud to see the party.</gray>"
+
 hud:
 
   # The sidebar, top to bottom.
@@ -99,10 +253,29 @@ hud:
   #
   # The layout lives here rather than in config.yml because the words in it - Player, Coin,
   # Rank - are exactly the words that need translating. The values it shows stay in config.yml.
+  # A line that is nothing but "<party>" is REPLACED by the party block below - see it there for
+  # what that means. Leave it out and the party block is never shown.
   lines:
     - "<dark_gray><strikethrough>                    "
     - "<gray>Player <white><player>"
     - "<gray>Coin <gold><coin>"
     - "<gray>Rank <aqua><rank> <dark_gray>| <gray>XP <white><xp>"
+    - "<party>"
     - "<dark_gray><strikethrough>                    "
     - "<yellow><ip>"
+
+  # ---------------------------------------------------------------------------------------------
+  # THE PARTY BLOCK. It replaces the "<party>" line above and expands to one line per member,
+  # LEADER FIRST. With no party it expands to NOTHING - not an empty header, not "Party (0)".
+  #
+  # Tags: <size> <max> on the header; <player> <health> <max-health> on a member line. Health is
+  #       in HEARTS, rounded up - the unit a player reads off their own bar.
+  #
+  # The 16-line cap covers this block too: a long layout plus a big party is trimmed from the
+  # bottom. Keep the member lines short - the sidebar is as wide as its longest line.
+  #
+  # Leave party-header empty ("") to drop the header and keep the members.
+  # ---------------------------------------------------------------------------------------------
+  party-header: "<dark_gray><strikethrough>   </strikethrough> <gray>Party <dark_gray>(<size>/<max>)"
+  party-leader: "<gold>*</gold> <white><player> <dark_red>♥<health>"
+  party-member: "<dark_gray>-</dark_gray> <gray><player> <dark_red>♥<health>"

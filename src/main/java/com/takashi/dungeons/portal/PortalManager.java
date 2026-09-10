@@ -5,6 +5,7 @@ import com.takashi.dungeons.generation.DungeonSize;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.DungeonInstance;
 import com.takashi.dungeons.instance.InstanceManager;
+import com.takashi.dungeons.party.Party;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.Location;
@@ -246,6 +247,28 @@ public final class PortalManager {
     public void use(Player player, DungeonPortal portal) {
         InstanceManager instances = plugin.getInstanceManager();
 
+        // The party's own dungeon comes first, whichever door was clicked. A party that is already
+        // inside one and opens a second is two slots, two sets of mobs and a group standing in
+        // different buildings — and it is easy to do by accident, because a wild gateway is
+        // exactly the thing a player clicks on sight.
+        Party party = plugin.getPartyManager() == null ? null
+                : plugin.getPartyManager().partyOf(player);
+        if (party != null) {
+            Integer bound = party.instanceId();
+            DungeonInstance live = bound == null ? null : instances.get(bound);
+            if (live != null && live.isActive()) {
+                if (!live.contains(player.getUniqueId())) {
+                    player.sendMessage(plugin.getMessages().get("party.sent-to-dungeon"));
+                    instances.enter(player, live);
+                }
+                return;
+            }
+            if (party.isOpening()) {
+                player.sendMessage(plugin.getMessages().get("party.opening"));
+                return;
+            }
+        }
+
         if (portal.state() == PortalState.COOLDOWN) {
             long remaining = Math.max(0, portal.readyAt() - System.currentTimeMillis());
             player.sendMessage(plugin.getMessages().get("portal.refreshing",
@@ -255,7 +278,12 @@ public final class PortalManager {
         if (portal.boundInstanceId() != null) {
             DungeonInstance bound = instances.get(portal.boundInstanceId());
             if (bound != null && bound.isActive()) {
-                instances.enter(player, bound);
+                if (instances.enter(player, bound)) {
+                    // Walking into a dungeon a friend already opened binds the party to it too —
+                    // from the party's side it is the same fact, and it is what makes /party join
+                    // work for the members who are still out in the world.
+                    claim(party, player, bound);
+                }
                 return;
             }
             // The dungeon died without the close hook reaching us (a manual close during a lag
@@ -274,15 +302,24 @@ public final class PortalManager {
             return;
         }
 
+        // Claimed for the whole generation, and released in finishUse whatever happens. The
+        // gateway's own guard above is not enough: the party may be standing at two gateways.
+        if (party != null) {
+            plugin.getPartyManager().beginOpening(party);
+        }
+
         player.sendMessage(plugin.getMessages().get("portal.preparing"));
         instances.create(theme, portal.size(), random.nextLong())
                 .whenComplete((instance, error) -> plugin.getServer().getScheduler().runTask(plugin,
-                        () -> finishUse(player, portal, instance, error)));
+                        () -> finishUse(player, party, portal, instance, error)));
     }
 
-    private void finishUse(Player player, DungeonPortal portal, @Nullable DungeonInstance instance,
-                           @Nullable Throwable error) {
+    private void finishUse(Player player, @Nullable Party party, DungeonPortal portal,
+                           @Nullable DungeonInstance instance, @Nullable Throwable error) {
         generating.remove(portal.id());
+        if (party != null) {
+            plugin.getPartyManager().endOpening(party);
+        }
         if (error != null) {
             Throwable cause = error.getCause() == null ? error : error.getCause();
             player.sendMessage(plugin.getMessages().get("portal.failed",
@@ -302,6 +339,24 @@ public final class PortalManager {
         if (!plugin.getInstanceManager().enter(player, instance)) {
             player.sendMessage(plugin.getMessages().get("portal.enter-failed"));
             plugin.getLogger().warning("Entry through gateway refused (" + portal + "): " + instance);
+            return;
+        }
+        claim(party, player, instance);
+    }
+
+    /**
+     * Ties the opener's party to the dungeon they just got into, and tells the rest of them.
+     *
+     * <p>Announced only when the binding is new, which is what {@code bindIfFree} answers: the
+     * second and third member to walk in through the same gateway must not each fire a "come and
+     * join us" at everybody who is still outside.
+     */
+    private void claim(@Nullable Party party, Player player, DungeonInstance instance) {
+        if (party == null || plugin.getPartyManager() == null) {
+            return;
+        }
+        if (plugin.getPartyManager().bindIfFree(party, instance.id())) {
+            plugin.getPartyManager().announceDungeon(party, player);
         }
     }
 

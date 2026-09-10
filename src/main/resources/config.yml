@@ -177,6 +177,41 @@ portal:
     # Minimum distance between two gateways.
     spacing: 128
 
+party:
+  # Whether players can form parties at all. false makes /party answer with one line and nothing
+  # else — no invites, no shared entry, no party block in the sidebar.
+  enabled: true
+
+  # How many players one party may hold, the leader included.
+  #
+  # Counted against the invites in flight as well as the members present, so a four-slot party
+  # cannot send four invites and end up with seven people. Values below 2 are raised to 2: a
+  # party of one is what a player already has by standing there.
+  max-size: 4
+
+  # How long an invite stays clickable. When it runs out BOTH sides are told — the target has a
+  # button in their chat that has quietly stopped working, and the inviter is waiting for an
+  # answer that is never coming. Values below 5 are raised to 5.
+  invite-timeout-seconds: 60
+
+  # Whether kicking a player out of the party also throws them out of the party's dungeon.
+  #
+  # OFF by default, and only for a kick — never for leaving. Leaving a party is a social act and
+  # must not cost a player the run they are halfway through; a leader clearing out somebody who is
+  # ruining the run is the one case where an operator might want the two joined.
+  kick-removes-from-dungeon: false
+
+  # Whether the party block inside the sidebar is on when a player joins. Each player flips their
+  # own with /party hud; like /hud, that choice is remembered for the session only (PHASE 7).
+  #
+  # WHERE the block sits is not here: lang/<code>.yml -> hud.lines carries a "<party>" line and
+  # the block replaces it. No such line, no block. The block's own lines are hud.party-* there.
+  hud-by-default: true
+
+  # NOTE — a party lives in memory and a disconnect removes the player from it. Keeping the seat
+  # warm for a reconnect needs a timeout clock and somewhere to survive a restart; that waits on
+  # the SQL layer (PHASE 7), because player data is never written to YAML.
+
 hud:
   # The sidebar HUD on the right. false hides it from every player and disables /hud as well.
   enabled: true
