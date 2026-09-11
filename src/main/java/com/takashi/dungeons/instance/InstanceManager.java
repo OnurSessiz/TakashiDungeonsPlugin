@@ -93,6 +93,25 @@ public final class InstanceManager {
      */
     private final List<java.util.function.Consumer<DungeonInstance>> closeHandlers = new ArrayList<>();
 
+    /**
+     * The three other things that happen to an instance: somebody came in, somebody stopped being
+     * inside, and the boss went down.
+     *
+     * <p>Seams rather than direct calls, for the reason {@link #closeHandlers} already gives — and
+     * with a second reason of their own: these are precisely phase 8's promised
+     * {@code DungeonEnterEvent}, {@code DungeonLeaveEvent} and {@code DungeonCompleteEvent}. When
+     * that phase arrives, one handler registered here fires each event and nothing in this class
+     * moves.
+     */
+    private final List<java.util.function.BiConsumer<DungeonInstance, Player>> enterHandlers =
+            new ArrayList<>();
+
+    /** Exit carries a UUID, not a Player: the commonest exit is a player who is already offline. */
+    private final List<java.util.function.BiConsumer<DungeonInstance, UUID>> exitHandlers =
+            new ArrayList<>();
+
+    private final List<java.util.function.Consumer<DungeonInstance>> clearHandlers = new ArrayList<>();
+
     public InstanceManager(TakashiDungeonsPlugin plugin) {
         this.plugin = plugin;
     }
@@ -367,7 +386,7 @@ public final class InstanceManager {
             } else {
                 // Offline: nothing to teleport. Deregistering is still needed so the instance
                 // does not count them, and the join safety net will move them when they return.
-                instance.removePlayer(uuid);
+                removeMember(instance, uuid);
             }
         }
     }
@@ -408,6 +427,9 @@ public final class InstanceManager {
             }
         }
         announceCleared(instance, kill);
+        // After the announcement, and with the players still registered: whoever is counting a
+        // clear needs the membership list as it stood at the kill, not after the exodus.
+        notifyCleared(instance);
         plugin.getLogger().info("Instance cleared: instance#" + instance.id() + " - boss "
                 + (kill.definition() == null ? "?" : kill.definition().id()) + " killed"
                 + (kill.killer() == null ? "" : " by " + kill.killer().getName())
@@ -562,15 +584,20 @@ public final class InstanceManager {
         if (current != null && current != instance) {
             leave(player, current);
         }
-        instance.addPlayer(player.getUniqueId(), player.getLocation().clone());
+        boolean fresh = instance.addPlayer(player.getUniqueId(), player.getLocation().clone());
         teleportInternal(player, spawn);
         instance.showBar(player);
+        // Only on a fresh membership: walking back into the dungeon you are already registered in
+        // is not a second entry, and announcing it as one would count the run twice.
+        if (fresh) {
+            notifyEnter(instance, player);
+        }
         return true;
     }
 
     /** Takes a player out and sends them back where they came from. */
     public boolean leave(Player player, DungeonInstance instance) {
-        if (!instance.removePlayer(player.getUniqueId())) {
+        if (!removeMember(instance, player.getUniqueId())) {
             return false;
         }
         instance.hideBar(player);
@@ -599,9 +626,24 @@ public final class InstanceManager {
     public void forget(Player player) {
         DungeonInstance instance = instanceOf(player);
         if (instance != null) {
-            instance.removePlayer(player.getUniqueId());
+            removeMember(instance, player.getUniqueId());
             instance.hideBar(player);
         }
+    }
+
+    /**
+     * The one place membership ends.
+     *
+     * <p>Every path out — leaving, quitting, walking out of the world, the dungeon expiring under
+     * them — goes through here, so the exit seam cannot be forgotten by whichever path is added
+     * next. Anything that counts time inside a dungeon depends on that being true.
+     */
+    private boolean removeMember(DungeonInstance instance, UUID uuid) {
+        if (!instance.removePlayer(uuid)) {
+            return false;
+        }
+        notifyExit(instance, uuid);
+        return true;
     }
 
     // ------------------------------------------------------------------ teleport marking
@@ -693,6 +735,21 @@ public final class InstanceManager {
         closeHandlers.add(handler);
     }
 
+    /** Registers a listener for "this player is now inside". */
+    public void onEnter(java.util.function.BiConsumer<DungeonInstance, Player> handler) {
+        enterHandlers.add(handler);
+    }
+
+    /** Registers a listener for "this player is no longer inside", by any route. */
+    public void onExit(java.util.function.BiConsumer<DungeonInstance, UUID> handler) {
+        exitHandlers.add(handler);
+    }
+
+    /** Registers a listener for "the boss is down", fired once per instance. */
+    public void onCleared(java.util.function.Consumer<DungeonInstance> handler) {
+        clearHandlers.add(handler);
+    }
+
     private void notifyClosed(DungeonInstance instance) {
         for (var handler : closeHandlers) {
             try {
@@ -701,6 +758,38 @@ public final class InstanceManager {
                 // One listener throwing must not abort the teardown of the others, nor leave the
                 // slot in limbo — the release above has already happened by design.
                 plugin.getLogger().warning("An instance close listener threw: " + e);
+            }
+        }
+    }
+
+    private void notifyEnter(DungeonInstance instance, Player player) {
+        for (var handler : enterHandlers) {
+            try {
+                handler.accept(instance, player);
+            } catch (RuntimeException e) {
+                // The player is already inside by the time this runs. A listener that throws must
+                // not be able to undo that, so it is reported and the rest still run.
+                plugin.getLogger().warning("An instance enter listener threw: " + e);
+            }
+        }
+    }
+
+    private void notifyExit(DungeonInstance instance, UUID uuid) {
+        for (var handler : exitHandlers) {
+            try {
+                handler.accept(instance, uuid);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("An instance exit listener threw: " + e);
+            }
+        }
+    }
+
+    private void notifyCleared(DungeonInstance instance) {
+        for (var handler : clearHandlers) {
+            try {
+                handler.accept(instance);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("An instance clear listener threw: " + e);
             }
         }
     }

@@ -3,6 +3,8 @@ package com.takashi.dungeons.hud;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
 import com.takashi.dungeons.party.Party;
 import com.takashi.dungeons.party.PartyManager;
+import com.takashi.dungeons.player.PlayerDataService;
+import com.takashi.dungeons.player.PlayerProfile;
 import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -50,8 +52,11 @@ import java.util.UUID;
  * unparsed (a tag typed into a name can never become markup), while {@code <server>} and
  * {@code <ip>} are operator-supplied and ARE parsed — that is how they get to be styled.
  *
- * <p>Who has the HUD open is held in memory, for this session only. It is player data, and
- * player data belongs in SQL (phase 7) — never in a YAML file.
+ * <p>Who has the HUD open is <b>player data</b>, so since phase 7 it lives in SQL — never in a YAML
+ * file. This class does not know that: it asks {@link com.takashi.dungeons.player.PlayerProfile}
+ * for the setting and is handed one whether or not a database ever answered. A server with
+ * persistence switched off therefore behaves exactly as this plugin did before phase 7 — the
+ * preference lasts the session — without a second code path here to say so.
  */
 public final class HudService implements Listener {
 
@@ -102,12 +107,6 @@ public final class HudService implements Listener {
 
     /** The scoreboard handed to each online player who currently sees the HUD. */
     private final Map<UUID, Board> boards = new HashMap<>();
-
-    /** Per-player on/off. Absent = follow {@code show-by-default}. Session-scoped. */
-    private final Map<UUID, Boolean> visibility = new HashMap<>();
-
-    /** Per-player on/off for the party block alone. Absent = follow {@code party.hud-by-default}. */
-    private final Map<UUID, Boolean> partyVisibility = new HashMap<>();
 
     private boolean enabled;
     private boolean showByDefault;
@@ -243,13 +242,32 @@ public final class HudService implements Listener {
 
     /** {@code true} when this player should be seeing the sidebar right now. */
     public boolean isVisible(Player player) {
-        return enabled && !layout.isEmpty()
-                && visibility.getOrDefault(player.getUniqueId(), showByDefault);
+        return enabled && !layout.isEmpty() && setting(player, true);
     }
 
     /** {@code true} when this player wants the party block inside their sidebar. */
     public boolean isPartyVisible(Player player) {
-        return partyVisibility.getOrDefault(player.getUniqueId(), partyByDefault);
+        return setting(player, false);
+    }
+
+    /**
+     * One player's saved choice, or the configured default when they have never made one.
+     *
+     * <p>Three states, not two — see {@link com.takashi.dungeons.player.PlayerProfile}. A player who
+     * has never touched {@code /hud} follows the operator's switch, today and again tomorrow if the
+     * operator changes their mind; a player who has touched it is never moved by it.
+     */
+    private boolean setting(Player player, boolean main) {
+        boolean fallback = main ? showByDefault : partyByDefault;
+        PlayerDataService data = plugin.getPlayerData();
+        if (data == null) {
+            // Only reachable while the plugin is still enabling. Nobody is online yet, but a
+            // default answer is still better than a crash in a sidebar.
+            return fallback;
+        }
+        PlayerProfile profile = data.profile(player);
+        Boolean choice = main ? profile.hud() : profile.partyHud();
+        return choice == null ? fallback : choice;
     }
 
     /** Flips the party block alone — {@code /party hud}. Returns the new state. */
@@ -260,8 +278,25 @@ public final class HudService implements Listener {
     }
 
     public void setPartyVisible(Player player, boolean visible) {
-        partyVisibility.put(player.getUniqueId(), visible);
+        store(player, profile -> profile.partyHud(visible));
         update(player);
+    }
+
+    /**
+     * Records a choice and sends it to the database at once.
+     *
+     * <p>Immediately rather than on the flush interval: a player who toggles the HUD and logs out
+     * four seconds later has made exactly one decision this session, and losing it would make the
+     * setting look like it does not stick. The write is a single small row.
+     */
+    private void store(Player player, java.util.function.Consumer<PlayerProfile> change) {
+        PlayerDataService data = plugin.getPlayerData();
+        if (data == null) {
+            return;
+        }
+        PlayerProfile profile = data.profile(player);
+        change.accept(profile);
+        data.flush(profile);
     }
 
     /**
@@ -289,7 +324,7 @@ public final class HudService implements Listener {
 
     /** Forces a state instead of flipping it — used by {@code /hud on|off}. */
     public void setVisible(Player player, boolean visible) {
-        visibility.put(player.getUniqueId(), visible);
+        store(player, profile -> profile.hud(visible));
         update(player);
     }
 
@@ -335,10 +370,10 @@ public final class HudService implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        // Nothing to restore — the player is leaving — but the maps must not grow forever.
+        // Nothing to restore — the player is leaving — but the map must not grow forever. The
+        // settings are not dropped here: they are the profile's, and the profile is written and
+        // released by PlayerDataService on the same event.
         boards.remove(event.getPlayer().getUniqueId());
-        visibility.remove(event.getPlayer().getUniqueId());
-        partyVisibility.remove(event.getPlayer().getUniqueId());
     }
 
     private void update(Player player) {

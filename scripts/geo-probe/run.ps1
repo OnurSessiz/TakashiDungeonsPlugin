@@ -41,6 +41,13 @@ if ($Rot) {
     exit $LASTEXITCODE
 }
 
+# StorageProbe gercek bir SQLite dosyasina yaziyor, yani driver'a ihtiyaci var. Jar'a shade
+# ediliyor ama target\classes'ta yok; .m2'deki kopya RotProbe'un WorldEdit'i buldugu gibi
+# bulunuyor. Bulunamazsa probe ATLANIYOR, calistirma kirilmiyor.
+$m2 = "$env:USERPROFILE\.m2\repository"
+$sqlite = Get-ChildItem "$m2\org\xerial\sqlite-jdbc" -Recurse -Filter "sqlite-jdbc-*.jar" -ErrorAction SilentlyContinue |
+          Sort-Object Name | Select-Object -Last 1
+
 # RotProbe is deliberately EXCLUDED: it is the only probe that needs WorldEdit, and it runs
 # separately via -Rot. The others depend only on the generation package -- no third-party jar.
 $sources = @(
@@ -51,7 +58,14 @@ $sources = @(
     "$probeDir\SpawnProbe.java",
     "$probeDir\LootProbe.java"
 )
-& $javac -cp $classes -d $outDir $sources
+$probeCp = $classes
+if ($sqlite) {
+    $sources += "$probeDir\StorageProbe.java"
+    $probeCp = "$classes;$($sqlite.FullName)"
+} else {
+    Write-Host "UYARI: sqlite-jdbc .m2'de yok, StorageProbe atlandi (once build.ps1)" -ForegroundColor Yellow
+}
+& $javac -cp $probeCp -d $outDir $sources
 if ($LASTEXITCODE -ne 0) { throw "Probe'lar derlenemedi" }
 
 $failed = 0
@@ -62,11 +76,12 @@ $probes = @(
     @("FAZ 3B - spawn aramasi",       "SpawnProbe"),
     @("FAZ 4A - loot cekilisi",       "LootProbe")
 )
+if ($sqlite) { $probes += ,@("FAZ 7 - depolama katmani", "StorageProbe") }
 
 foreach ($p in $probes) {
     Write-Host ""
     Write-Host "################ $($p[0]) ################" -ForegroundColor Cyan
-    & $java -cp "$outDir;$classes" $p[1]
+    & $java -cp "$outDir;$probeCp" $p[1]
     if ($LASTEXITCODE -ne 0) { $failed = 1 }
 }
 

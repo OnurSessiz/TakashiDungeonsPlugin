@@ -25,11 +25,13 @@ import com.takashi.dungeons.mob.MobRegistry;
 import com.takashi.dungeons.mob.MobService;
 import com.takashi.dungeons.party.Party;
 import com.takashi.dungeons.party.PartyManager;
+import com.takashi.dungeons.player.PlayerDataService;
 import com.takashi.dungeons.portal.DungeonPortal;
 import com.takashi.dungeons.portal.PortalKind;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.portal.PortalState;
 import com.takashi.dungeons.schematic.BundledRooms;
+import com.takashi.dungeons.storage.StorageService;
 import com.takashi.dungeons.shop.KeeperSpec;
 import com.takashi.dungeons.shop.ShopCurrency;
 import com.takashi.dungeons.shop.ShopEntry;
@@ -89,8 +91,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "mob", "loot", "shop", "parties", "slots", "free", "reload", "hud",
-                    "extract");
+                    "portal", "mob", "loot", "shop", "parties", "db", "stats", "slots", "free",
+                    "reload", "hud", "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
@@ -101,6 +103,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             List.of("list", "info", "tables", "roll", "give", "reload");
 
     private static final List<String> SHOP_ACTIONS = List.of("list", "info", "reload");
+
+    private static final List<String> DB_ACTIONS = List.of("status", "flush");
 
     private static final List<String> DIFFICULTIES = List.of("easy", "medium", "hard");
 
@@ -148,6 +152,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "loot" -> loot(sender, label, args);
             case "shop" -> shop(sender, label, args);
             case "parties" -> parties(sender);
+            case "db" -> db(sender, label, args);
+            case "stats" -> stats(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -204,6 +210,14 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         ? Component.text("disabled (no WorldEdit/FAWE)", NamedTextColor.RED)
                         : Component.text(service.list().size() + " files, paste mode "
                                 + (service.isAsyncPaste() ? "async" : "sync"), NamedTextColor.GREEN)));
+
+        StorageService storage = plugin.getStorage();
+        sender.sendMessage(Component.text("Storage: ", NamedTextColor.GRAY)
+                .append(storage == null || !storage.isReady()
+                        ? Component.text("disabled - nothing is saved (/tdungeons db)",
+                                NamedTextColor.RED)
+                        : Component.text(storage.settings().describe() + ", schema v"
+                                + storage.schemaVersion(), NamedTextColor.GREEN)));
     }
 
     private void world(CommandSender sender) {
@@ -763,6 +777,19 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                     NamedTextColor.GREEN));
         }
 
+        // The storage layer is deliberately NOT reloaded. Repointing a live connection at another
+        // host mid-session means deciding what happens to the writes already queued against the old
+        // one, and there is no answer to that which is not a lie about where the data went. Said
+        // out loud so an operator who edited the block does not assume it took effect.
+        if (plugin.getStorage() != null) {
+            sender.sendMessage(Component.text("Storage: "
+                    + (plugin.getStorage().isReady()
+                            ? plugin.getStorage().settings().describe() + " (unchanged - "
+                                    + "connection settings are read at startup)"
+                            : "disabled - " + plugin.getStorage().problem()),
+                    plugin.getStorage().isReady() ? NamedTextColor.GRAY : NamedTextColor.YELLOW));
+        }
+
         SchematicService service = requireSchematics(sender);
         RoomTemplateStore store = plugin.getTemplateStore();
         if (service == null || store == null) {
@@ -1022,6 +1049,167 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                             + "  " + names, NamedTextColor.GRAY)));
         }
         sender.sendMessage(Component.text("  * = leader", NamedTextColor.DARK_GRAY));
+    }
+
+    // ------------------------------------------------------------------ phase 7: the database
+
+    /**
+     * Answers from whichever thread the caller happens to be on, always on the main one.
+     *
+     * <p>Every phase 7 read comes back on the storage thread. Sending straight from there works
+     * today — an Adventure component is immutable and the console does not care — but command
+     * output is a main-thread surface, and a reply that happens to be safe is not the same as one
+     * that is. One scheduler hop is the whole cost.
+     */
+    private void reply(CommandSender sender, Component message) {
+        if (plugin.getServer().isPrimaryThread()) {
+            sender.sendMessage(message);
+            return;
+        }
+        plugin.getServer().getScheduler().runTask(plugin, () -> sender.sendMessage(message));
+    }
+
+    private void db(CommandSender sender, String label, String[] args) {
+        String action = args.length < 2 ? "status" : args[1].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "status" -> dbStatus(sender);
+            case "flush" -> dbFlush(sender);
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " db <"
+                    + String.join("|", DB_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * What the storage layer is doing.
+     *
+     * <p>The first question an operator asks after installing this is "is it actually saving
+     * anything", and before phase 7 there was nothing in the plugin that could answer it. The
+     * backend, the schema version and the queue depth are that answer; the reason line is the one
+     * that matters when it is not.
+     */
+    private void dbStatus(CommandSender sender) {
+        StorageService storage = plugin.getStorage();
+        PlayerDataService data = plugin.getPlayerData();
+        if (storage == null) {
+            sender.sendMessage(Component.text("The storage layer was not built.", NamedTextColor.RED));
+            return;
+        }
+
+        sender.sendMessage(Component.text("Storage", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  backend: ", NamedTextColor.GRAY)
+                .append(Component.text(storage.settings().describe(), NamedTextColor.WHITE)));
+        sender.sendMessage(Component.text("  state: ", NamedTextColor.GRAY)
+                .append(storage.isReady()
+                        ? Component.text("ready (schema v" + storage.schemaVersion() + ")",
+                                NamedTextColor.GREEN)
+                        : Component.text("disabled", NamedTextColor.RED)));
+        if (!storage.isReady()) {
+            sender.sendMessage(Component.text("  reason: " + storage.problem(), NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text(
+                    "  settings and counters last until logout; nothing else is affected.",
+                    NamedTextColor.DARK_GRAY));
+            return;
+        }
+        sender.sendMessage(Component.text("  queue: ", NamedTextColor.GRAY)
+                .append(Component.text(storage.queued() + " waiting, flushing every "
+                        + storage.settings().flushSeconds() + "s", NamedTextColor.WHITE)));
+        if (data != null) {
+            sender.sendMessage(Component.text("  cached profiles: ", NamedTextColor.GRAY)
+                    .append(Component.text(String.valueOf(data.cachedCount()), NamedTextColor.WHITE)));
+            // Asked asynchronously, like every other read: a COUNT(*) on a big MySQL table is not
+            // something to make the main thread wait for just to print a line. The answer comes
+            // back on the storage thread and is handed to the main thread before it is printed —
+            // command output is a main-thread surface and staying on it costs one scheduler hop.
+            data.countPlayers()
+                    .thenAccept(count -> reply(sender, Component.text("  players on record: ",
+                                    NamedTextColor.GRAY)
+                            .append(Component.text(String.valueOf(count), NamedTextColor.WHITE))))
+                    .exceptionally(error -> {
+                        reply(sender, Component.text("  players on record: unreadable ("
+                                + error.getMessage() + ")", NamedTextColor.YELLOW));
+                        return null;
+                    });
+        }
+    }
+
+    /**
+     * Writes everything pending right now.
+     *
+     * <p>For the one case the interval cannot cover: an operator about to stop or restart the
+     * server by a means that does not run {@code onDisable} — a container kill, a host's power
+     * button. Also the honest way to check that writing works at all without waiting a minute.
+     */
+    private void dbFlush(CommandSender sender) {
+        PlayerDataService data = plugin.getPlayerData();
+        if (data == null || !data.isPersistent()) {
+            sender.sendMessage(Component.text("Persistence is off - there is nothing to flush.",
+                    NamedTextColor.YELLOW));
+            return;
+        }
+        int pending = data.flushAll();
+        sender.sendMessage(Component.text(pending == 0
+                ? "Nothing was pending."
+                : pending + " profile(s) queued for writing.", NamedTextColor.GREEN));
+    }
+
+    /**
+     * {@code /tdungeons stats [player]} — what the counters say.
+     *
+     * <p>Admin-side and English in the source, like everything else this command prints. A
+     * player-facing version is not missing by accident: what a player wants to see is a rank and a
+     * balance, and those belong to the addons (phases 11 and 12), which read these numbers through
+     * the phase 8 API rather than duplicating them.
+     */
+    private void stats(CommandSender sender, String label, String[] args) {
+        PlayerDataService data = plugin.getPlayerData();
+        if (data == null) {
+            sender.sendMessage(Component.text("The player data layer was not built.", NamedTextColor.RED));
+            return;
+        }
+        String name;
+        if (args.length >= 2) {
+            name = args[1];
+        } else if (sender instanceof Player self) {
+            name = self.getName();
+        } else {
+            sender.sendMessage(Component.text("Usage: /" + label + " stats <player>",
+                    NamedTextColor.RED));
+            return;
+        }
+
+        if (!data.isPersistent() && plugin.getServer().getPlayerExact(name) == null) {
+            // Without a database there is nothing to look an offline player up in. Said plainly,
+            // because "no stats" would read as "this player has never played".
+            sender.sendMessage(Component.text("Persistence is off - only players who are online "
+                    + "right now have counters.", NamedTextColor.YELLOW));
+            return;
+        }
+
+        data.lookup(name).thenAccept(stats -> {
+            if (stats == null) {
+                reply(sender, Component.text("No record for '" + name
+                        + "'. Names are matched against the last one seen on this server.",
+                        NamedTextColor.YELLOW));
+                return;
+            }
+            reply(sender, Component.text("Stats - " + name, NamedTextColor.GOLD));
+            reply(sender, Component.text("  dungeons entered: ", NamedTextColor.GRAY)
+                    .append(Component.text(String.valueOf(stats.runsEntered()), NamedTextColor.WHITE))
+                    .append(Component.text("   cleared: ", NamedTextColor.GRAY))
+                    .append(Component.text(String.valueOf(stats.runsCleared()), NamedTextColor.WHITE)));
+            reply(sender, Component.text("  kills: ", NamedTextColor.GRAY)
+                    .append(Component.text(stats.mobKills() + " mobs, " + stats.bossKills()
+                            + " bosses", NamedTextColor.WHITE)));
+            reply(sender, Component.text("  deaths inside: ", NamedTextColor.GRAY)
+                    .append(Component.text(String.valueOf(stats.deaths()), NamedTextColor.WHITE))
+                    .append(Component.text("   time inside: ", NamedTextColor.GRAY))
+                    .append(Component.text(InstanceManager.formatDuration(
+                            stats.secondsInside() * 1000L), NamedTextColor.WHITE)));
+        }).exceptionally(error -> {
+            reply(sender, Component.text("The lookup failed: " + error.getMessage(),
+                    NamedTextColor.RED));
+            return null;
+        });
     }
 
     /**
@@ -2069,6 +2257,17 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
                         .filter(id -> id.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
             }
             return List.of();
+        }
+        if (args.length == 2 && sub.equals("db")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return DB_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+        }
+        if (args.length == 2 && sub.equals("stats")) {
+            // Online players only. The database knows every name it has ever seen, and reading
+            // them all for a tab-complete would be a query per keystroke.
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return plugin.getServer().getOnlinePlayers().stream().map(Player::getName)
+                    .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
         }
         if (args.length == 2 && sub.equals("extract")) {
             return List.of("force").stream()

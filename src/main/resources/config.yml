@@ -12,6 +12,46 @@
 # the jar and logs one line naming it — players never see a raw key.
 language: en
 
+# Where player data is kept: HUD settings and the dungeon counters behind /tdungeons stats.
+#
+# Player data is NEVER written to a YAML file — not here, not anywhere. A flat file cannot be
+# written safely from two threads, cannot be shared between servers, and grows a file per player
+# until the folder is unusable. This block is the only thing that decides where it goes.
+#
+# The plugin runs WITHOUT a working database: it says so once in the log, and settings and counters
+# then last only until the player logs out. Nothing else changes — generation, mobs, loot, parties
+# and the shop never touch this layer.
+storage:
+  # sqlite (default) or mysql.
+  #
+  # sqlite is a file in this folder and needs nothing installed; it is the right answer for a
+  # single server. mysql is for a network: point several servers at one database and a player's
+  # HUD setting and counters follow them between them. Anything else here is refused by name —
+  # a typo is never quietly turned into sqlite, because you would find out from the wrong data
+  # months later.
+  type: sqlite
+
+  sqlite:
+    # Relative to plugins/TakashiDungeons/.
+    file: data.db
+
+  mysql:
+    host: localhost
+    port: 3306
+    database: takashi_dungeons
+    username: root
+    password: ""
+    # Appended to the JDBC URL after a '?'. Leave empty unless your server needs something
+    # specific, e.g. "useSSL=false&characterEncoding=utf8".
+    properties: ""
+
+  # How often the counters are written, in seconds. Settings (the /hud switches) are NOT batched —
+  # they are written the moment they change. The counters are, because a party clearing a dungeon
+  # produces hundreds of kills and a row per kill would be a write storm for numbers nobody is
+  # reading mid-fight. A crash costs at most this many seconds of counting; it never costs a
+  # setting. Values below 5 are raised to 5.
+  flush-seconds: 60
+
 dungeon-world:
   # Name of the void world the instances live in. Keep it unique so it cannot
   # collide with another world on the server.
@@ -144,8 +184,10 @@ portal:
     # private moment. Leave the list empty and it refreshes as soon as its dungeon ends.
     refresh-hours: [0, 12]
 
-    # Fixed gateways created at startup. Gateways do not survive a restart (persistence is
-    # PHASE 7), so this is the lobby gateway's permanent address.
+    # Fixed gateways created at startup. Gateways deliberately do NOT go into the database: what
+    # gives one meaning is the instance behind it, no instance survives a restart, and a gateway
+    # restored without one would be a door onto nothing. This list is the lobby's permanent address
+    # instead — text an operator can read and edit.
     #   - world: world
     #     x: 100
     #     y: 64
@@ -202,23 +244,29 @@ party:
   kick-removes-from-dungeon: false
 
   # Whether the party block inside the sidebar is on when a player joins. Each player flips their
-  # own with /party hud; like /hud, that choice is remembered for the session only (PHASE 7).
+  # own with /party hud, and that choice is saved (see the storage block at the top of this file).
+  #
+  # This value is the default for players who have NEVER used /party hud. Changing it moves them
+  # and nobody else: a player who has made a choice keeps it.
   #
   # WHERE the block sits is not here: lang/<code>.yml -> hud.lines carries a "<party>" line and
   # the block replaces it. No such line, no block. The block's own lines are hud.party-* there.
   hud-by-default: true
 
   # NOTE — a party lives in memory and a disconnect removes the player from it. Keeping the seat
-  # warm for a reconnect needs a timeout clock and somewhere to survive a restart; that waits on
-  # the SQL layer (PHASE 7), because player data is never written to YAML.
+  # warm for a reconnect needs a timeout clock and a rule for what the dungeon does with a member
+  # who is not there; the storage layer it would have been written to now exists, the rule does not.
+  # Until it does, a disconnect is a departure.
 
 hud:
   # The sidebar HUD on the right. false hides it from every player and disables /hud as well.
   enabled: true
 
   # Whether the HUD is on when a player joins. Each player can turn it off for themselves with
-  # /hud; for now that choice is remembered for the session only (making it stick waits on the
-  # SQL layer, i.e. PHASE 7 — player data is never written to YAML).
+  # /hud, and that choice is saved (see the storage block at the top of this file).
+  #
+  # This value is the default for players who have NEVER used /hud. Changing it moves them and
+  # nobody else — a saved "off" is not overwritten by an operator turning the default back on.
   show-by-default: true
 
   # How many ticks between refreshes. 20 ticks = 1 second. Today every line is static; this value

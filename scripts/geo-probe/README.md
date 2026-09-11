@@ -1,10 +1,11 @@
 # geo-probe — server-free tests for the generation package
 
 Regression cover for phase 1B (geometry), 1C (selection + collision), 1D (graph generation),
-3B (spawn search) and 4A (loot draw). **No server needed**, and it runs in seconds — possible
-because the `generation` package is deliberately pure Java, because `RoomSpawnFinder` reads the
-world only through the `ColumnProbe` interface, and because the loot rarity arithmetic is kept
-apart from the Bukkit types it feeds. **251 checks** in total.
+3B (spawn search), 4A (loot draw) and 7 (storage). **No server needed**, and it runs in seconds —
+possible because the `generation` package is deliberately pure Java, because `RoomSpawnFinder` reads
+the world only through the `ColumnProbe` interface, because the loot rarity arithmetic is kept apart
+from the Bukkit types it feeds, and because the `storage` package carries no Bukkit import at all.
+**311 checks** in total.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
@@ -21,6 +22,7 @@ powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 | `DungeonProbe.java` | **1D — 31 checks:** critical path guarantee (3×1000 generations), boss assignment, size ranges, plug coverage, consecutive-seed independence, out-of-the-box fallbacks | same |
 | `SpawnProbe.java` | **3B — 22 checks:** the spawn search over hand-drawn ASCII rooms — L-shaped hall, corridor, blocked centre, two-storey, and a **sealed alcove the flood fill must not reach** | on every change to `RoomSpawnFinder` |
 | `LootProbe.java` | **4A/4B/4C — 117 checks:** the rarity split and what difficulty does to it — the worked example from `isleyis.md` checked number for number, 200,000 draws against the declared weights at three multipliers, the edge where common runs out and the increase has to be scaled back, the shipped `boss_chest` block written out weight for weight so `loot.yml` and the code cannot drift apart unnoticed, and the check that loot and mobs draw from **different** streams of the same seed | on every change to `RarityWeights`, `CountRange`, `LootTable`, `ItemClass` or `Seeds` |
+| `StorageProbe.java` | **7 — 60 checks:** the SQL itself, run against a real SQLite file in the temp folder — migrations applied once and only once, the tri-state setting where `NULL` is not `false`, `first_seen` surviving an upsert that rewrites everything around it, counters accumulating rather than overwriting, and a database from a newer version being refused instead of downgraded | on every change to the `storage` package or `PlayerDataRepository` |
 | `Rooms.java` | The shared test room set — in **alphabetical order**, matching `SchematicService.list()` on the server | (library) |
 | `RotProbe.java` | Measures the sign of WorldEdit's `AffineTransform().rotateY(-degrees)` | only when the WorldEdit version changes |
 
@@ -85,6 +87,15 @@ GECEN: 28   KALAN: 0
 ################ FAZ 1D - graf uretimi ################
 GECEN: 31   KALAN: 0
 
+################ FAZ 3B - spawn aramasi ################
+GECEN: 22   KALAN: 0
+
+################ FAZ 4A - loot cekilisi ################
+GECEN: 117   KALAN: 0
+
+################ FAZ 7 - depolama katmani ################
+GECEN: 60   KALAN: 0
+
 TUM TESTLER GECTI
 ```
 
@@ -99,3 +110,17 @@ It does **not** show that a block really landed in the right place in the world 
 paste path's job, and it is verified on the server with `execute if block`
 (`docs/generation.md` §10). This only answers the question "what coordinate does the engine
 compute".
+
+`StorageProbe` has a second limit of its own: it executes the **SQLite** statements, so a typo
+there fails the probe, but the MySQL ones cannot be executed without a MySQL server and are pinned
+as strings instead. That catches a change to the clause; it does not catch a MySQL server refusing
+it. The MySQL path stays an open test debt (`sonislem.md`) until somebody points a real server at
+it — the driver itself is already known to load, because pointing the plugin at a host with no
+server running produces `CommunicationsException` rather than "driver not found".
+
+## One dependency, handled
+
+`StorageProbe` needs the SQLite driver, which is shaded into the jar rather than compiled into
+`target\classes`. `run.ps1` finds it in `~\.m2` exactly the way `RotProbe` finds WorldEdit. If it
+is not there, the probe is **skipped with a warning** instead of failing the run — the other five
+have no third-party dependency and must stay runnable.

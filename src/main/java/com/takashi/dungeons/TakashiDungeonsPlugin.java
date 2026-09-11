@@ -21,6 +21,8 @@ import com.takashi.dungeons.mob.MythicMobsProvider;
 import com.takashi.dungeons.mob.VanillaMobProvider;
 import com.takashi.dungeons.party.PartyListener;
 import com.takashi.dungeons.party.PartyManager;
+import com.takashi.dungeons.player.PlayerDataListener;
+import com.takashi.dungeons.player.PlayerDataService;
 import com.takashi.dungeons.portal.PortalListener;
 import com.takashi.dungeons.portal.PortalManager;
 import com.takashi.dungeons.schematic.BundledRooms;
@@ -30,6 +32,7 @@ import com.takashi.dungeons.shop.ShopRegistry;
 import com.takashi.dungeons.schematic.DoorPlugger;
 import com.takashi.dungeons.schematic.RegionCleaner;
 import com.takashi.dungeons.schematic.SchematicService;
+import com.takashi.dungeons.storage.StorageService;
 import com.takashi.dungeons.text.Messages;
 import com.takashi.dungeons.world.DungeonWorldManager;
 import com.takashi.dungeons.world.GridSlotManager;
@@ -84,6 +87,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private ShopRegistry shopRegistry;
     private ShopManager shopManager;
     private MobDropService mobDropService;
+    private StorageService storage;
+    private PlayerDataService playerData;
     private Messages messages;
 
     @Override
@@ -102,11 +107,13 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         integrations.forEach((name, present) ->
                 getLogger().info("  - " + name + ": " + (present ? "found" : "absent")));
 
+        setupStorage();
         setupWorld();
         setupSchematics();
         setupMobs();
         setupLoot();
         setupInstances();
+        setupPlayerData();
         setupShop();
         setupParty();
         setupPortals();
@@ -143,6 +150,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         // that nobody's logout position ends up inside an instance — that position outlives the
         // instance and would drop them into the void on their next join.
         evacuateDungeonWorld();
+        // Player data LAST, and in this order: the service settles everyone's time inside and
+        // writes what the session accumulated, and only then is the connection allowed to close.
+        // Reversed, the final flush would be submitted to a storage layer that had already shut
+        // down — which is the one moment where losing a write cannot be retried.
+        if (playerData != null) {
+            playerData.disable();
+        }
+        if (storage != null) {
+            storage.disable();
+        }
         getLogger().info("TakashiDungeons disabled.");
     }
 
@@ -250,6 +267,44 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         mobDropService = new MobDropService(this);
         getServer().getPluginManager().registerEvents(mobDropService, this);
         mobService.onKill(mobDropService::onKill);
+    }
+
+    /**
+     * The database.
+     *
+     * <p>Built first of all the systems and on purpose: it is the one layer with nothing above it
+     * to wait for, and everything that might want to read a player's row has to find it already
+     * open. A failure here is <b>not</b> fatal — {@link StorageService#enable()} says why in the
+     * log and the plugin runs exactly as it did before phase 7, with settings and counters living
+     * only as long as the session.
+     */
+    private void setupStorage() {
+        storage = new StorageService(this);
+        storage.enable();
+    }
+
+    /**
+     * Player profiles, settings and counters.
+     *
+     * <p>Built <b>unconditionally</b>, whether or not the database opened. That is what lets the
+     * HUD read a setting without asking whether persistence exists: with storage off the profile is
+     * a plain in-memory object and the session behaves as it always did. A service that only
+     * existed when SQL worked would put a second, untested code path in every caller.
+     *
+     * <p>Placed after the instance and mob layers because it subscribes to both of their signals —
+     * entering, leaving, clearing and killing are the facts it counts.
+     */
+    private void setupPlayerData() {
+        playerData = new PlayerDataService(this, storage);
+        playerData.enable();
+        getServer().getPluginManager().registerEvents(new PlayerDataListener(this), this);
+        // Wired here rather than inside either class, exactly like the kill signal and the close
+        // signal already are: the instance layer publishes facts and does not know who counts them.
+        instanceManager.onEnter(playerData::onEnter);
+        instanceManager.onExit(playerData::onExit);
+        instanceManager.onCleared(playerData::onCleared);
+        instanceManager.onClosed(instance -> playerData.onInstanceClosed(instance.id()));
+        mobService.onKill(playerData::onKill);
     }
 
     /**
@@ -493,6 +548,19 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Mob drops and the boss's reward chest. Always built. */
     public MobDropService getMobDropService() {
         return mobDropService;
+    }
+
+    /** The database. Always built; ask {@link StorageService#isReady()} before relying on it. */
+    public StorageService getStorage() {
+        return storage;
+    }
+
+    /**
+     * Player profiles and counters. Always built — with the database off it keeps them in memory
+     * for the session, which is what every caller is written against.
+     */
+    public PlayerDataService getPlayerData() {
+        return playerData;
     }
 
     /** Every word a player reads. Built first, before anything can need one. */

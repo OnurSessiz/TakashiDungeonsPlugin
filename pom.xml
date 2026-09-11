@@ -107,13 +107,21 @@
                             <!-- native kaynaklar budanmasın -->
                             <minimizeJar>false</minimizeJar>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <relocations>
-                                <relocation>
-                                    <!-- başka bir plugin'in shade ettiği SQLite driver ile çakışmayı önler -->
-                                    <pattern>org.sqlite</pattern>
-                                    <shadedPattern>com.takashi.dungeons.libs.sqlite</shadedPattern>
-                                </relocation>
-                            </relocations>
+                            <!--
+                                SQLite driver'i RELOCATE EDILMIYOR - denendi ve kirdi (FAZ 7).
+                                Relocation Java siniflarini tasiyor ama .dll/.so icindeki JNI
+                                sembolleri "Java_org_sqlite_core_NativeDB__1open_1utf8" adini
+                                tasimaya devam ediyor; tasinmis sinif artik olmayan bir sembol
+                                ariyor ve ilk baglantida UnsatisfiedLinkError dusuyor. Native
+                                kod iceren hicbir kutuphane relocate edilemez.
+
+                                Cakisma riski yok: her Bukkit plugin'i kendi classloader'inda
+                                yasiyor ve sqlite-jdbc native'i her classloader icin ayri, UUID
+                                ekli bir gecici dosyaya aciyor - tam olarak bu senaryo icin.
+                                Paper 1.21.8 zaten kendi sqlite-jdbc'sini tasiyor; parent-first
+                                delegasyon yuzunden orada onunki kullaniliyor, buradaki kopya
+                                Spigot'ta ve Paper onu birakirsa devreye giren sigorta.
+                            -->
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -122,6 +130,32 @@
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
                                         <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <!--
+                                        sqlite-jdbc her platformun native'ini tasiyor ve tek
+                                        basina jar'i 12 MB yapiyor. Bir Minecraft sunucusunun
+                                        kostugu mimariler birakiliyor (x86_64 ve aarch64:
+                                        Windows, Linux, Linux-Musl/Alpine, Mac); gerisi
+                                        indirilen jar'i sisirmekten baska is yapmiyor.
+
+                                        Sadece EXCLUDE yaziliyor, include ile karistirilmiyor:
+                                        shade'de exclude include'u yener, yani "hepsini at,
+                                        sunlari geri al" diye bir sey yazilamaz.
+                                    -->
+                                    <artifact>org.xerial:sqlite-jdbc</artifact>
+                                    <excludes>
+                                        <exclude>org/sqlite/native/FreeBSD/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/x86/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/arm/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/armv6/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/armv7/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/ppc64/**</exclude>
+                                        <exclude>org/sqlite/native/Linux/riscv64/**</exclude>
+                                        <exclude>org/sqlite/native/Linux-Musl/x86/**</exclude>
+                                        <exclude>org/sqlite/native/Windows/x86/**</exclude>
+                                        <exclude>org/sqlite/native/Windows/armv7/**</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
