@@ -1,5 +1,6 @@
 package com.takashi.dungeons;
 
+import com.takashi.dungeons.api.TakashiDungeonsAPI;
 import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.command.HudCommand;
 import com.takashi.dungeons.command.PartyCommand;
@@ -40,6 +41,7 @@ import com.takashi.dungeons.world.VoidChunkGenerator;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.generator.ChunkGenerator;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -89,6 +91,8 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private MobDropService mobDropService;
     private StorageService storage;
     private PlayerDataService playerData;
+    private ApiService apiService;
+    private ApiEvents apiEvents;
     private Messages messages;
 
     @Override
@@ -118,6 +122,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupParty();
         setupPortals();
         setupHud();
+        setupApi();
         registerCommands();
     }
 
@@ -400,6 +405,29 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         hudService.enable();
     }
 
+    /**
+     * The public API — registered <b>last</b>, and that is the whole of its design.
+     *
+     * <p>Every internal listener has already subscribed by this point, so an addon's listener runs
+     * against a world the plugin has finished reacting to: the statistics are counted, the merchant
+     * is gone, the slot is released. An API that fired first would be showing addons a half-finished
+     * plugin and inviting them to depend on the order the halves arrive in.
+     *
+     * <p>Published through Bukkit's {@code ServicesManager} rather than as a static field on this
+     * class. An addon that casts {@code getPlugin("TakashiDungeons")} needs our class to be loadable
+     * while ITS class is verified, which quietly turns a softdepend into a hard one on a server
+     * where we are absent. A service lookup has no such edge.
+     */
+    private void setupApi() {
+        apiService = new ApiService(this);
+        getServer().getServicesManager().register(TakashiDungeonsAPI.class, apiService, this,
+                ServicePriority.Normal);
+        apiEvents = new ApiEvents(this);
+        apiEvents.register();
+        getLogger().info("API " + TakashiDungeonsAPI.API_VERSION + " registered - addons can use "
+                + "TakashiDungeons.api(); see docs/api.md");
+    }
+
     private void registerCommands() {
         PluginCommand command = getCommand("tdungeons");
         if (command == null) {
@@ -548,6 +576,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     /** Mob drops and the boss's reward chest. Always built. */
     public MobDropService getMobDropService() {
         return mobDropService;
+    }
+
+    /**
+     * The API bridge — for {@code /tdungeons api} only.
+     *
+     * <p>Addons do not come through here: they ask the {@code ServicesManager} for
+     * {@link TakashiDungeonsAPI}, which is the object with the promise attached.
+     */
+    public ApiEvents getApiEvents() {
+        return apiEvents;
     }
 
     /** The database. Always built; ask {@link StorageService#isReady()} before relying on it. */

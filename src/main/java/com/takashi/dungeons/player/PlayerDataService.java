@@ -311,8 +311,12 @@ public final class PlayerDataService {
      * <p>Inside <b>at that moment</b>, not everyone who ever entered: a player who left before the
      * fight did not clear the dungeon, and one who joined for the last hit did. That is the same
      * rule the reward chest already follows.
+     *
+     * @param kill unused here — the clear belongs to everyone inside, not to whoever swung last.
+     *             It travels on the seam for phase 8's {@code DungeonCompleteEvent}, which reports
+     *             both
      */
-    public void onCleared(DungeonInstance instance) {
+    public void onCleared(DungeonInstance instance, MobKill kill) {
         for (UUID uuid : instance.players()) {
             PlayerProfile profile = profiles.get(uuid);
             if (profile != null) {
@@ -399,6 +403,30 @@ public final class PlayerDataService {
         return storage.submit(connection -> {
             UUID uuid = repository.findByName(connection, name);
             return uuid == null ? null : repository.load(connection, uuid).stats();
+        });
+    }
+
+    /**
+     * The same lookup by uuid — what the API exposes.
+     *
+     * <p>By uuid rather than by name because an addon already has the uuid and names are not
+     * unique over time. A cached profile answers immediately, including the counters that have not
+     * been flushed yet; anything else goes to the database and completes with {@code null} when
+     * there is no row.
+     */
+    public CompletableFuture<@Nullable PlayerStats> lookup(UUID uuid) {
+        PlayerProfile cached = profiles.get(uuid);
+        if (cached != null) {
+            return CompletableFuture.completedFuture(cached.stats());
+        }
+        if (!isPersistent()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return storage.submit(connection -> {
+            PlayerDataRepository.Loaded row = repository.load(connection, uuid);
+            // No settings row and no counters is a player this server has never seen. An all-zero
+            // record would be a different claim: "played, did nothing".
+            return row.exists() ? row.stats() : null;
         });
     }
 

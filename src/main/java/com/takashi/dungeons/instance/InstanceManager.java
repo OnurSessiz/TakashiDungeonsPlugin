@@ -110,7 +110,32 @@ public final class InstanceManager {
     private final List<java.util.function.BiConsumer<DungeonInstance, UUID>> exitHandlers =
             new ArrayList<>();
 
-    private final List<java.util.function.Consumer<DungeonInstance>> clearHandlers = new ArrayList<>();
+    /**
+     * "The boss is down."
+     *
+     * <p>Carries the kill as well as the dungeon: who struck the blow and which boss it was are
+     * facts about the clear, and a listener that had to go and find them would be reading the
+     * entity back out of a world that is about to remove it.
+     */
+    private final List<java.util.function.BiConsumer<DungeonInstance, MobKill>> clearHandlers =
+            new ArrayList<>();
+
+    /** "The dungeon is built and somebody is about to walk into it." */
+    private final List<java.util.function.Consumer<DungeonInstance>> createHandlers = new ArrayList<>();
+
+    /**
+     * Vetoes on entry — the only seam that can say <b>no</b>.
+     *
+     * <p>Every other one reports something already true. This one runs before anything happens, so
+     * that phase 8's {@code DungeonEnterEvent} can be cancellable: "players below rank 5 cannot
+     * enter" is a TakashiRanks feature, and the alternative — letting them in and throwing them out
+     * a tick later — is a worse answer that also has to be written.
+     *
+     * <p>A guard that returns {@code false} refuses the entry. It is the guard's job to say why:
+     * a gateway that silently does nothing reads as a broken gateway.
+     */
+    private final List<java.util.function.BiPredicate<DungeonInstance, Player>> entryGuards =
+            new ArrayList<>();
 
     public InstanceManager(TakashiDungeonsPlugin plugin) {
         this.plugin = plugin;
@@ -267,6 +292,10 @@ public final class InstanceManager {
             } catch (RuntimeException error) {
                 plugin.getLogger().warning("Merchant placement failed (" + instance + "): " + error);
             }
+            // Announced here and not in register(): register runs on whatever thread the paste
+            // chain ended on and with empty rooms. This is the main thread, and the dungeon is
+            // furnished — the moment a listener can actually read what it is about to be told.
+            notifyCreated(instance);
             done.complete(instance);
         });
         return done;
@@ -429,7 +458,7 @@ public final class InstanceManager {
         announceCleared(instance, kill);
         // After the announcement, and with the players still registered: whoever is counting a
         // clear needs the membership list as it stood at the kill, not after the exodus.
-        notifyCleared(instance);
+        notifyCleared(instance, kill);
         plugin.getLogger().info("Instance cleared: instance#" + instance.id() + " - boss "
                 + (kill.definition() == null ? "?" : kill.definition().id()) + " killed"
                 + (kill.killer() == null ? "" : " by " + kill.killer().getName())
@@ -576,6 +605,12 @@ public final class InstanceManager {
         World world = plugin.getWorldManager().getWorld();
         Location spawn = world == null ? null : instance.entranceSpawn(world);
         if (spawn == null) {
+            return false;
+        }
+        // The veto runs here: after "is this even possible", before anything is changed. Earlier
+        // and a guard would be asked about an entry that was going to fail anyway; later and a
+        // refused player would already have been pulled out of the dungeon they were in.
+        if (!allowedIn(instance, player)) {
             return false;
         }
         // Leave whatever they were in first — being a member of two dungeons would send the
@@ -740,13 +775,43 @@ public final class InstanceManager {
         enterHandlers.add(handler);
     }
 
+    /** Registers a listener for "the dungeon is built and ready to be walked into". */
+    public void onCreated(java.util.function.Consumer<DungeonInstance> handler) {
+        createHandlers.add(handler);
+    }
+
+    /** Registers a veto on entry — see {@link #entryGuards}. */
+    public void entryGuard(java.util.function.BiPredicate<DungeonInstance, Player> guard) {
+        entryGuards.add(guard);
+    }
+
+    /**
+     * Asks every guard.
+     *
+     * <p>A guard that <b>throws</b> is treated as "no opinion" rather than as a refusal: a broken
+     * addon must not be able to lock every player out of every dungeon on the server. The refusal
+     * has to be deliberate.
+     */
+    private boolean allowedIn(DungeonInstance instance, Player player) {
+        for (var guard : entryGuards) {
+            try {
+                if (!guard.test(instance, player)) {
+                    return false;
+                }
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("An instance entry guard threw and was ignored: " + e);
+            }
+        }
+        return true;
+    }
+
     /** Registers a listener for "this player is no longer inside", by any route. */
     public void onExit(java.util.function.BiConsumer<DungeonInstance, UUID> handler) {
         exitHandlers.add(handler);
     }
 
     /** Registers a listener for "the boss is down", fired once per instance. */
-    public void onCleared(java.util.function.Consumer<DungeonInstance> handler) {
+    public void onCleared(java.util.function.BiConsumer<DungeonInstance, MobKill> handler) {
         clearHandlers.add(handler);
     }
 
@@ -784,10 +849,20 @@ public final class InstanceManager {
         }
     }
 
-    private void notifyCleared(DungeonInstance instance) {
-        for (var handler : clearHandlers) {
+    private void notifyCreated(DungeonInstance instance) {
+        for (var handler : createHandlers) {
             try {
                 handler.accept(instance);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("An instance create listener threw: " + e);
+            }
+        }
+    }
+
+    private void notifyCleared(DungeonInstance instance, MobKill kill) {
+        for (var handler : clearHandlers) {
+            try {
+                handler.accept(instance, kill);
             } catch (RuntimeException e) {
                 plugin.getLogger().warning("An instance clear listener threw: " + e);
             }

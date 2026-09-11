@@ -1,5 +1,6 @@
 package com.takashi.dungeons.instance;
 
+import com.takashi.dungeons.api.Dungeon;
 import com.takashi.dungeons.generation.Aabb;
 import com.takashi.dungeons.generation.DungeonGenerator;
 import com.takashi.dungeons.generation.LayoutNode;
@@ -27,14 +28,22 @@ import java.util.UUID;
  * <h2>What is stored, and what is deliberately not</h2>
  * The identity of a dungeon is the quadruple <b>slot + theme + size + seed</b> — hand those four
  * back to {@link DungeonGenerator} and the same rooms come out in the same places
- * ({@code generation.md} §13). So phase 7 will write four columns, not a layout dump.
+ * ({@code generation.md} §13). Phase 7 wrote none of them: an instance does not survive a restart,
+ * so a stored one would point at a slot whose blocks have been wiped. The quadruple is still what
+ * would be stored if that ever changes.
  *
  * <p>The generated {@link DungeonGenerator.Result} is kept in memory anyway, for two reasons that
  * only apply while the instance is alive: {@link #bounds()} is the exact volume to wipe on close,
  * and phase 3 needs the room graph to know where to spawn what. Neither survives a restart, and
  * neither needs to.
+ *
+ * <h2>This class is the API's {@link Dungeon}, and only that much of it</h2>
+ * Implementing the interface rather than handing addons a wrapper keeps one object in play, so
+ * what a listener reads during an event is the live truth and not a snapshot taken a tick ago. The
+ * interface is narrow on purpose: the slot, the room graph and the plug report are the shape of
+ * today's generator, and promising them would promise the generator.
  */
-public final class DungeonInstance {
+public final class DungeonInstance implements Dungeon {
 
     /**
      * How far the wiped box reaches past the rooms themselves.
@@ -167,6 +176,25 @@ public final class DungeonInstance {
 
     public DungeonGenerator.Result result() {
         return result;
+    }
+
+    // The three below exist so that the API can answer "which dungeon is this" without handing out
+    // DungeonGenerator.Result — the object whose shape IS the generation algorithm.
+
+    /** {@code "small"} / {@code "medium"} / {@code "large"} — the API's {@code sizeKey}. */
+    @Override
+    public String sizeKey() {
+        return result.size().key();
+    }
+
+    @Override
+    public long seed() {
+        return result.seed();
+    }
+
+    @Override
+    public int roomCount() {
+        return result.rooms();
     }
 
     public DoorPlugger.Report plugReport() {

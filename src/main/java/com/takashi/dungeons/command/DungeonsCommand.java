@@ -1,7 +1,15 @@
 package com.takashi.dungeons.command;
 
 import com.sk89q.worldedit.extent.clipboard.Clipboard;
+import com.takashi.dungeons.ApiEvents;
 import com.takashi.dungeons.TakashiDungeonsPlugin;
+import com.takashi.dungeons.api.TakashiDungeonsAPI;
+import com.takashi.dungeons.api.event.DungeonCloseEvent;
+import com.takashi.dungeons.api.event.DungeonCompleteEvent;
+import com.takashi.dungeons.api.event.DungeonCreateEvent;
+import com.takashi.dungeons.api.event.DungeonEnterEvent;
+import com.takashi.dungeons.api.event.DungeonLeaveEvent;
+import com.takashi.dungeons.api.event.DungeonMobKillEvent;
 import com.takashi.dungeons.generation.Aabb;
 import com.takashi.dungeons.generation.DoorAnchor;
 import com.takashi.dungeons.generation.DungeonGenerator;
@@ -57,6 +65,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -91,8 +100,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SUB_COMMANDS =
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
-                    "portal", "mob", "loot", "shop", "parties", "db", "stats", "slots", "free",
-                    "reload", "hud", "extract");
+                    "portal", "mob", "loot", "shop", "parties", "db", "stats", "api", "slots",
+                    "free", "reload", "hud", "extract");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
@@ -105,6 +114,8 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
     private static final List<String> SHOP_ACTIONS = List.of("list", "info", "reload");
 
     private static final List<String> DB_ACTIONS = List.of("status", "flush");
+
+    private static final List<String> API_ACTIONS = List.of("status", "debug");
 
     private static final List<String> DIFFICULTIES = List.of("easy", "medium", "hard");
 
@@ -154,6 +165,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "parties" -> parties(sender);
             case "db" -> db(sender, label, args);
             case "stats" -> stats(sender, label, args);
+            case "api" -> api(sender, label, args);
             case "slots" -> slots(sender);
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
@@ -1150,6 +1162,90 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text(pending == 0
                 ? "Nothing was pending."
                 : pending + " profile(s) queued for writing.", NamedTextColor.GREEN));
+    }
+
+    // ------------------------------------------------------------------ phase 8: the API
+
+    private void api(CommandSender sender, String label, String[] args) {
+        String action = args.length < 2 ? "status" : args[1].toLowerCase(Locale.ROOT);
+        switch (action) {
+            case "status" -> apiStatus(sender);
+            case "debug" -> apiDebug(sender, label, args);
+            default -> sender.sendMessage(Component.text("Usage: /" + label + " api <"
+                    + String.join("|", API_ACTIONS) + ">", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * What the API is offering and who is listening.
+     *
+     * <p>The listener counts are the part worth having. An addon developer whose handler is not
+     * running has two candidate explanations — the event is not firing, or their listener is not
+     * registered — and nothing on a vanilla server can tell them apart. A count of zero against an
+     * event name answers it in one line.
+     */
+    private void apiStatus(CommandSender sender) {
+        var registration = plugin.getServer().getServicesManager()
+                .getRegistration(TakashiDungeonsAPI.class);
+
+        sender.sendMessage(Component.text("API", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  version: ", NamedTextColor.GRAY)
+                .append(Component.text(TakashiDungeonsAPI.API_VERSION, NamedTextColor.WHITE)));
+        sender.sendMessage(Component.text("  service: ", NamedTextColor.GRAY)
+                .append(registration == null
+                        ? Component.text("NOT registered - addons cannot reach it",
+                                NamedTextColor.RED)
+                        : Component.text("registered by "
+                                + registration.getPlugin().getName(), NamedTextColor.GREEN)));
+
+        sender.sendMessage(Component.text("  listeners:", NamedTextColor.GRAY));
+        reportListeners(sender, "DungeonCreateEvent", DungeonCreateEvent.getHandlerList());
+        reportListeners(sender, "DungeonEnterEvent", DungeonEnterEvent.getHandlerList());
+        reportListeners(sender, "DungeonLeaveEvent", DungeonLeaveEvent.getHandlerList());
+        reportListeners(sender, "DungeonCompleteEvent", DungeonCompleteEvent.getHandlerList());
+        reportListeners(sender, "DungeonCloseEvent", DungeonCloseEvent.getHandlerList());
+        reportListeners(sender, "DungeonMobKillEvent", DungeonMobKillEvent.getHandlerList());
+
+        ApiEvents events = plugin.getApiEvents();
+        if (events != null && events.isDebugging()) {
+            sender.sendMessage(Component.text("  debug logging is ON (/tdungeons api debug off)",
+                    NamedTextColor.YELLOW));
+        }
+    }
+
+    private void reportListeners(CommandSender sender, String event, HandlerList handlers) {
+        // The debug listener is one of these when it is on. Said rather than subtracted: a count
+        // that quietly excludes something is a count somebody will one day mistrust.
+        int count = handlers.getRegisteredListeners().length;
+        sender.sendMessage(Component.text("    " + event + ": ", NamedTextColor.DARK_GRAY)
+                .append(Component.text(count == 0 ? "none" : String.valueOf(count),
+                        count == 0 ? NamedTextColor.DARK_GRAY : NamedTextColor.WHITE)));
+    }
+
+    /** Logs every API event to the console — the addon developer's mirror. */
+    private void apiDebug(CommandSender sender, String label, String[] args) {
+        ApiEvents events = plugin.getApiEvents();
+        if (events == null) {
+            sender.sendMessage(Component.text("The API layer was not built.", NamedTextColor.RED));
+            return;
+        }
+        boolean on;
+        if (args.length < 3) {
+            on = !events.isDebugging();
+        } else if (args[2].equalsIgnoreCase("on")) {
+            on = true;
+        } else if (args[2].equalsIgnoreCase("off")) {
+            on = false;
+        } else {
+            sender.sendMessage(Component.text("Usage: /" + label + " api debug [on|off]",
+                    NamedTextColor.RED));
+            return;
+        }
+        events.debug(on);
+        sender.sendMessage(Component.text("API event logging " + (on ? "on" : "off")
+                + (on ? " - every event is written to the console, including one line per mob kill."
+                        : "."),
+                on ? NamedTextColor.GREEN : NamedTextColor.GRAY));
     }
 
     /**
@@ -2261,6 +2357,16 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2 && sub.equals("db")) {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             return DB_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+        }
+        if (sub.equals("api")) {
+            String prefix = args[args.length - 1].toLowerCase(Locale.ROOT);
+            if (args.length == 2) {
+                return API_ACTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
+            }
+            if (args.length == 3 && args[1].equalsIgnoreCase("debug")) {
+                return List.of("on", "off").stream().filter(o -> o.startsWith(prefix)).toList();
+            }
+            return List.of();
         }
         if (args.length == 2 && sub.equals("stats")) {
             // Online players only. The database knows every name it has ever seen, and reading

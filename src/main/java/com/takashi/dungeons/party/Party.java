@@ -1,8 +1,11 @@
 package com.takashi.dungeons.party;
 
+import com.takashi.dungeons.api.DungeonParty;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,8 +26,9 @@ import java.util.UUID;
  *
  * <p>A party lives in memory only, for as long as the server is up. That is not a shortcut: player
  * data belongs in SQL (phase 7) and a party is not player data — it is a fact about right now.
+ * Phase 7 arrived and left this alone for exactly that reason.
  */
-public final class Party {
+public final class Party implements DungeonParty {
 
     /**
      * Ids are never reused, exactly as instance ids are not: a party is an event, not a place, and
@@ -105,6 +109,18 @@ public final class Party {
     /** The instance this party is playing, or {@code null}. */
     public Integer instanceId() {
         return instanceId;
+    }
+
+    /**
+     * The same answer for the API, as an {@link OptionalInt}.
+     *
+     * <p>The internal accessor stays a boxed {@code Integer} because the whole package already
+     * treats {@code null} as "no dungeon" and rewriting that is churn. The API gets the shape that
+     * cannot be dereferenced by accident — it is the one a stranger reads.
+     */
+    @Override
+    public OptionalInt dungeonId() {
+        return instanceId == null ? OptionalInt.empty() : OptionalInt.of(instanceId);
     }
 
     public boolean isOpening() {

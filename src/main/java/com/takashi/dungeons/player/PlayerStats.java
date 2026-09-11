@@ -1,7 +1,13 @@
 package com.takashi.dungeons.player;
 
+import com.takashi.dungeons.api.DungeonStats;
+
 /**
  * What a player has done in dungeons, as six numbers.
+ *
+ * <p>Implements the API's {@link DungeonStats} — the record's own accessors are already exactly the
+ * interface's methods, so an addon reads this object and the plugin keeps a record. No wrapper, and
+ * nothing internal leaks: the interface is the whole of what an addon can see.
  *
  * <h2>Why these six and not more</h2>
  * Each one is a fact the <b>core</b> owns — it happens inside an instance, and nothing but this
@@ -31,7 +37,7 @@ package com.takashi.dungeons.player;
  *                      and again at every flush, so a crash costs at most one flush interval
  */
 public record PlayerStats(long runsEntered, long runsCleared, long bossKills, long mobKills,
-                          long deaths, long secondsInside) {
+                          long deaths, long secondsInside) implements DungeonStats {
 
     public static final PlayerStats ZERO = new PlayerStats(0, 0, 0, 0, 0, 0);
 
