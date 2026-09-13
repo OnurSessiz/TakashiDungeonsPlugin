@@ -4,7 +4,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.random.RandomGenerator;
 
 /**
@@ -165,6 +167,9 @@ public final class DungeonGenerator {
             pathPool = library.normalPool();
         }
 
+        // Per-dungeon caps (§8 max-per-dungeon). One tracker per attempt — see Quota.
+        Quota quota = new Quota(size);
+
         // targetPath-1 rooms go on the path including the entrance; the boss completes the last.
         int pathRooms = 1;                  // the entrance room is the path's first node
         LayoutNode tip = layout.root();
@@ -177,13 +182,23 @@ public final class DungeonGenerator {
                         + " rooms: no open door left on " + tip.template().name();
                 break;
             }
-            RoomPlacer.Attempt placed = placer.fill(layout, door, pathPool);
+            // Filtered per draw, not once: a room that was free two placements ago may have
+            // filled its quota since.
+            List<RoomTemplate> available = quota.filter(pathPool);
+            if (available.isEmpty()) {
+                // Every multi-door room is used up. Rather than stalling the path, fall back to
+                // the full pool — still quota-filtered, so the cap holds either way. Losing a
+                // room to a dead end is better than losing the rest of the path.
+                available = quota.filter(library.normalPool());
+            }
+            RoomPlacer.Attempt placed = placer.fill(layout, door, available);
             if (!placed.success()) {
                 warning = "critical path stalled at " + pathRooms + "/" + targetPath
                         + " rooms: " + placed.failReason();
                 break;
             }
             tip = placed.placed();
+            quota.record(tip.template());
             pathRooms++;
         }
 
@@ -202,7 +217,7 @@ public final class DungeonGenerator {
         // (b) The boss gets far more candidate doors. Attaching first, it tried a single door,
         //     and if the 33x33 boss room collided the dungeon came out WITH NO BOSS (4 times in
         //     2000 medium generations). A bossless dungeon gives the player nothing to aim at.
-        growBranches(layout, placer, random, targetRooms - 1, -1);
+        growBranches(layout, placer, quota, targetRooms - 1, -1);
 
         // ---- 4) The boss — not random, ASSIGNED: to the open door FURTHEST from the entrance.
         //
@@ -266,6 +281,48 @@ public final class DungeonGenerator {
         return -1;
     }
 
+    /**
+     * Per-dungeon placement quotas — the {@code max-per-dungeon} field, {@code generation.md} §8.
+     *
+     * <p>One instance per generation <b>attempt</b>, not per generator: a retry starts from a
+     * clean layout, so it must start from clean counts too. A tracker that outlived the attempt
+     * would let a discarded attempt's placements eat the quota of the one that is kept.
+     *
+     * <p>{@link #filter} returns the pool <b>unchanged</b> — the same list object — while nothing
+     * is capped out, which is the normal case: no allocation on the hot path for the rooms that
+     * have no cap written.
+     */
+    private static final class Quota {
+
+        private final DungeonSize size;
+        private final Map<String, Integer> placed = new HashMap<>();
+
+        Quota(DungeonSize size) {
+            this.size = size;
+        }
+
+        /** The pool with templates that have filled their quota removed. */
+        List<RoomTemplate> filter(List<RoomTemplate> pool) {
+            List<RoomTemplate> kept = null;
+            for (int i = 0; i < pool.size(); i++) {
+                RoomTemplate template = pool.get(i);
+                if (placed.getOrDefault(template.name(), 0) < template.maxPerDungeon(size)) {
+                    if (kept != null) {
+                        kept.add(template);
+                    }
+                } else if (kept == null) {
+                    kept = new ArrayList<>(pool.subList(0, i));
+                }
+            }
+            return kept == null ? pool : kept;
+        }
+
+        /** Counts a room that actually seated. Rejected candidates must NOT be counted. */
+        void record(RoomTemplate template) {
+            placed.merge(template.name(), 1, Integer::sum);
+        }
+    }
+
     /** The greatest depth in the layout. */
     private static int deepestDepth(DungeonLayout layout) {
         int max = 0;
@@ -289,7 +346,7 @@ public final class DungeonGenerator {
      * itself quickly.
      */
     private void growBranches(DungeonLayout layout, RoomPlacer placer,
-                              RandomGenerator random, int targetRooms, int bossNodeId) {
+                              Quota quota, int targetRooms, int bossNodeId) {
         Deque<OpenDoor> queue = new ArrayDeque<>();
         for (LayoutNode node : layout.nodes()) {
             if (node.id() != bossNodeId) {
@@ -302,8 +359,15 @@ public final class DungeonGenerator {
             if (layout.node(door.nodeId()).doorState(door.doorIndex()) != DoorState.OPEN) {
                 continue;
             }
-            RoomPlacer.Attempt placed = placer.fill(layout, door, library.normalPool());
+            // The cap spans the whole dungeon, not one phase of it: a room capped at 1 that the
+            // critical path already used is out of the branch pool too.
+            List<RoomTemplate> available = quota.filter(library.normalPool());
+            if (available.isEmpty()) {
+                break;
+            }
+            RoomPlacer.Attempt placed = placer.fill(layout, door, available);
             if (placed.success()) {
+                quota.record(placed.placed().template());
                 queue.addAll(placed.placed().openDoors());
             }
         }

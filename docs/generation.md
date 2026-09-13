@@ -548,7 +548,52 @@ doors:
   - [ 8, 1,  0]      # east wall
   - [ 0, 1,  8]      # south wall
   - [-8, 1,  0]      # west wall
+
+# OPTIONAL — at most how many copies of this room one dungeon may hold.
+# Left out entirely means UNLIMITED, so a .yml written before this field existed
+# behaves exactly as it always did.
+max-per-dungeon: 1   # short form: the same cap for every size
+# or per size (a size left out stays uncapped):
+# max-per-dungeon:
+#   small: 0
+#   medium: 1
+#   large: 2
 ```
+
+### `max-per-dungeon` — why it is a field of its own, not part of `weight`
+
+`weight` answers **"how often is it drawn"**; the cap answers **"how many at most"**. Those
+are different questions, and the weight cannot answer the second one: a pool share is not a
+probability distribution, it is a ratio re-applied at every draw. However far you lower it,
+you never get the guarantee "never twice" — only a smaller chance of it.
+
+Folding the cap into the weight would bring back precisely what §5.4 rejected: a property the
+mapper did **not** write silently overriding the one they did. There it was the door count;
+here it would be the cap.
+
+**Mechanics:** a per-attempt counter is kept by template name; a template that has filled its
+quota drops out of both the critical-path pool and the side-branch pool, re-checked **before
+every draw**. The counter resets per attempt — a discarded attempt's placements must not eat
+the quota of the attempt that is kept.
+
+If the cap empties the path pool, generation falls back to the full pool (still filtered):
+losing one room to a dead end beats losing the rest of the path.
+
+**Measured (2026-09-13, `QuotaProbe`, 2000 seeds per size)** with `test_cross` capped at
+small 0 · medium 1 · large 2:
+
+| `weight` | medium, at least one | large, at least one | large, exactly two |
+|---|---|---|---|
+| 35 | 39.5% | 61.5% | 22.3% |
+| 50 | 52.8% | 74.9% | 35.6% |
+| 100 | 73.8% | 91.4% | 67.0% |
+
+The cap was **never exceeded** at any size. With no caps written, the same seed still produces
+the same dungeon — adding the field changed no existing behaviour.
+
+> **What it does not give you:** "large must always contain one" cannot be expressed with this
+> field. A cap is an upper bound, not a lower one. A lower bound needs an **assignment** like
+> the boss's — reserving a slot on the critical path — which is not implemented.
 
 **Why `y: 1`:** the anchor is the base block of the opening, one above the room floor. On a
 two-storey room the upper door is `[0, 9, -8]` — the scheme doesn't change.

@@ -1,6 +1,7 @@
 package com.takashi.dungeons.generation;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * A room template: the geometry of a {@code .schem} file plus the metadata of the {@code .yml}
@@ -20,12 +21,37 @@ import java.util.List;
  * @param weight   share in the weighted candidate draw — loot-weight semantics
  * @param doors    door anchors, in {@code .yml} order; may be empty (a decorative dead end)
  * @param localBox the room's bounding box relative to its origin, read from the schematic
+ * @param maxPerDungeon per-size cap on how many copies one dungeon may contain; a size that is
+ *                      absent from the map is uncapped ({@code generation.md} §8)
  */
 public record RoomTemplate(String name, RoomType type, int weight,
-                           List<DoorAnchor> doors, Aabb localBox) {
+                           List<DoorAnchor> doors, Aabb localBox,
+                           Map<DungeonSize, Integer> maxPerDungeon) {
 
     public RoomTemplate {
         doors = List.copyOf(doors);
+        maxPerDungeon = Map.copyOf(maxPerDungeon);
+    }
+
+    /** An uncapped template — the form every room had before {@code max-per-dungeon} existed. */
+    public RoomTemplate(String name, RoomType type, int weight,
+                        List<DoorAnchor> doors, Aabb localBox) {
+        this(name, type, weight, doors, localBox, Map.of());
+    }
+
+    /**
+     * How many copies of this room a dungeon of the given size may hold.
+     *
+     * <p>{@link Integer#MAX_VALUE} when no cap is written for that size — which is the default,
+     * so an existing {@code .yml} that has never heard of the field behaves exactly as before.
+     *
+     * <p>The cap is a <b>separate question from {@link #weight()}</b> and deliberately does not
+     * touch it: weight answers "how often is it drawn", the cap answers "how many at most".
+     * Folding the cap into the weight would re-create the very thing {@code generation.md} §5.4
+     * rejected — a property the mapper did not write silently overriding the one they did.
+     */
+    public int maxPerDungeon(DungeonSize size) {
+        return maxPerDungeon.getOrDefault(size, Integer.MAX_VALUE);
     }
 
     public int doorCount() {

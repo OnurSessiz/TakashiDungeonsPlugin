@@ -142,7 +142,8 @@ public final class RoomTemplateStore {
             doors.add(door);
         }
 
-        return new RoomTemplate(name, metadata.type(), metadata.weight(), doors, localBox);
+        return new RoomTemplate(name, metadata.type(), metadata.weight(), doors, localBox,
+                metadata.maxPerDungeon());
     }
 
     /**

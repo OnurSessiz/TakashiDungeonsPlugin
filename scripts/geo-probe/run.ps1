@@ -55,6 +55,7 @@ $sources = @(
     "$probeDir\GeoProbe.java",
     "$probeDir\GenProbe.java",
     "$probeDir\DungeonProbe.java",
+    "$probeDir\QuotaProbe.java",
     "$probeDir\SpawnProbe.java",
     "$probeDir\LootProbe.java"
 )
@@ -73,6 +74,7 @@ $probes = @(
     @("FAZ 1B - geometri",            "GeoProbe"),
     @("FAZ 1C - secim + cakisma",     "GenProbe"),
     @("FAZ 1D - graf uretimi",        "DungeonProbe"),
+    @("FAZ 1E - oda basi tavan",      "QuotaProbe"),
     @("FAZ 3B - spawn aramasi",       "SpawnProbe"),
     @("FAZ 4A - loot cekilisi",       "LootProbe")
 )
