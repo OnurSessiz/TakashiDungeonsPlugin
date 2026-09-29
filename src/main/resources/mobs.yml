@@ -1,10 +1,12 @@
 # TakashiDungeons — mob catalogue
 #
-# Separate from config.yml. Reason: in PHASE 9 the GUI editor will WRITE this file, and a program
-# that rewrites a file leaves no comments behind. The mob set lives in its own file so that the
-# explanations in config.yml survive.
+# Separate from config.yml, and editable in game with /tdungeons edit mobs. The editor does NOT
+# rewrite this file: it changes only the values you edit, in place, so these comments and your own
+# layout survive a GUI save. It also refuses a save if you changed the same value here by hand in
+# the meantime. Keeping the mob set in its own file means an editor save never touches a server
+# setting.
 #
-# After editing: /tdungeons reload
+# After editing by hand: /tdungeons reload
 #
 # ---------------------------------------------------------------------------------------------
 # ADDRESSING:  mob: <provider>:<key>

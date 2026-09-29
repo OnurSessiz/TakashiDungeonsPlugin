@@ -10,6 +10,7 @@ import com.takashi.dungeons.api.event.DungeonCreateEvent;
 import com.takashi.dungeons.api.event.DungeonEnterEvent;
 import com.takashi.dungeons.api.event.DungeonLeaveEvent;
 import com.takashi.dungeons.api.event.DungeonMobKillEvent;
+import com.takashi.dungeons.editor.EditorHub;
 import com.takashi.dungeons.generation.Aabb;
 import com.takashi.dungeons.generation.DoorAnchor;
 import com.takashi.dungeons.generation.DungeonGenerator;
@@ -101,7 +102,7 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             List.of("version", "status", "world", "list", "themes", "rooms", "room", "weights",
                     "gen", "paste", "connect", "dungeon", "instances", "enter", "leave", "close",
                     "portal", "mob", "loot", "shop", "parties", "db", "stats", "api", "slots",
-                    "free", "reload", "hud", "extract");
+                    "free", "reload", "hud", "extract", "edit");
 
     private static final List<String> PORTAL_ACTIONS = List.of("create", "list", "remove", "tp");
 
@@ -170,11 +171,34 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             case "free" -> free(sender, label, args);
             case "hud" -> hud(sender, label, args);
             case "extract" -> extract(sender, args);
+            case "edit" -> edit(sender, args);
             default -> sender.sendMessage(Component
                     .text("Usage: /" + label + " <" + String.join("|", SUB_COMMANDS) + ">",
                             NamedTextColor.RED));
         }
         return true;
+    }
+
+    /**
+     * {@code /tdungeons edit [mobs|loot|dungeon]} — the phase 9 editors.
+     *
+     * <p>Behind a permission of its own on top of {@code takashidungeons.admin}: the editors write
+     * files, and a server should be able to hand staff the read-only commands without that.
+     */
+    private void edit(CommandSender sender, String[] args) {
+        Player player = asPlayer(sender);
+        if (player == null) {
+            return;
+        }
+        if (!player.hasPermission(EditorHub.PERMISSION)) {
+            sender.sendMessage(Component.text("The editors need " + EditorHub.PERMISSION + ".",
+                    NamedTextColor.RED));
+            return;
+        }
+        String problem = EditorHub.open(plugin, player, args.length > 1 ? args[1] : null);
+        if (problem != null) {
+            sender.sendMessage(Component.text(problem, NamedTextColor.RED));
+        }
     }
 
     private void status(CommandSender sender) {
@@ -1645,14 +1669,21 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
 
         // Everything after the setting name is the value — a server name has spaces in it.
         String value = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+        String problem;
         if (setting.equals("name")) {
-            hud.setServerName(value);
+            problem = hud.setServerName(value);
             sender.sendMessage(Component.text("HUD server name: ", NamedTextColor.GREEN)
                     .append(Component.text(value, NamedTextColor.WHITE)));
         } else {
-            hud.setServerIp(value);
+            problem = hud.setServerIp(value);
             sender.sendMessage(Component.text("HUD server IP: ", NamedTextColor.GREEN)
                     .append(Component.text(value, NamedTextColor.WHITE)));
+        }
+        // The sidebar already shows the new value; saying nothing here would let the operator
+        // believe it survives a restart.
+        if (problem != null) {
+            sender.sendMessage(Component.text("Not saved to config.yml (lost on restart): "
+                    + problem, NamedTextColor.YELLOW));
         }
     }
 
@@ -2374,6 +2405,10 @@ public final class DungeonsCommand implements CommandExecutor, TabCompleter {
             String prefix = args[1].toLowerCase(Locale.ROOT);
             return plugin.getServer().getOnlinePlayers().stream().map(Player::getName)
                     .filter(n -> n.toLowerCase(Locale.ROOT).startsWith(prefix)).toList();
+        }
+        if (args.length == 2 && sub.equals("edit")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return EditorHub.SECTIONS.stream().filter(o -> o.startsWith(prefix)).toList();
         }
         if (args.length == 2 && sub.equals("extract")) {
             return List.of("force").stream()

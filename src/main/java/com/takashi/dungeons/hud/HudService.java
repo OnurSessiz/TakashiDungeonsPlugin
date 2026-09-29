@@ -5,6 +5,7 @@ import com.takashi.dungeons.party.Party;
 import com.takashi.dungeons.party.PartyManager;
 import com.takashi.dungeons.player.PlayerDataService;
 import com.takashi.dungeons.player.PlayerProfile;
+import com.takashi.dungeons.yaml.DataFiles;
 import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -340,22 +341,37 @@ public final class HudService implements Listener {
         return serverIp;
     }
 
-    /** Writes the server name into config.yml and repaints every open sidebar. */
-    public void setServerName(String value) {
+    /**
+     * Writes the server name into config.yml and repaints every open sidebar.
+     *
+     * @return {@code null} when it was saved, otherwise why not — the sidebar changes either way
+     */
+    public @Nullable String setServerName(String value) {
         serverName = value;
         serverNameText = parse(value);
-        plugin.getConfig().set("hud.server-name", value);
-        plugin.saveConfig();
         Bukkit.getOnlinePlayers().forEach(this::update);
+        return persist("hud.server-name", value);
     }
 
     /** Writes the server IP into config.yml and repaints every open sidebar. */
-    public void setServerIp(String value) {
+    public @Nullable String setServerIp(String value) {
         serverIp = value;
         serverIpText = parse(value);
-        plugin.getConfig().set("hud.server-ip", value);
-        plugin.saveConfig();
         Bukkit.getOnlinePlayers().forEach(this::update);
+        return persist("hud.server-ip", value);
+    }
+
+    /**
+     * One key into config.yml, and into the copy in memory.
+     *
+     * <p>Not {@code saveConfig()}: that regenerates the whole file from memory, exploding every
+     * flow list and silently discarding a hand edit that has not been reloaded yet
+     * ({@link DataFiles}). The in-memory copy is set too, so the rest of the plugin sees exactly
+     * what it saw before this changed.
+     */
+    private @Nullable String persist(String key, String value) {
+        plugin.getConfig().set(key, value);
+        return DataFiles.patch(plugin, "config.yml", patch -> patch.set(key, value));
     }
 
     /** How many lines the configured layout has — reported by {@code /tdungeons hud}. */

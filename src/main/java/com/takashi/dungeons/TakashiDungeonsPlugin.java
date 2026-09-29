@@ -4,6 +4,8 @@ import com.takashi.dungeons.api.TakashiDungeonsAPI;
 import com.takashi.dungeons.command.DungeonsCommand;
 import com.takashi.dungeons.command.HudCommand;
 import com.takashi.dungeons.command.PartyCommand;
+import com.takashi.dungeons.gui.ChatPrompt;
+import com.takashi.dungeons.gui.MenuListener;
 import com.takashi.dungeons.hud.HudService;
 import com.takashi.dungeons.generation.RoomTemplateStore;
 import com.takashi.dungeons.instance.InstanceListener;
@@ -94,6 +96,7 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
     private ApiService apiService;
     private ApiEvents apiEvents;
     private Messages messages;
+    private ChatPrompt chatPrompt;
 
     @Override
     public void onEnable() {
@@ -123,11 +126,18 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
         setupPortals();
         setupHud();
         setupApi();
+        setupEditors();
         registerCommands();
     }
 
     @Override
     public void onDisable() {
+        // Editor windows first: after a /reload the new listener would not recognise a window whose
+        // holder class came from the old plugin, and its buttons would be items free to take.
+        MenuListener.closeAll();
+        if (chatPrompt != null) {
+            chatPrompt.clear();
+        }
         // The sidebar is a client-side scoreboard: if it is not taken down here it survives a
         // /reload and sticks to the player with a plugin that no longer exists behind it.
         if (hudService != null) {
@@ -428,6 +438,16 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
                 + "TakashiDungeons.api(); see docs/api.md");
     }
 
+    /**
+     * The phase 9 editors: one listener for every menu, one chat prompt for typed values. No
+     * dependency — WorldEdit or not, the mob and loot files are there to be edited.
+     */
+    private void setupEditors() {
+        getServer().getPluginManager().registerEvents(new MenuListener(), this);
+        chatPrompt = new ChatPrompt(this);
+        getServer().getPluginManager().registerEvents(chatPrompt, this);
+    }
+
     private void registerCommands() {
         PluginCommand command = getCommand("tdungeons");
         if (command == null) {
@@ -477,6 +497,11 @@ public final class TakashiDungeonsPlugin extends JavaPlugin {
 
     public DungeonWorldManager getWorldManager() {
         return worldManager;
+    }
+
+    /** "Type the value in chat" for the editors. */
+    public ChatPrompt getChatPrompt() {
+        return chatPrompt;
     }
 
     public GridSlotManager getSlotManager() {

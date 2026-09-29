@@ -1,10 +1,11 @@
 # TakashiDungeons - loot catalogue
 #
-# Separate from config.yml, exactly like mobs.yml, and for the same reason: phase 9's GUI editor
-# will WRITE this file, and a program that rewrites a file destroys the comments in it. Every
-# explanation below survives because loot lives in its own file.
+# Separate from config.yml, exactly like mobs.yml, and editable in game with /tdungeons edit loot.
+# The editor changes only the values you edit, in place - every explanation below survives a GUI
+# save. A "# 62.5%" comment beside a rarity weight is kept in step with the new number; other
+# comments are prose and describe the shipped values.
 #
-# After editing:  /tdungeons loot reload   (or /tdungeons reload for everything)
+# After editing by hand:  /tdungeons loot reload   (or /tdungeons reload for everything)
 #
 # ===============================================================================================
 # CLASS (class):  common | uncommon | rare | ultra_rare | legendary | mythic

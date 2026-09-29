@@ -1,11 +1,11 @@
 # geo-probe — server-free tests for the generation package
 
 Regression cover for phase 1B (geometry), 1C (selection + collision), 1D (graph generation),
-3B (spawn search), 4A (loot draw) and 7 (storage). **No server needed**, and it runs in seconds —
+1E (per-room caps), 3B (spawn search), 4A (loot draw), 7 (storage) and 9 (the editors' YAML writer and draft). **No server needed**, and it runs in seconds —
 possible because the `generation` package is deliberately pure Java, because `RoomSpawnFinder` reads
 the world only through the `ColumnProbe` interface, because the loot rarity arithmetic is kept apart
-from the Bukkit types it feeds, and because the `storage` package carries no Bukkit import at all.
-**311 checks** in total.
+from the Bukkit types it feeds, because the `storage` package carries no Bukkit import at all, and because the editors' writer
+(`YamlPatch`) and draft (`Draft`, `RangeField`, `Num`) need nothing but SnakeYAML. **461 checks** in total.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
@@ -20,9 +20,12 @@ powershell -ExecutionPolicy Bypass -File scripts\geo-probe\run.ps1
 | `GeoProbe.java` | **1B — 53 checks:** rotation, `align`, wall derivation, collision rules, 48 placement combinations | on every change to the `generation` package |
 | `GenProbe.java` | **1C — 28 checks:** weight distribution over 200,000 draws, pool filtering, backing off, consistency across 500 seeds, DEAD doors, reproducibility | same |
 | `DungeonProbe.java` | **1D — 31 checks:** critical path guarantee (3×1000 generations), boss assignment, size ranges, plug coverage, consecutive-seed independence, out-of-the-box fallbacks | same |
+| `QuotaProbe.java` | **1E - 7 checks:** `max-per-dungeon` over 3x2000 seeds - the cap is never exceeded, and a world without caps generates exactly what it did before the field existed | on every change to `DungeonGenerator.Quota` or `RoomMetadata` |
 | `SpawnProbe.java` | **3B — 22 checks:** the spawn search over hand-drawn ASCII rooms — L-shaped hall, corridor, blocked centre, two-storey, and a **sealed alcove the flood fill must not reach** | on every change to `RoomSpawnFinder` |
 | `LootProbe.java` | **4A/4B/4C — 117 checks:** the rarity split and what difficulty does to it — the worked example from `isleyis.md` checked number for number, 200,000 draws against the declared weights at three multipliers, the edge where common runs out and the increase has to be scaled back, the shipped `boss_chest` block written out weight for weight so `loot.yml` and the code cannot drift apart unnoticed, and the check that loot and mobs draw from **different** streams of the same seed | on every change to `RarityWeights`, `CountRange`, `LootTable`, `ItemClass` or `Seeds` |
 | `StorageProbe.java` | **7 — 60 checks:** the SQL itself, run against a real SQLite file in the temp folder — migrations applied once and only once, the tri-state setting where `NULL` is not `false`, `first_seen` surviving an upsert that rewrites everything around it, counters accumulating rather than overwriting, and a database from a newer version being refused instead of downgraded | on every change to the `storage` package or `PlayerDataRepository` |
+| `YamlProbe.java` | **9A - 102 checks:** the in-place YAML writer against the **real shipped files** - one value changed = exactly one line changed, a file read and written untouched is byte-identical, comments/flow lists/quote style/CRLF/BOM survive, inserting and removing keys, `# 62.5%` comments rewritten in place, and a refused edit leaving the text as it was | on every change to `YamlPatch` |
+| `EditorProbe.java` | **9 - 41 checks:** the editor core without a menu - min never passes max, the file's spelling (`20` vs `[20, 20]`) kept, decimal steps that stay exact, a draft that is clean again after a nudge up and back, the optimistic lock (a hand edit to a touched field refuses the save; one to an untouched field survives it), and a mob-editor save onto the shipped `mobs.yml` | on every change to `Draft`, `RangeField` or `Num` |
 | `Rooms.java` | The shared test room set — in **alphabetical order**, matching `SchematicService.list()` on the server | (library) |
 | `RotProbe.java` | Measures the sign of WorldEdit's `AffineTransform().rotateY(-degrees)` | only when the WorldEdit version changes |
 
@@ -87,6 +90,9 @@ GECEN: 28   KALAN: 0
 ################ FAZ 1D - graf uretimi ################
 GECEN: 31   KALAN: 0
 
+################ FAZ 1E - oda basi tavan ################
+GECEN: 7   KALAN: 0
+
 ################ FAZ 3B - spawn aramasi ################
 GECEN: 22   KALAN: 0
 
@@ -95,6 +101,12 @@ GECEN: 117   KALAN: 0
 
 ################ FAZ 7 - depolama katmani ################
 GECEN: 60   KALAN: 0
+
+################ FAZ 9A - YAML yazici ################
+GECEN: 102   KALAN: 0
+
+################ FAZ 9 - editor cekirdegi ################
+GECEN: 41   KALAN: 0
 
 TUM TESTLER GECTI
 ```
@@ -118,9 +130,16 @@ it. The MySQL path stays an open test debt (`sonislem.md`) until somebody points
 it — the driver itself is already known to load, because pointing the plugin at a host with no
 server running produces `CommunicationsException` rather than "driver not found".
 
-## One dependency, handled
+## Two dependencies, handled
 
 `StorageProbe` needs the SQLite driver, which is shaded into the jar rather than compiled into
 `target\classes`. `run.ps1` finds it in `~\.m2` exactly the way `RotProbe` finds WorldEdit. If it
-is not there, the probe is **skipped with a warning** instead of failing the run — the other five
+is not there, the probe is **skipped with a warning** instead of failing the run — the others
 have no third-party dependency and must stay runnable.
+
+`YamlProbe` and `EditorProbe` need SnakeYAML. Paper bundles it on the server; the build's
+`paper-api` dependency puts a copy in `~\.m2`, and `run.ps1` takes it from there the same way.
+No SnakeYAML, both are skipped with a warning.
+
+`YamlProbe` also reads the shipped files out of `src\main\resources` - `run.ps1` passes the
+repository root as the first argument to every probe (the others ignore it).

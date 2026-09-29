@@ -19,10 +19,10 @@ import java.util.random.RandomGenerator;
  * the weighted pools the spawner draws from.
  *
  * <h2>Its own file, not config.yml</h2>
- * The mob set is the thing an operator edits most, and phase 9's GUI editor will <b>write</b> it.
- * A program that rewrites {@code config.yml} destroys the comments in it — every explanation this
- * project puts next to a setting would be gone after the first GUI save. A separate file the
- * editor owns keeps that from ever being a question.
+ * The mob set is the thing an operator edits most, and the phase 9 editor writes it. It does so
+ * through {@code YamlPatch}, which changes values in place and leaves every comment standing — so
+ * the split is no longer about comments surviving. What it still buys: an editor save to the mob
+ * set can never touch a server setting.
  *
  * <h2>A definition is disabled, never silently redirected</h2>
  * When the named provider is absent or does not know the key, the entry is dropped into

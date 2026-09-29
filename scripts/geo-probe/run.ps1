@@ -62,9 +62,20 @@ $sources = @(
 $probeCp = $classes
 if ($sqlite) {
     $sources += "$probeDir\StorageProbe.java"
-    $probeCp = "$classes;$($sqlite.FullName)"
+    $probeCp = "$probeCp;$($sqlite.FullName)"
 } else {
     Write-Host "UYARI: sqlite-jdbc .m2'de yok, StorageProbe atlandi (once build.ps1)" -ForegroundColor Yellow
+}
+
+# YamlProbe SnakeYAML istiyor: Paper onu sunucuda tasiyor, paper-api bagimliligi da .m2'ye indiriyor.
+$snake = Get-ChildItem "$m2\org\yaml\snakeyaml" -Recurse -Filter "snakeyaml-*.jar" -ErrorAction SilentlyContinue |
+         Where-Object { $_.Name -notmatch 'sources|javadoc' } | Sort-Object Name | Select-Object -Last 1
+if ($snake) {
+    $sources += "$probeDir\YamlProbe.java"
+    $sources += "$probeDir\EditorProbe.java"
+    $probeCp = "$probeCp;$($snake.FullName)"
+} else {
+    Write-Host "UYARI: snakeyaml .m2'de yok, YamlProbe atlandi (once build.ps1)" -ForegroundColor Yellow
 }
 & $javac -cp $probeCp -d $outDir $sources
 if ($LASTEXITCODE -ne 0) { throw "Probe'lar derlenemedi" }
@@ -79,11 +90,17 @@ $probes = @(
     @("FAZ 4A - loot cekilisi",       "LootProbe")
 )
 if ($sqlite) { $probes += ,@("FAZ 7 - depolama katmani", "StorageProbe") }
+if ($snake) {
+    $probes += ,@("FAZ 9A - YAML yazici", "YamlProbe")
+    $probes += ,@("FAZ 9 - editor cekirdegi", "EditorProbe")
+}
 
 foreach ($p in $probes) {
     Write-Host ""
     Write-Host "################ $($p[0]) ################" -ForegroundColor Cyan
-    & $java -cp "$outDir;$probeCp" $p[1]
+    # Kok dizin arguman olarak geciyor: YamlProbe gonderilen dosyalari src\main\resources'tan
+    # okuyor. Digerleri argumani yok sayiyor.
+    & $java -cp "$outDir;$probeCp" $p[1] $root
     if ($LASTEXITCODE -ne 0) { $failed = 1 }
 }
 

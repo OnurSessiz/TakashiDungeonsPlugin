@@ -259,7 +259,11 @@ public final class MobDropService implements Listener {
         return definition == null ? MobClass.BOSS.key() : definition.id();
     }
 
-    /** Dungeons run at the configured difficulty; per-instance difficulty arrives with phase 9. */
+    /**
+     * Dungeons run at the configured difficulty ({@code mobs.yml → default-difficulty}, also set by
+     * {@code /tdungeons edit dungeon}). There is no per-instance difficulty yet: phase 9 made the
+     * default editable, it did not give each dungeon its own.
+     */
     private Difficulty difficultyOf() {
         return plugin.getMobRegistry().defaultDifficulty();
     }

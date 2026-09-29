@@ -22,9 +22,9 @@ import java.util.random.RandomGenerator;
  * weighted pools a draw comes from, and the named tables that describe a draw.
  *
  * <h2>Its own file, and the reasons are the ones mobs.yml already gave</h2>
- * Phase 9's GUI editor will <b>write</b> this file, and a program that rewrites a file destroys the
- * comments in it. Keeping loot out of {@code config.yml} is what lets both files be explained in
- * place without the explanations being one GUI save away from deletion.
+ * The phase 9 editor writes this file — through {@code YamlPatch}, which changes values in place
+ * and leaves the comments standing. Keeping loot out of {@code config.yml} means an editor save to
+ * the catalogue can never touch a server setting.
  *
  * <h2>An entry is disabled, never silently replaced</h2>
  * A misspelled material or enchantment drops the entry into {@link #disabled()} with a sentence

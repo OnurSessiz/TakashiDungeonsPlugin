@@ -1,5 +1,6 @@
 # TakashiDungeons — main configuration
-# Rule: everything works through YAML first; GUI editors come later.
+# Rule: everything works through YAML first. The in-game editors (/tdungeons edit) sit on top of
+# it and write back into this file one value at a time - these comments survive their saves.
 #
 # THIS FILE HOLDS BEHAVIOUR, NOT WORDS. Every message a player reads lives in lang/<code>.yml.
 # The split is deliberate: a translator who has to hunt through two files for the other half of
